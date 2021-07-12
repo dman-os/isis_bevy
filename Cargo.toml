@@ -1,0 +1,32 @@
+[package]
+name = "isis"
+version = "0.1.0"
+edition = "2018"
+
+[workspace]
+members = ["crates/*"]
+
+[features]
+default = ["dylink"]
+
+[dependencies]
+dylink = { path = "crates/dylink", optional = true }
+deps = { path = "crates/deps" }
+
+[profile.dev]
+debug = false
+#opt-level = 1
+
+[profile.dev.package.bevy]
+opt-level = 3
+
+[profile.dev.package."*"]
+opt-level = 3
+
+# [patch.crates-io]
+# bevy = { path = "../bevy" }
+# bevy_egui = { path = "../bevy_egui" }
+# bytemuck = { path = "../../../bytemuck", features  = ["derive", "proc-macro-crate"] }
+# wgpu = { git = "https://github.com/gfx-rs/wgpu-rs", branch = "master" }
+
+
