@@ -14,6 +14,7 @@ use bevy::{
 };
 use bevy_egui::*;
 use bevy_rapier3d::prelude::*;
+use rand::prelude::*;
 
 pub mod crafts;
 pub mod utils;
@@ -88,7 +89,7 @@ fn setup_fps_display(mut commands: Commands, asset_server: Res<AssetServer>) {
                         value: "FPS: ".to_string(),
                         style: TextStyle {
                             font: asset_server.load("fonts/test_font.ttf"),
-                            font_size: 30.0,
+                            font_size: 15.0,
                             color: Color::WHITE,
                         },
                     },
@@ -96,7 +97,7 @@ fn setup_fps_display(mut commands: Commands, asset_server: Res<AssetServer>) {
                         value: "".to_string(),
                         style: TextStyle {
                             font: asset_server.load("fonts/test_font.ttf"),
-                            font_size: 30.0,
+                            font_size: 15.0,
                             color: Color::GOLD,
                         },
                     },
@@ -170,32 +171,62 @@ fn setup_world(
     //         ..Default::default()
     //     });
 
-    // cube
-    commands
-        .spawn_bundle(PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Cube { size: 1.0 })),
-            transform: Transform::from_translation(Vec3::Y * 10.0),
-            material: materials.add(Color::BEIGE.into()),
-            ..Default::default()
-        })
-        .insert_bundle(RigidBodyBundle {
-            position: [0., 10., 0.].into(),
-            ..Default::default()
-        })
-        .insert_bundle(ColliderBundle {
-            shape: ColliderShape::cuboid(1., 1., 1.),
-            ..Default::default()
-        })
-        .insert(RigidBodyPositionSync::Discrete);
+    let mut rng = rand::thread_rng();
+    const SIZE_RANGE: f32 = 100.;
+    const MASS_RANGE: f32 = 10_000.;
+    const LOCATION_RANGE: f32 = 400.;
+    for _ in (0..100).into_iter() {
+        let size = rng.gen::<f32>() * SIZE_RANGE;
+        let radius = size * 0.5;
+        let mass = rng.gen::<f32>() * MASS_RANGE;
+        let pos = {
+            let pos: Vec3 = rng.gen::<[f32; 3]>().into();
+            let pos = pos * LOCATION_RANGE;
+            [
+                pos.x * if rng.gen_bool(0.5) { 1. } else { -1. },
+                pos.y * if rng.gen_bool(0.5) { 1. } else { -1. },
+                pos.z * if rng.gen_bool(0.5) { 1. } else { -1. },
+            ]
+            .into()
+        };
+        let mut xform = Transform::from_translation(pos);
+        xform.rotate(Quat::from_rotation_ypr(
+            rng.gen::<f32>() * 360.0,
+            rng.gen::<f32>() * 360.0,
+            rng.gen::<f32>() * 360.0,
+        ));
+
+        commands
+            .spawn_bundle(PbrBundle {
+                mesh: meshes.add(Mesh::from(shape::Icosphere {
+                    radius,
+                    ..Default::default()
+                })),
+                transform: xform,
+                material: materials.add(
+                    Color::rgba(rng.gen::<f32>(), rng.gen::<f32>(), rng.gen::<f32>(), 1.).into(),
+                ),
+                ..Default::default()
+            })
+            .insert_bundle(RigidBodyBundle {
+                position: pos.into(),
+                ..Default::default()
+            })
+            .insert_bundle(ColliderBundle {
+                shape: ColliderShape::ball(radius),
+                mass_properties: ColliderMassProps::Density(
+                    mass / (4. * std::f32::consts::PI * radius * radius),
+                ),
+                ..Default::default()
+            })
+            .insert(RigidBodyPositionSync::Discrete);
+    }
 
     // Spawn the craft
     let current_craft_id = commands
-        .spawn_bundle((
-            Transform::from_xyz(0.0, 10.0, 00.0),
-            GlobalTransform::identity(),
-        ))
+        .spawn_bundle((Transform::default(), GlobalTransform::identity()))
         .insert_bundle(RigidBodyBundle {
-            position: [0., 10., 0.].into(),
+            position: Default::default(),
             ..Default::default()
         })
         .insert(RigidBodyPositionSync::Discrete)
@@ -206,6 +237,9 @@ fn setup_world(
             // the colliders
             parent.spawn_bundle(ColliderBundle {
                 shape: ColliderShape::ball(4.),
+                mass_properties: ColliderMassProps::Density(
+                    15_000. / (4. * std::f32::consts::PI * 4. * 4.),
+                ),
                 ..Default::default()
             });
 
@@ -319,8 +353,11 @@ fn move_camera_system(
         .expect("unalbe to find current craft entity");
     lin_state.input = cam_settings.linear_input.as_f32();
     lin_state.input.z *= -1.0;
+    lin_state.input.x *= -1.0;
     lin_state.input *= craft_config.linear_v_limit;
+
     ang_state.input = cam_settings.angular_input.as_f32();
+    ang_state.input.z *= -1.0;
     ang_state.input *= craft_config.angular_v_limit;
 }
 
@@ -331,16 +368,22 @@ fn craft_state_display(
         &Transform,
         &crafts::LinearCraftState,
         &crafts::AngularCraftState,
+        &crafts::LinearDriverPid,
+        &crafts::AngularDriverPid,
     )>,
 ) {
-    let (craft_xform, lin_state, ang_state) = crafts.get(cur_craft.0).unwrap();
+    let (craft_xform, lin_state, ang_state, lin_pid, ang_pid) = crafts.get(cur_craft.0).unwrap();
     egui::Window::new("Status").show(egui_context.ctx(), |ui| {
         ui.label(format!("position: {:?}", craft_xform.translation));
-        ui.label(format!("linear vel: {}", lin_state.velocity));
-        ui.label(format!("angular vel: {}", ang_state.velocity));
-        ui.label(format!("linear input: {}", lin_state.input));
-        ui.label(format!("angular input: {}", ang_state.input));
-        ui.label(format!("linear flame: {}", lin_state.flame));
-        ui.label(format!("angular flame: {}", ang_state.flame));
+        //ui.label(format!("linear vel: {}", lin_state.velocity));
+        //ui.label(format!("angular vel: {}", ang_state.velocity));
+        //ui.label(format!("linear input: {}", lin_state.input));
+        //ui.label(format!("angular input: {}", ang_state.input));
+        //ui.label(format!("linear flame: {}", lin_state.flame));
+        //ui.label(format!("angular flame: {}", ang_state.flame));
+        ui.label(format!("linear state: {:?}", lin_state));
+        ui.label(format!("angular state: {:?}", ang_state));
+        ui.label(format!("lnear pid: {:?}", lin_pid));
+        ui.label(format!("angular pid: {:?}", ang_pid));
     });
 }

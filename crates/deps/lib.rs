@@ -13,5 +13,5 @@ pub use tracing_subscriber;
 pub use bevy_egui;
 pub use chrono;
 // pub use bytemuck;
-pub use bevy; 
+pub use bevy;
 pub use bevy_rapier3d;

@@ -2,6 +2,7 @@ use deps::*;
 
 use bevy::prelude::*;
 
+#[derive(Debug)]
 pub struct PIDControllerVec3 {
     last_state: Vec3,
     integrat_err: Vec3,

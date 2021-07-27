@@ -33,14 +33,14 @@ impl Default for CraftBundle {
             linear_state: Default::default(),
             angular_state: Default::default(),
             linear_pid: LinearDriverPid(crate::utils::PIDControllerVec3::new(
-                Vec3::ONE,
+                Vec3::ONE * 1000.,
                 Vec3::ZERO,
                 Vec3::ZERO,
                 Vec3::ZERO,
                 Vec3::ZERO,
             )),
             angular_pid: AngularDriverPid(crate::utils::PIDControllerVec3::new(
-                Vec3::ONE * 22.0,
+                Vec3::ONE * 1000.0,
                 Vec3::ZERO,
                 Vec3::ZERO,
                 Vec3::ZERO,
@@ -191,19 +191,23 @@ impl CraftConfig {
     }
 }
 
+#[derive(Debug)]
 pub struct LinearDriverPid(crate::utils::PIDControllerVec3);
+#[derive(Debug)]
 pub struct AngularDriverPid(crate::utils::PIDControllerVec3);
 
 pub fn sync_craft_state_velocities(
     mut crafts: Query<(
         &mut AngularCraftState,
         &mut LinearCraftState,
+        &GlobalTransform,
         &RigidBodyVelocity,
     )>,
 ) {
-    for (mut angular_state, mut linear_state, rb_velocity) in crafts.iter_mut() {
-        angular_state.velocity = rb_velocity.angvel.into();
-        linear_state.velocity = rb_velocity.linvel.into();
+    for (mut angular_state, mut linear_state, g_xform, rb_velocity) in crafts.iter_mut() {
+        let inv_rot = g_xform.rotation.inverse();
+        angular_state.velocity = inv_rot * Vec3::from(rb_velocity.angvel);
+        linear_state.velocity = inv_rot * Vec3::from(rb_velocity.linvel);
     }
 }
 
@@ -214,25 +218,25 @@ pub fn linear_pid_driver(
     for (mut state, config, mut pid) in crafts.iter_mut() {
         let mut linear_input = state.input;
 
-        let v_limit = config.linear_v_limit;
-
         // if dampeners are on
         if config.limit_strafe_v {
+            let v_limit = config.linear_v_limit;
+
             // clamp the input to the limit
             linear_input = linear_input.clamp(-v_limit, v_limit);
-        }
 
-        // if forward dampenere is off
-        if !config.limit_forward_v {
-            // restore the clamped input on the z
-            linear_input.z = state.input.z;
+            // if forward dampenere is off
+            if !config.limit_forward_v {
+                // restore the clamped input on the z
+                linear_input.z = state.input.z;
+            }
         }
 
         let mut max_force = config.linear_thruster_force * config.thruster_force_multiplier;
 
-        let is_moving_fwd = linear_input.z > 0.0;
-        // if moving backwards
-        if !is_moving_fwd {
+        let move_fwd = linear_input.z > 0.0;
+        // if input wants to go bacwards
+        if !move_fwd {
             // only use starfe thrusters force on the z
             max_force.z = max_force.x;
         }
@@ -302,9 +306,9 @@ pub fn angular_pid_driver(
                 acceleration_limit =
                     acceleration_limit.clamp(-artificial_accel_limit, artificial_accel_limit);
             }
-            let angular_flame =
-                pid.0
-                    .update(state.velocity, angular_input - state.velocity, 1.0);
+            let angular_flame = pid
+                .0
+                .update(state.velocity, angular_input - state.velocity, 1.0);
             let angular_flame = angular_flame.clamp(-acceleration_limit, acceleration_limit);
             state.flame = angular_flame;
         }
@@ -313,6 +317,7 @@ pub fn angular_pid_driver(
 
 pub fn apply_flames_simple_accel(
     mut crafts: Query<(
+        &GlobalTransform,
         &LinearCraftState,
         &AngularCraftState,
         &CraftConfig,
@@ -321,9 +326,10 @@ pub fn apply_flames_simple_accel(
     )>,
     //time: Time,
 ) {
-    for (lin_state, ang_state, config, mass_props, mut forces) in crafts.iter_mut() {
-        //let force = lin_state.flame * config.mass;
-        forces.force += Vector::from(lin_state.flame);
+    for (g_xform, lin_state, ang_state, config, mass_props, mut forces) in crafts.iter_mut() {
+        let force = lin_state.flame * config.mass;
+        let force = g_xform.rotation * force;
+        forces.force += Vector::from(force);
 
         let local_moi_inv_sqrt = mass_props.local_mprops.inv_principal_inertia_sqrt;
         let torque: Vec3 = [
@@ -332,6 +338,7 @@ pub fn apply_flames_simple_accel(
             ang_state.flame.z / local_moi_inv_sqrt.z,
         ]
         .into();
+        let torque = g_xform.rotation * torque;
 
         forces.torque += AngVector::from(torque);
     }
