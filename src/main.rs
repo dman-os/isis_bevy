@@ -11,35 +11,17 @@ use bevy::{
     input::{keyboard::KeyboardInput, ElementState},
     prelude::*,
     render::camera::Camera,
-    *,
 };
 use bevy_egui::*;
 use bevy_rapier3d::prelude::*;
 
+pub mod crafts;
+pub mod utils;
+
 #[bevy_main]
 fn main() -> Result<()> {
-    // let subscriber = tracing_subscriber::fmt()
-    //     .pretty()
-    //     .compact()
-    //     .with_timer(tracing_subscriber::fmt::time::uptime())
-    //     // setup the env filter
-    //     .with_env_filter(
-    //         tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-    //             // if not found in env, just set a default at INFO level
-    //             tracing_subscriber::EnvFilter::from_default_env()
-    //                 .add_directive(tracing::Level::INFO.into())
-    //         }),
-    //     )
-    //     // completes the builder.
-    //     .finish();
-
-    // tracing::subscriber::set_global_default(subscriber)
-    //     .expect("setting default tracing subscriber failed");
-
-    // tracing::info!("Hello, arrayer!");
-
-    // #[cfg(feature = "dylink")]
-    // tracing::info!("dylink enabled");
+    #[cfg(feature = "dylink")]
+    println!("WARNING: dylink enabled");
 
     App::build()
         .add_plugins(DefaultPlugins)
@@ -65,12 +47,12 @@ pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut AppBuilder) {
         app.add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
+            .add_plugin(crafts::CraftsPlugin)
             .insert_resource(RapierConfiguration {
                 gravity: [0.0, 0.0, 0.0].into(),
                 ..Default::default()
             })
             .add_startup_system(setup_fps_display.system())
-            .add_system(craft_state_display.system())
             .add_system(text_update_system.system())
             .insert_resource(CameraMovementSettings {
                 angular_speed: std::f32::consts::PI / 2.,
@@ -78,9 +60,10 @@ impl Plugin for GamePlugin {
                 shift_multiplier: 4.0,
                 ..Default::default()
             })
-            .add_system(move_camera_system.system())
             .add_startup_system(setup_environment.system())
-            .add_startup_system(setup_world.system());
+            .add_startup_system(setup_world.system())
+            .add_system(craft_state_display.system())
+            .add_system(move_camera_system.system());
     }
 }
 
@@ -136,6 +119,121 @@ fn text_update_system(diagnostics: Res<Diagnostics>, mut query: Query<&mut Text,
     }
 }
 
+fn setup_environment(
+    mut commands: Commands,
+    // mut meshes: ResMut<Assets<Mesh>>,
+    // mut materials: ResMut<Assets<StandardMaterial>>,
+    // asset_server: Res<AssetServer>,
+) {
+    // light
+    commands.spawn_bundle(LightBundle {
+        // transform: Transform::from_xyz(4.0, 8.0, 4.0),
+        transform: Transform::from_xyz(5.0, 50.0, 50.),
+        light: Light {
+            range: 200.,
+            intensity: 50_000.,
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+
+    //// camera
+    //commands
+    //.spawn_bundle(PerspectiveCameraBundle {
+    //transform: Transform::from_xyz(-20.0, 25., 20.0).looking_at(Vec3::ZERO, Vec3::Y),
+    //..Default::default()
+    //})
+    //.insert(GameCamera);
+}
+
+fn setup_world(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
+) {
+    use bevy::render::mesh::shape;
+    // const GROUN_PLANE_LENGTH: f32 = 128.;
+
+    // // spawns a white plane at one unit below the orign
+    // commands
+    //     .spawn_bundle(PbrBundle {
+    //         mesh: meshes.add(Mesh::from(shape::Plane {
+    //             size: GROUN_PLANE_LENGTH,
+    //         })),
+    //         material: materials.add(Color::WHITE.into()),
+    //         transform: Transform::from_translation(Vec3::Y / 2.0),
+    //         ..Default::default()
+    //     })
+    //     .insert_bundle(ColliderBundle {
+    //         shape: ColliderShape::cuboid(GROUN_PLANE_LENGTH, 0.1, GROUN_PLANE_LENGTH),
+    //         ..Default::default()
+    //     });
+
+    // cube
+    commands
+        .spawn_bundle(PbrBundle {
+            mesh: meshes.add(Mesh::from(shape::Cube { size: 1.0 })),
+            transform: Transform::from_translation(Vec3::Y * 10.0),
+            material: materials.add(Color::BEIGE.into()),
+            ..Default::default()
+        })
+        .insert_bundle(RigidBodyBundle {
+            position: [0., 10., 0.].into(),
+            ..Default::default()
+        })
+        .insert_bundle(ColliderBundle {
+            shape: ColliderShape::cuboid(1., 1., 1.),
+            ..Default::default()
+        })
+        .insert(RigidBodyPositionSync::Discrete);
+
+    // Spawn the craft
+    let current_craft_id = commands
+        .spawn_bundle((
+            Transform::from_xyz(0.0, 10.0, 00.0),
+            GlobalTransform::identity(),
+        ))
+        .insert_bundle(RigidBodyBundle {
+            position: [0., 10., 0.].into(),
+            ..Default::default()
+        })
+        .insert(RigidBodyPositionSync::Discrete)
+        .with_children(|parent| {
+            // the model
+            parent.spawn_scene(asset_server.load("models/ball_fighter.gltf#Scene0"));
+
+            // the colliders
+            parent.spawn_bundle(ColliderBundle {
+                shape: ColliderShape::ball(4.),
+                ..Default::default()
+            });
+
+            // parent
+            //     .spawn_bundle((
+            //         Transform::from_xyz(0.0, 0.0, 0.0),
+            //         GlobalTransform::identity(),
+            //     ))
+            //     .with_children(|parent| {
+            //         parent.spawn_bundle(ColliderBundle {
+            //             shape: ColliderShape::ball(8.),
+            //             ..Default::default()
+            //         });
+            //     });
+
+            parent
+                .spawn_bundle(PerspectiveCameraBundle {
+                    transform: Transform::from_xyz(0.0, 7., -20.0).looking_at(Vec3::Z, Vec3::Y),
+                    ..Default::default()
+                })
+                .insert(crafts::CraftCamera);
+        })
+        .insert_bundle(crafts::CraftBundle::default())
+        .id();
+
+    commands.insert_resource(crafts::CurrentCraft(current_craft_id));
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct GameCamera;
 
@@ -154,6 +252,12 @@ fn move_camera_system(
     mut cameras: Query<&mut Transform, (With<Camera>, With<GameCamera>)>,
     time: Res<Time>,
     mut cam_settings: ResMut<CameraMovementSettings>,
+    cur_craft: Res<crafts::CurrentCraft>,
+    mut crafts: Query<(
+        &mut crafts::LinearCraftState,
+        &mut crafts::AngularCraftState,
+        &crafts::CraftConfig,
+    )>,
 ) {
     {
         let mut linear_input = cam_settings.linear_input;
@@ -208,139 +312,35 @@ fn move_camera_system(
         let cam_rotation = camera_xform.rotation;
         camera_xform.translation += cam_rotation * linear_vel;
         camera_xform.rotation *= rotator;
+        // tracing::info!("resulting xform: {:?}", camera_xform);
     }
-
-    // tracing::info!("resulting xform: {:?}", camera_xform);
+    let (mut lin_state, mut ang_state, craft_config) = crafts
+        .get_mut(cur_craft.0)
+        .expect("unalbe to find current craft entity");
+    lin_state.input = cam_settings.linear_input.as_f32();
+    lin_state.input.z *= -1.0;
+    lin_state.input *= craft_config.linear_v_limit;
+    ang_state.input = cam_settings.angular_input.as_f32();
+    ang_state.input *= craft_config.angular_v_limit;
 }
 
 fn craft_state_display(
     egui_context: ResMut<EguiContext>,
-    cur_craft: Res<CurrentCraft>,
-    crafts: Query<(&Transform, &RigidBodyVelocity), With<Craft>>,
+    cur_craft: Res<crafts::CurrentCraft>,
+    crafts: Query<(
+        &Transform,
+        &crafts::LinearCraftState,
+        &crafts::AngularCraftState,
+    )>,
 ) {
-    let (craft_xform, vel) = crafts.get(cur_craft.0).unwrap();
+    let (craft_xform, lin_state, ang_state) = crafts.get(cur_craft.0).unwrap();
     egui::Window::new("Status").show(egui_context.ctx(), |ui| {
         ui.label(format!("position: {:?}", craft_xform.translation));
-        ui.label(format!("linear vel: {}", vel.linvel));
-        ui.label(format!("angular vel: {}", vel.angvel));
+        ui.label(format!("linear vel: {}", lin_state.velocity));
+        ui.label(format!("angular vel: {}", ang_state.velocity));
+        ui.label(format!("linear input: {}", lin_state.input));
+        ui.label(format!("angular input: {}", ang_state.input));
+        ui.label(format!("linear flame: {}", lin_state.flame));
+        ui.label(format!("angular flame: {}", ang_state.flame));
     });
-}
-
-fn setup_environment(
-    mut commands: Commands,
-    // mut meshes: ResMut<Assets<Mesh>>,
-    // mut materials: ResMut<Assets<StandardMaterial>>,
-    // asset_server: Res<AssetServer>,
-) {
-    // light
-    commands.spawn_bundle(LightBundle {
-        // transform: Transform::from_xyz(4.0, 8.0, 4.0),
-        transform: Transform::from_xyz(0.0, 30.0, 0.),
-        light: Light {
-            range: 200.,
-            intensity: 549.,
-            ..Default::default()
-        },
-        ..Default::default()
-    });
-
-    // // camera
-    // commands
-    //     .spawn_bundle(PerspectiveCameraBundle {
-    //         transform: Transform::from_xyz(-20.0, 25., 20.0).looking_at(Vec3::ZERO, Vec3::Y),
-    //         ..Default::default()
-    //     })
-    //     .insert(GameCamera);
-}
-
-pub struct CraftCamera;
-
-pub struct Craft;
-pub struct CurrentCraft(pub Entity);
-
-fn setup_world(
-    mut commands: Commands,
-    // mut meshes: ResMut<Assets<Mesh>>,
-    // mut materials: ResMut<Assets<StandardMaterial>>,
-    asset_server: Res<AssetServer>,
-) {
-    // use bevy::render::mesh::shape;
-    // const GROUN_PLANE_LENGTH: f32 = 128.;
-
-    // // spawns a white plane at one unit below the orign
-    // commands
-    //     .spawn_bundle(PbrBundle {
-    //         mesh: meshes.add(Mesh::from(shape::Plane {
-    //             size: GROUN_PLANE_LENGTH,
-    //         })),
-    //         material: materials.add(Color::WHITE.into()),
-    //         transform: Transform::from_translation(Vec3::Y / 2.0),
-    //         ..Default::default()
-    //     })
-    //     .insert_bundle(ColliderBundle {
-    //         shape: ColliderShape::cuboid(GROUN_PLANE_LENGTH, 0.1, GROUN_PLANE_LENGTH),
-    //         ..Default::default()
-    //     });
-
-    // // cube
-    // commands
-    //     .spawn_bundle(PbrBundle {
-    //         mesh: meshes.add(Mesh::from(shape::Cube { size: 1.0 })),
-    //         transform: Transform::from_translation(Vec3::Y * 10.0),
-    //         material: materials.add(Color::BEIGE.into()),
-    //         ..Default::default()
-    //     })
-    //     .insert_bundle(RigidBodyBundle {
-    //         position: [0., 10., 0.].into(),
-    //         ..Default::default()
-    //     })
-    //     .insert_bundle(ColliderBundle {
-    //         shape: ColliderShape::cuboid(1., 1., 1.),
-    //         ..Default::default()
-    //     })
-    //     .insert(RigidBodyPositionSync::Discrete);
-
-    // Spawn the craft
-    let current_craft_id = commands
-        .spawn_bundle((
-            Transform::from_xyz(0.0, 10.0, 00.0),
-            GlobalTransform::identity(),
-        ))
-        .insert(Craft)
-        .insert_bundle(RigidBodyBundle {
-            position: [0., 10., 0.].into(),
-            ..Default::default()
-        })
-        .insert(RigidBodyPositionSync::Discrete)
-        .with_children(|parent| {
-            // the model
-            parent.spawn_scene(asset_server.load("models/ball_fighter.gltf#Scene0"));
-            // the colliders
-            parent.spawn_bundle(ColliderBundle {
-                shape: ColliderShape::ball(4.),
-                ..Default::default()
-            });
-
-            // parent
-            //     .spawn_bundle((
-            //         Transform::from_xyz(0.0, 0.0, 0.0),
-            //         GlobalTransform::identity(),
-            //     ))
-            //     .with_children(|parent| {
-            //         parent.spawn_bundle(ColliderBundle {
-            //             shape: ColliderShape::ball(8.),
-            //             ..Default::default()
-            //         });
-            //     });
-
-            parent
-                .spawn_bundle(PerspectiveCameraBundle {
-                    transform: Transform::from_xyz(0.0, 7., -20.0).looking_at(Vec3::Z, Vec3::Y),
-                    ..Default::default()
-                })
-                .insert(CraftCamera);
-        })
-        .id();
-
-    commands.insert_resource(CurrentCraft(current_craft_id));
 }

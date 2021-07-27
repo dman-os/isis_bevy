@@ -17,16 +17,36 @@ deps = { path = "crates/deps" }
 debug = false
 #opt-level = 1
 
-[profile.dev.package.bevy]
-opt-level = 3
-
 [profile.dev.package."*"]
 opt-level = 3
+
+# [profile.dev.package.bevy_ecs]
+# opt-level = 3
+# [profile.dev.package.bevy_tasks]
+# opt-level = 3
+# [profile.dev.package.glam]
+# opt-level = 3
+# [profile.dev.package.rapier3d]
+# opt-level = 3
+# [profile.dev.package.parry3d]
+# opt-level = 3
+# [profile.dev.package.nalgebra]
+# opt-level = 3
+# [profile.dev.package.bevy_render]
+# opt-level = 3
+# [profile.dev.package.parking_lot]
+# opt-level = 3
+# [profile.dev.package.rand]
+# opt-level = 3
+# [profile.dev.package.rayon-core]
+# opt-level = 3
+# [profile.dev.package.crossbeam-channel]
+# opt-level = 3
+# [profile.dev.package.async-channel]
+# opt-level = 3
 
 # [patch.crates-io]
 # bevy = { path = "../bevy" }
 # bevy_egui = { path = "../bevy_egui" }
 # bytemuck = { path = "../../../bytemuck", features  = ["derive", "proc-macro-crate"] }
 # wgpu = { git = "https://github.com/gfx-rs/wgpu-rs", branch = "master" }
-
-
