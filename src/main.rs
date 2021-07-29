@@ -16,6 +16,8 @@ use bevy_egui::*;
 use bevy_rapier3d::prelude::*;
 use rand::prelude::*;
 
+use math::{Real, *};
+
 pub mod crafts;
 pub mod utils;
 
@@ -89,7 +91,7 @@ fn setup_fps_display(mut commands: Commands, asset_server: Res<AssetServer>) {
                         value: "FPS: ".to_string(),
                         style: TextStyle {
                             font: asset_server.load("fonts/test_font.ttf"),
-                            font_size: 15.0,
+                            font_size: 25.0,
                             color: Color::WHITE,
                         },
                     },
@@ -97,7 +99,7 @@ fn setup_fps_display(mut commands: Commands, asset_server: Res<AssetServer>) {
                         value: "".to_string(),
                         style: TextStyle {
                             font: asset_server.load("fonts/test_font.ttf"),
-                            font_size: 15.0,
+                            font_size: 25.0,
                             color: Color::GOLD,
                         },
                     },
@@ -172,15 +174,15 @@ fn setup_world(
     //     });
 
     let mut rng = rand::thread_rng();
-    const SIZE_RANGE: f32 = 100.;
-    const MASS_RANGE: f32 = 10_000.;
-    const LOCATION_RANGE: f32 = 400.;
+    const SIZE_RANGE: Real = 100.;
+    const MASS_RANGE: Real = 10_000.;
+    const LOCATION_RANGE: Real = 400.;
     for _ in (0..100).into_iter() {
-        let size = rng.gen::<f32>() * SIZE_RANGE;
+        let size = rng.gen::<Real>() * SIZE_RANGE;
         let radius = size * 0.5;
-        let mass = rng.gen::<f32>() * MASS_RANGE;
+        let mass = rng.gen::<Real>() * MASS_RANGE;
         let pos = {
-            let pos: Vec3 = rng.gen::<[f32; 3]>().into();
+            let pos: Vector3 = rng.gen::<[Real; 3]>().into();
             let pos = pos * LOCATION_RANGE;
             [
                 pos.x * if rng.gen_bool(0.5) { 1. } else { -1. },
@@ -191,9 +193,9 @@ fn setup_world(
         };
         let mut xform = Transform::from_translation(pos);
         xform.rotate(Quat::from_rotation_ypr(
-            rng.gen::<f32>() * 360.0,
-            rng.gen::<f32>() * 360.0,
-            rng.gen::<f32>() * 360.0,
+            rng.gen::<Real>() * 360.0,
+            rng.gen::<Real>() * 360.0,
+            rng.gen::<Real>() * 360.0,
         ));
 
         commands
@@ -204,7 +206,7 @@ fn setup_world(
                 })),
                 transform: xform,
                 material: materials.add(
-                    Color::rgba(rng.gen::<f32>(), rng.gen::<f32>(), rng.gen::<f32>(), 1.).into(),
+                    Color::rgba(rng.gen::<Real>(), rng.gen::<Real>(), rng.gen::<Real>(), 1.).into(),
                 ),
                 ..Default::default()
             })
@@ -215,7 +217,7 @@ fn setup_world(
             .insert_bundle(ColliderBundle {
                 shape: ColliderShape::ball(radius),
                 mass_properties: ColliderMassProps::Density(
-                    mass / (4. * std::f32::consts::PI * radius * radius),
+                    mass / (4. * math::real::consts::PI * radius * radius),
                 ),
                 ..Default::default()
             })
@@ -224,24 +226,22 @@ fn setup_world(
 
     // Spawn the craft
     let current_craft_id = commands
-        .spawn_bundle((Transform::default(), GlobalTransform::identity()))
-        .insert_bundle(RigidBodyBundle {
-            position: Default::default(),
+        .spawn_bundle(crafts::CraftBundle {
             ..Default::default()
         })
-        .insert(RigidBodyPositionSync::Discrete)
         .with_children(|parent| {
             // the model
             parent.spawn_scene(asset_server.load("models/ball_fighter.gltf#Scene0"));
 
             // the colliders
-            parent.spawn_bundle(ColliderBundle {
-                shape: ColliderShape::ball(4.),
-                mass_properties: ColliderMassProps::Density(
-                    15_000. / (4. * std::f32::consts::PI * 4. * 4.),
-                ),
-                ..Default::default()
-            });
+
+            //parent.spawn_bundle(ColliderBundle {
+                //shape: ColliderShape::ball(4.),
+                //mass_properties: ColliderMassProps::Density(
+                    //15_000. / (4. * math::real::consts::PI * 4. * 4.),
+                //),
+                //..Default::default()
+            //});
 
             // parent
             //     .spawn_bundle((
@@ -255,14 +255,36 @@ fn setup_world(
             //         });
             //     });
 
+            parent.spawn_bundle(crafts::attire::CollisionDamageEnabledColliderBundle {
+                collider: ColliderBundle {
+                    shape: ColliderShape::ball(4.),
+                    mass_properties: ColliderMassProps::Density(
+                        15_000. / (4. * math::real::consts::PI * 4. * 4.),
+                    ),
+                    ..crafts::attire::CollisionDamageEnabledColliderBundle::default_collider_bundle(
+                    )
+                },
+                ..Default::default()
+            });
+
+            parent.spawn_bundle(crafts::attire::AttireBundle {
+                profile: crafts::attire::AttireProfile {
+                    ..Default::default()
+                },
+                collider: ColliderBundle {
+                    shape: ColliderShape::ball(4.),
+                    ..crafts::attire::AttireBundle::default_collider_bundle()
+                },
+            });
+
             parent
                 .spawn_bundle(PerspectiveCameraBundle {
-                    transform: Transform::from_xyz(0.0, 7., -20.0).looking_at(Vec3::Z, Vec3::Y),
+                    transform: Transform::from_xyz(0.0, 7., -20.0)
+                        .looking_at(Vector3::Z, Vector3::Y),
                     ..Default::default()
                 })
                 .insert(crafts::CraftCamera);
         })
-        .insert_bundle(crafts::CraftBundle::default())
         .id();
 
     commands.insert_resource(crafts::CurrentCraft(current_craft_id));
@@ -273,11 +295,11 @@ pub struct GameCamera;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CameraMovementSettings {
-    linear_speed: f32,
-    angular_speed: f32,
-    shift_multiplier: f32,
-    linear_input: IVec3,
-    angular_input: IVec3,
+    linear_speed: Real,
+    angular_speed: Real,
+    shift_multiplier: Real,
+    linear_input: IVector3,
+    angular_input: IVector3,
     shift_on: bool,
 }
 
@@ -288,9 +310,9 @@ fn move_camera_system(
     mut cam_settings: ResMut<CameraMovementSettings>,
     cur_craft: Res<crafts::CurrentCraft>,
     mut crafts: Query<(
-        &mut crafts::LinearCraftState,
-        &mut crafts::AngularCraftState,
-        &crafts::CraftConfig,
+        &mut crafts::engine::LinearEngineState,
+        &mut crafts::engine::AngularEngineState,
+        &crafts::engine::EngineConfig,
     )>,
 ) {
     {
@@ -324,8 +346,8 @@ fn move_camera_system(
             }
         }
 
-        cam_settings.linear_input = linear_input.clamp(-IVec3::ONE, IVec3::ONE);
-        cam_settings.angular_input = angular_input.clamp(-IVec3::ONE, IVec3::ONE);
+        cam_settings.linear_input = linear_input.clamp(-IVector3::ONE, IVector3::ONE);
+        cam_settings.angular_input = angular_input.clamp(-IVector3::ONE, IVector3::ONE);
         cam_settings.shift_on = shift_on;
     }
 
@@ -335,7 +357,7 @@ fn move_camera_system(
         linear_speed *= cam_settings.shift_multiplier
     }
 
-    let delta_t = time.delta_seconds_f64() as f32;
+    let delta_t = time.delta_seconds_f64() as Real;
     let linear_vel = cam_settings.linear_input.as_f32() * (linear_speed * delta_t);
     let angular_vel = cam_settings.angular_input.as_f32() * (cam_settings.angular_speed * delta_t);
 
@@ -366,24 +388,36 @@ fn craft_state_display(
     cur_craft: Res<crafts::CurrentCraft>,
     crafts: Query<(
         &Transform,
-        &crafts::LinearCraftState,
-        &crafts::AngularCraftState,
-        &crafts::LinearDriverPid,
-        &crafts::AngularDriverPid,
+        &crafts::engine::LinearEngineState,
+        &crafts::engine::AngularEngineState,
+        &crafts::engine::LinearDriverPid,
+        &crafts::engine::AngularDriverPid,
     )>,
 ) {
-    let (craft_xform, lin_state, ang_state, lin_pid, ang_pid) = crafts.get(cur_craft.0).unwrap();
+    let (craft_xform, lin_state, ang_state, _lin_pid,_ang_pid) = crafts.get(cur_craft.0).unwrap();
     egui::Window::new("Status").show(egui_context.ctx(), |ui| {
-        ui.label(format!("position: {:?}", craft_xform.translation));
-        //ui.label(format!("linear vel: {}", lin_state.velocity));
-        //ui.label(format!("angular vel: {}", ang_state.velocity));
-        //ui.label(format!("linear input: {}", lin_state.input));
-        //ui.label(format!("angular input: {}", ang_state.input));
-        //ui.label(format!("linear flame: {}", lin_state.flame));
-        //ui.label(format!("angular flame: {}", ang_state.flame));
-        ui.label(format!("linear state: {:?}", lin_state));
-        ui.label(format!("angular state: {:?}", ang_state));
-        ui.label(format!("lnear pid: {:?}", lin_pid));
-        ui.label(format!("angular pid: {:?}", ang_pid));
+        ui.label(format!("position:      {:03.1?}", craft_xform.translation));
+        ui.label(format!("linear vel:    {:03.1?}", lin_state.velocity));
+        ui.label(format!("linear input:  {:03.1?}", lin_state.input));
+        ui.label(format!("linear flame:  {:03.1?}", lin_state.flame));
+        ui.label(format!("angular vel:   {:03.1?}", ang_state.velocity));
+        ui.label(format!("angular input: {:03.1?}", ang_state.input));
+        ui.label(format!("angular flame: {:03.1?}", ang_state.flame));
+        //ui.label(format!("lnear pid: {:+03.1?}", lin_pid));
+        //ui.label(format!("angular pid: {:+03.1?}", ang_pid));
     });
+}
+
+pub mod math {
+    use deps::*;
+
+    use bevy::prelude::*;
+
+    pub mod real {
+        pub use std::f32::*;
+    }
+
+    pub type Real = f32;
+    pub type Vector3 = Vec3;
+    pub type IVector3 = IVec3;
 }

@@ -1,109 +1,64 @@
 use deps::*;
 
-use bevy::{ecs as bevy_ecs, prelude::*};
+use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
-pub struct CraftsPlugin;
-impl Plugin for CraftsPlugin {
-    fn build(&self, app: &mut AppBuilder) {
-        app.add_system(sync_craft_state_velocities.system())
-            .add_system(linear_pid_driver.system())
-            .add_system(angular_pid_driver.system())
-            .add_system(apply_flames_simple_accel.system());
-    }
-}
-
-pub struct CraftCamera;
-
-pub struct CurrentCraft(pub Entity);
-
-#[derive(Bundle)]
-pub struct CraftBundle {
-    pub config: CraftConfig,
-    pub linear_state: LinearCraftState,
-    pub angular_state: AngularCraftState,
-    pub linear_pid: LinearDriverPid,
-    pub angular_pid: AngularDriverPid,
-}
-
-impl Default for CraftBundle {
-    fn default() -> Self {
-        Self {
-            config: Default::default(),
-            linear_state: Default::default(),
-            angular_state: Default::default(),
-            linear_pid: LinearDriverPid(crate::utils::PIDControllerVec3::new(
-                Vec3::ONE * 1000.,
-                Vec3::ZERO,
-                Vec3::ZERO,
-                Vec3::ZERO,
-                Vec3::ZERO,
-            )),
-            angular_pid: AngularDriverPid(crate::utils::PIDControllerVec3::new(
-                Vec3::ONE * 1000.0,
-                Vec3::ZERO,
-                Vec3::ZERO,
-                Vec3::ZERO,
-                Vec3::ZERO,
-            )),
-        }
-    }
-}
+use crate::math::{Real, *};
 
 #[derive(Debug, Default, Clone)]
-pub struct LinearCraftState {
+pub struct LinearEngineState {
     /// Linear velocity in local-space
     /// In m/s.
-    pub velocity: Vec3,
+    pub velocity: Vector3,
 
     /// Input vector for driver. Meaning depends on driver implementation.
     /// e.g. target velocity to attain
-    pub input: Vec3,
+    pub input: Vector3,
 
     /// Vector output of driver and input vector of a motor. Meaning depends on implementation.
     /// e.g. forve to apply
-    pub flame: Vec3,
+    pub flame: Vector3,
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AngularCraftState {
+pub struct AngularEngineState {
     /// Angular velocity in local-space
     /// In rad/s.
-    pub velocity: Vec3,
+    pub velocity: Vector3,
     /// Input vector for driver. Meaning depends on driver implementation.
     /// e.g. target velocity to attain
-    pub input: Vec3,
+    pub input: Vector3,
     /// Vector output of driver and input vector of a motor. Meaning depends on implementation.
-    pub flame: Vec3,
+    pub flame: Vector3,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(crate = "serde")]
-pub struct CraftConfig {
+pub struct EngineConfig {
     ///  Speed to travel at when there is no input i.e. how fast to travel when idle.
-    pub set_speed: Vec3,
+    pub set_speed: Vector3,
 
     /// Total mass of the craft.
     /// In KG.
-    pub mass: f32,
+    pub mass: Real,
 
     /// Maximum acceleration allowed to the craft.
     /// In m/s.
-    pub acceleration_limit: Vec3,
+    pub acceleration_limit: Vector3,
 
-    pub acceleration_limit_multiplier: f32,
+    pub acceleration_limit_multiplier: Real,
 
     /// Linear velocity cap no matter the input.
     /// In m/s.
-    pub linear_v_limit: Vec3,
+    pub linear_v_limit: Vector3,
 
     /// Angular velocity cap no matter the input.
     /// In rad/s.
-    pub angular_v_limit: Vec3,
+    pub angular_v_limit: Vector3,
 
     /// Max force the linear thrusters are capable of exerting.
     /// In Newtons.
-    pub linear_thruster_force: Vec3,
+    pub linear_thruster_force: Vector3,
 
     /// Whether or not to respect linear_v_limit in the z axis.
     pub limit_forward_v: bool,
@@ -119,12 +74,12 @@ pub struct CraftConfig {
 
     /// Max force the angular thrusters are capable of exerting.
     /// In Newtons.
-    pub angular_thruster_force: Vec3,
+    pub angular_thruster_force: Vector3,
 
-    pub thruster_force_multiplier: f32,
+    pub thruster_force_multiplier: Real,
 
     /// The dimensions of the craft.
-    pub extents: Vec3,
+    pub extents: Vector3,
 
     /// DERIVED ITEMS
 
@@ -132,28 +87,28 @@ pub struct CraftConfig {
     /// Angular thruster toruqe, transient auto cacluated value from the
     /// angular_thrustuer_force according to the craft's shape and mass.
     /// In  Newton meters.
-    pub thruster_torque: Option<Vec3>,
+    pub thruster_torque: Option<Vector3>,
     /// Angular acceleration limit, another transient auto cacluated value. It's cacluated from
     /// the normal acceleration limit (which is in m/ss) and adjusted to the size/shape of the craft.
     /// In rad/s/s.
     ///
     /// Curretly unused. Defaults to INFINITY meaning there's no artifical acceleration_limit on
     /// the crafts. They use all of what's availaible from the thrusters.
-    pub angular_acceleration_limit: Option<Vec3>,
+    pub angular_acceleration_limit: Option<Vector3>,
     ///// Moment of inertia, transient auto cacluated value used to convert the required angular
     ///// acceleration into the appropriate torque. Aquried directly from Godot's physics engine.
     ///// In  kg*m*m.
     ///// Defaults to one to avoid hard to track division by zero errors. The moi is asychronously
     ///// retrieved from the engine and some frames pass before it happens. Time enough for the NANs
     ///// to propagate EVERYWHERE!
-    //pub moment_of_inertia: Vec3,
+    //pub moment_of_inertia: Vector3,
 }
 
-impl Default for CraftConfig {
+impl Default for EngineConfig {
     fn default() -> Self {
         Self {
             mass: 15_000.,
-            set_speed: Vec3::ZERO,
+            set_speed: Vector3::ZERO,
             acceleration_limit: [6., 6., 6.].into(),
             acceleration_limit_multiplier: 9.81,
             linear_v_limit: [100., 100., 200.].into(),
@@ -165,7 +120,7 @@ impl Default for CraftConfig {
             linear_thruster_force: [1., 1., 1.5].into(),
             angular_thruster_force: [1., 1., 1.].into(),
             thruster_force_multiplier: 1_000_000.0,
-            extents: Vec3::ONE * 8.0,
+            extents: Vector3::ONE * 8.0,
             thruster_torque: None,
             angular_acceleration_limit: None,
         }
@@ -173,13 +128,13 @@ impl Default for CraftConfig {
     }
 }
 
-impl CraftConfig {
+impl EngineConfig {
     /// Use this everytime the config changes to calculate transiet items,
     pub fn derive_items(mut self) -> Self {
-        self.angular_acceleration_limit = Some([f32::INFINITY; 3].into());
+        self.angular_acceleration_limit = Some([Real::INFINITY; 3].into());
 
         use bevy::math::vec2;
-        let axes_diameter: Vec3 = [
+        let axes_diameter: Vector3 = [
             vec2(self.extents.y, self.extents.z).length(),
             vec2(self.extents.x, self.extents.z).length(),
             vec2(self.extents.x, self.extents.y).length(),
@@ -192,27 +147,27 @@ impl CraftConfig {
 }
 
 #[derive(Debug)]
-pub struct LinearDriverPid(crate::utils::PIDControllerVec3);
+pub struct LinearDriverPid(pub crate::utils::PIDControllerVec3);
 #[derive(Debug)]
-pub struct AngularDriverPid(crate::utils::PIDControllerVec3);
+pub struct AngularDriverPid(pub crate::utils::PIDControllerVec3);
 
 pub fn sync_craft_state_velocities(
     mut crafts: Query<(
-        &mut AngularCraftState,
-        &mut LinearCraftState,
+        &mut AngularEngineState,
+        &mut LinearEngineState,
         &GlobalTransform,
         &RigidBodyVelocity,
     )>,
 ) {
     for (mut angular_state, mut linear_state, g_xform, rb_velocity) in crafts.iter_mut() {
         let inv_rot = g_xform.rotation.inverse();
-        angular_state.velocity = inv_rot * Vec3::from(rb_velocity.angvel);
-        linear_state.velocity = inv_rot * Vec3::from(rb_velocity.linvel);
+        angular_state.velocity = inv_rot * Vector3::from(rb_velocity.angvel);
+        linear_state.velocity = inv_rot * Vector3::from(rb_velocity.linvel);
     }
 }
 
 pub fn linear_pid_driver(
-    mut crafts: Query<(&mut LinearCraftState, &CraftConfig, &mut LinearDriverPid)>,
+    mut crafts: Query<(&mut LinearEngineState, &EngineConfig, &mut LinearDriverPid)>,
     //time: Time,
 ) {
     for (mut state, config, mut pid) in crafts.iter_mut() {
@@ -265,8 +220,8 @@ pub fn linear_pid_driver(
 
 pub fn angular_pid_driver(
     mut crafts: Query<(
-        &mut AngularCraftState,
-        &CraftConfig,
+        &mut AngularEngineState,
+        &EngineConfig,
         &mut AngularDriverPid,
         &RigidBodyMassProps,
     )>,
@@ -288,7 +243,7 @@ pub fn angular_pid_driver(
             // TODO: work out if this is actually the inertia tensor
             let local_moi_inv_sqrt = mass_props.local_mprops.inv_principal_inertia_sqrt;
             // NOTICE: difference here
-            let mut acceleration_limit: Vec3 = [
+            let mut acceleration_limit: Vector3 = [
                 max_torque.x * local_moi_inv_sqrt.x,
                 max_torque.y * local_moi_inv_sqrt.y,
                 max_torque.z * local_moi_inv_sqrt.z,
@@ -306,9 +261,9 @@ pub fn angular_pid_driver(
                 acceleration_limit =
                     acceleration_limit.clamp(-artificial_accel_limit, artificial_accel_limit);
             }
-            let angular_flame = pid
-                .0
-                .update(state.velocity, angular_input - state.velocity, 1.0);
+            let angular_flame =
+                pid.0
+                    .update(state.velocity, angular_input - state.velocity, 1.0);
             let angular_flame = angular_flame.clamp(-acceleration_limit, acceleration_limit);
             state.flame = angular_flame;
         }
@@ -318,9 +273,9 @@ pub fn angular_pid_driver(
 pub fn apply_flames_simple_accel(
     mut crafts: Query<(
         &GlobalTransform,
-        &LinearCraftState,
-        &AngularCraftState,
-        &CraftConfig,
+        &LinearEngineState,
+        &AngularEngineState,
+        &EngineConfig,
         &RigidBodyMassProps,
         &mut RigidBodyForces,
     )>,
@@ -332,7 +287,7 @@ pub fn apply_flames_simple_accel(
         forces.force += Vector::from(force);
 
         let local_moi_inv_sqrt = mass_props.local_mprops.inv_principal_inertia_sqrt;
-        let torque: Vec3 = [
+        let torque: Vector3 = [
             ang_state.flame.x / local_moi_inv_sqrt.x,
             ang_state.flame.y / local_moi_inv_sqrt.y,
             ang_state.flame.z / local_moi_inv_sqrt.z,
