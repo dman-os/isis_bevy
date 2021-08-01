@@ -6,6 +6,7 @@ use bevy_rapier3d::prelude::*;
 
 pub mod attire;
 pub mod engine;
+pub mod mind;
 
 pub struct CraftsPlugin;
 impl Plugin for CraftsPlugin {
@@ -14,19 +15,8 @@ impl Plugin for CraftsPlugin {
             .add_system(engine::linear_pid_driver.system())
             .add_system(engine::angular_pid_driver.system())
             .add_system(engine::apply_flames_simple_accel.system())
-            .add_system(
-                attire::generate_better_contact_events
-                    .system()
-                    .label(attire::AttireSystems::GenerateBetterContactEvents),
-            )
-            .add_system(
-                attire::handle_collision_damage_events
-                    .system()
-                    .after(attire::AttireSystems::GenerateBetterContactEvents),
-            )
-            .add_system(attire::log_damage_events.system())
-            .add_event::<attire::BetterContactEvent>()
-            .add_event::<attire::CollisionDamageEvent>();
+            .add_plugin(attire::AttirePlugin)
+            .add_plugin(mind::MindPlugin);
     }
 }
 
@@ -45,11 +35,26 @@ pub struct CraftBundle {
     pub rigid_body_sync: RigidBodyPositionSync,
     pub collision_damage_tag: attire::CollisionDamageEnabledRb,
 
+    #[bundle]
+    pub collider: attire::CollisionDamageEnabledColliderBundle,
+
     pub config: engine::EngineConfig,
     pub linear_state: engine::LinearEngineState,
     pub angular_state: engine::AngularEngineState,
     pub linear_pid: engine::LinearDriverPid,
     pub angular_pid: engine::AngularDriverPid,
+}
+
+impl CraftBundle {
+    pub fn default_rb_bundle() -> RigidBodyBundle {
+        RigidBodyBundle {
+            ccd: RigidBodyCcd {
+                ccd_active: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
 }
 
 impl Default for CraftBundle {
@@ -74,15 +79,10 @@ impl Default for CraftBundle {
                 Vector3::ZERO,
                 Vector3::ZERO,
             )),
-            rigid_body: RigidBodyBundle {
-                ccd: RigidBodyCcd {
-                    ccd_active: true,
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
+            rigid_body: Self::default_rb_bundle(),
             rigid_body_sync: RigidBodyPositionSync::Discrete,
             collision_damage_tag: attire::CollisionDamageEnabledRb,
+            collider: Default::default(),
         }
     }
 }

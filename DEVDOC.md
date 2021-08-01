@@ -56,3 +56,15 @@ For this, I think I'll go back to SteeringRoutines from ISIS Godot.Basic units o
 TODO.
 
 ## devlog
+
+### -Z is forward
+
+It's either that or -X is right.
+
+### Machine EPSILON
+
+A test for the `smallest_positve_equivalent_angle_rad` on the value `TAU + (PI / 2)` doesn't pass unless I use less than or equal to epsilon. As opposed to less than epsilon. Which I think is pretty damn curious.
+
+### Bug: euler angles for nalgebra
+
+It claims to return roll, pitch yaw but it actually returns pitch, yaw, roll. I'm sure of it.

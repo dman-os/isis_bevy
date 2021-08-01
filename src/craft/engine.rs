@@ -32,6 +32,7 @@ pub struct AngularEngineState {
     pub flame: Vector3,
 }
 
+// TODO: break this up to multiple components
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(crate = "serde")]
 pub struct EngineConfig {
@@ -160,9 +161,10 @@ pub fn sync_craft_state_velocities(
     )>,
 ) {
     for (mut angular_state, mut linear_state, g_xform, rb_velocity) in crafts.iter_mut() {
-        let inv_rot = g_xform.rotation.inverse();
-        angular_state.velocity = inv_rot * Vector3::from(rb_velocity.angvel);
-        linear_state.velocity = inv_rot * Vector3::from(rb_velocity.linvel);
+        // convert it to local space first
+        let rotator = g_xform.rotation.inverse();
+        angular_state.velocity = rotator * Vector3::from(rb_velocity.angvel);
+        linear_state.velocity = rotator * Vector3::from(rb_velocity.linvel);
     }
 }
 
@@ -189,7 +191,8 @@ pub fn linear_pid_driver(
 
         let mut max_force = config.linear_thruster_force * config.thruster_force_multiplier;
 
-        let move_fwd = linear_input.z > 0.0;
+        // NOTE: fwd is negative bc rh coord sys
+        let move_fwd = linear_input.z < 0.0;
         // if input wants to go bacwards
         if !move_fwd {
             // only use starfe thrusters force on the z
@@ -261,9 +264,9 @@ pub fn angular_pid_driver(
                 acceleration_limit =
                     acceleration_limit.clamp(-artificial_accel_limit, artificial_accel_limit);
             }
-            let angular_flame =
-                pid.0
-                    .update(state.velocity, angular_input - state.velocity, 1.0);
+            let angular_flame = pid
+                .0
+                .update(state.velocity, angular_input - state.velocity, 1.0);
             let angular_flame = angular_flame.clamp(-acceleration_limit, acceleration_limit);
             state.flame = angular_flame;
         }

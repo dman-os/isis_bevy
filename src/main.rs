@@ -8,6 +8,7 @@ use deps::*;
 use anyhow::Result;
 use bevy::{
     diagnostic::*,
+    ecs::schedule::ReportExecutionOrderAmbiguities,
     input::{keyboard::KeyboardInput, ElementState},
     prelude::*,
     render::camera::Camera,
@@ -18,7 +19,7 @@ use rand::prelude::*;
 
 use math::{Real, *};
 
-pub mod crafts;
+pub mod craft;
 pub mod utils;
 
 #[bevy_main]
@@ -40,6 +41,7 @@ fn main() -> Result<()> {
         .add_plugin(EntityCountDiagnosticsPlugin)
         .add_plugin(FrameTimeDiagnosticsPlugin)
         .add_plugin(GamePlugin)
+        .insert_resource(ReportExecutionOrderAmbiguities)
         .run();
 
     Ok(())
@@ -50,7 +52,7 @@ pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut AppBuilder) {
         app.add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
-            .add_plugin(crafts::CraftsPlugin)
+            .add_plugin(craft::CraftsPlugin)
             .insert_resource(RapierConfiguration {
                 gravity: [0.0, 0.0, 0.0].into(),
                 ..Default::default()
@@ -66,7 +68,9 @@ impl Plugin for GamePlugin {
             .add_startup_system(setup_environment.system())
             .add_startup_system(setup_world.system())
             .add_system(craft_state_display.system())
-            .add_system(move_camera_system.system());
+            .add_system(move_camera_system.system())
+            .add_system(tune_ai.system())
+            .insert_resource(ClearColor(Color::BLACK));
     }
 }
 
@@ -122,19 +126,15 @@ fn text_update_system(diagnostics: Res<Diagnostics>, mut query: Query<&mut Text,
     }
 }
 
-fn setup_environment(
-    mut commands: Commands,
-    // mut meshes: ResMut<Assets<Mesh>>,
-    // mut materials: ResMut<Assets<StandardMaterial>>,
-    // asset_server: Res<AssetServer>,
-) {
+fn setup_environment(mut commands: Commands) {
     // light
     commands.spawn_bundle(LightBundle {
         // transform: Transform::from_xyz(4.0, 8.0, 4.0),
-        transform: Transform::from_xyz(5.0, 50.0, 50.),
+        transform: Transform::from_xyz(10_000.0, 10_000.0, 10_000.)
+            .looking_at(Vector3::ZERO, Vector3::Y),
         light: Light {
-            range: 200.,
-            intensity: 50_000.,
+            range: 2_000_000.,
+            intensity: 50_000. * 25_000.,
             ..Default::default()
         },
         ..Default::default()
@@ -143,7 +143,7 @@ fn setup_environment(
     //// camera
     //commands
     //.spawn_bundle(PerspectiveCameraBundle {
-    //transform: Transform::from_xyz(-20.0, 25., 20.0).looking_at(Vec3::ZERO, Vec3::Y),
+    //transform: Transform::from_xyz(-20.0, 25., 20.0).looking_at(Vector3::ZERO, Vector3::Y),
     //..Default::default()
     //})
     //.insert(GameCamera);
@@ -156,22 +156,6 @@ fn setup_world(
     asset_server: Res<AssetServer>,
 ) {
     use bevy::render::mesh::shape;
-    // const GROUN_PLANE_LENGTH: f32 = 128.;
-
-    // // spawns a white plane at one unit below the orign
-    // commands
-    //     .spawn_bundle(PbrBundle {
-    //         mesh: meshes.add(Mesh::from(shape::Plane {
-    //             size: GROUN_PLANE_LENGTH,
-    //         })),
-    //         material: materials.add(Color::WHITE.into()),
-    //         transform: Transform::from_translation(Vec3::Y / 2.0),
-    //         ..Default::default()
-    //     })
-    //     .insert_bundle(ColliderBundle {
-    //         shape: ColliderShape::cuboid(GROUN_PLANE_LENGTH, 0.1, GROUN_PLANE_LENGTH),
-    //         ..Default::default()
-    //     });
 
     let mut rng = rand::thread_rng();
     const SIZE_RANGE: Real = 100.;
@@ -223,71 +207,101 @@ fn setup_world(
             })
             .insert(RigidBodyPositionSync::Discrete);
     }
+    let ball_fighter_model = asset_server.load("models/ball_fighter.gltf#Scene0");
 
     // Spawn the craft
-    let current_craft_id = commands
-        .spawn_bundle(crafts::CraftBundle {
-            ..Default::default()
-        })
-        .with_children(|parent| {
-            // the model
-            parent.spawn_scene(asset_server.load("models/ball_fighter.gltf#Scene0"));
-
-            // the colliders
-
-            //parent.spawn_bundle(ColliderBundle {
-                //shape: ColliderShape::ball(4.),
-                //mass_properties: ColliderMassProps::Density(
-                    //15_000. / (4. * math::real::consts::PI * 4. * 4.),
-                //),
-                //..Default::default()
-            //});
-
-            // parent
-            //     .spawn_bundle((
-            //         Transform::from_xyz(0.0, 0.0, 0.0),
-            //         GlobalTransform::identity(),
-            //     ))
-            //     .with_children(|parent| {
-            //         parent.spawn_bundle(ColliderBundle {
-            //             shape: ColliderShape::ball(8.),
-            //             ..Default::default()
-            //         });
-            //     });
-
-            parent.spawn_bundle(crafts::attire::CollisionDamageEnabledColliderBundle {
+    let player_craft_id = commands
+        .spawn_bundle(craft::CraftBundle {
+            collider: craft::attire::CollisionDamageEnabledColliderBundle {
                 collider: ColliderBundle {
                     shape: ColliderShape::ball(4.),
                     mass_properties: ColliderMassProps::Density(
                         15_000. / (4. * math::real::consts::PI * 4. * 4.),
                     ),
-                    ..crafts::attire::CollisionDamageEnabledColliderBundle::default_collider_bundle(
-                    )
+                    ..craft::attire::CollisionDamageEnabledColliderBundle::default_collider_bundle()
                 },
                 ..Default::default()
-            });
+            },
+            ..Default::default()
+        })
+        .with_children(|parent| {
+            // the model
+            parent
+                .spawn_bundle((
+                    Transform::from_rotation(Quat::from_rotation_y(math::real::consts::PI)),
+                    GlobalTransform::default(),
+                ))
+                .with_children(|parent| {
+                    parent.spawn_scene(ball_fighter_model.clone());
+                });
 
-            parent.spawn_bundle(crafts::attire::AttireBundle {
-                profile: crafts::attire::AttireProfile {
+            parent.spawn_bundle(craft::attire::AttireBundle {
+                profile: craft::attire::AttireProfile {
                     ..Default::default()
                 },
                 collider: ColliderBundle {
                     shape: ColliderShape::ball(4.),
-                    ..crafts::attire::AttireBundle::default_collider_bundle()
+                    ..craft::attire::AttireBundle::default_collider_bundle()
                 },
             });
 
-            parent
-                .spawn_bundle(PerspectiveCameraBundle {
-                    transform: Transform::from_xyz(0.0, 7., -20.0)
-                        .looking_at(Vector3::Z, Vector3::Y),
-                    ..Default::default()
-                })
-                .insert(crafts::CraftCamera);
+            let mut cam = PerspectiveCameraBundle {
+                transform: Transform::from_xyz(0.0, 7., 20.0).looking_at(-Vector3::Z, Vector3::Y),
+                ..Default::default()
+            };
+            cam.perspective_projection.far = 10_000.;
+            parent.spawn_bundle(cam).insert(craft::CraftCamera);
         })
         .id();
 
-    commands.insert_resource(crafts::CurrentCraft(current_craft_id));
+    commands.insert_resource(craft::CurrentCraft(player_craft_id));
+
+    commands
+        .spawn_bundle(craft::CraftBundle {
+            config: craft::engine::EngineConfig {
+                //linear_thruster_force: [2., 2., 2.].into(),
+                ..Default::default()
+            },
+            rigid_body: RigidBodyBundle {
+                position: [0., 0., -100.].into(),
+                ..craft::CraftBundle::default_rb_bundle()
+            },
+            collider: craft::attire::CollisionDamageEnabledColliderBundle {
+                collider: ColliderBundle {
+                    shape: ColliderShape::ball(4.),
+                    mass_properties: ColliderMassProps::Density(
+                        15_000. / (4. * math::real::consts::PI * 4. * 4.),
+                    ),
+                    ..craft::attire::CollisionDamageEnabledColliderBundle::default_collider_bundle()
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .insert_bundle(craft::mind::CraftMindBundle {
+            ..Default::default()
+        })
+        .with_children(|parent| {
+            parent
+                .spawn_bundle((
+                    Transform::from_rotation(Quat::from_rotation_y(math::real::consts::PI)),
+                    GlobalTransform::default(),
+                ))
+                .with_children(|parent| {
+                    parent.spawn_scene(ball_fighter_model.clone());
+                });
+
+            parent.spawn_bundle(craft::attire::AttireBundle {
+                profile: craft::attire::AttireProfile {
+                    ..Default::default()
+                },
+                collider: ColliderBundle {
+                    shape: ColliderShape::ball(4.),
+                    ..craft::attire::AttireBundle::default_collider_bundle()
+                },
+            });
+        })
+        .id();
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -308,11 +322,11 @@ fn move_camera_system(
     mut cameras: Query<&mut Transform, (With<Camera>, With<GameCamera>)>,
     time: Res<Time>,
     mut cam_settings: ResMut<CameraMovementSettings>,
-    cur_craft: Res<crafts::CurrentCraft>,
+    cur_craft: Res<craft::CurrentCraft>,
     mut crafts: Query<(
-        &mut crafts::engine::LinearEngineState,
-        &mut crafts::engine::AngularEngineState,
-        &crafts::engine::EngineConfig,
+        &mut craft::engine::LinearEngineState,
+        &mut craft::engine::AngularEngineState,
+        &craft::engine::EngineConfig,
     )>,
 ) {
     {
@@ -372,40 +386,83 @@ fn move_camera_system(
     }
     let (mut lin_state, mut ang_state, craft_config) = crafts
         .get_mut(cur_craft.0)
-        .expect("unalbe to find current craft entity");
+        .expect("unable to find current craft entity");
     lin_state.input = cam_settings.linear_input.as_f32();
-    lin_state.input.z *= -1.0;
-    lin_state.input.x *= -1.0;
+    //lin_state.input.z *= -1.0;
+    //lin_state.input.x *= -1.0;
     lin_state.input *= craft_config.linear_v_limit;
 
     ang_state.input = cam_settings.angular_input.as_f32();
-    ang_state.input.z *= -1.0;
+    //ang_state.input.z *= -1.0;
     ang_state.input *= craft_config.angular_v_limit;
 }
 
 fn craft_state_display(
     egui_context: ResMut<EguiContext>,
-    cur_craft: Res<crafts::CurrentCraft>,
+    cur_craft: Res<craft::CurrentCraft>,
     crafts: Query<(
         &Transform,
-        &crafts::engine::LinearEngineState,
-        &crafts::engine::AngularEngineState,
-        &crafts::engine::LinearDriverPid,
-        &crafts::engine::AngularDriverPid,
+        &craft::engine::LinearEngineState,
+        &craft::engine::AngularEngineState,
+        &craft::engine::LinearDriverPid,
+        &craft::engine::AngularDriverPid,
     )>,
 ) {
-    let (craft_xform, lin_state, ang_state, _lin_pid,_ang_pid) = crafts.get(cur_craft.0).unwrap();
+    let (craft_xform, lin_state, ang_state, _lin_pid, _ang_pid) = crafts.get(cur_craft.0).unwrap();
     egui::Window::new("Status").show(egui_context.ctx(), |ui| {
-        ui.label(format!("position:      {:03.1?}", craft_xform.translation));
-        ui.label(format!("linear vel:    {:03.1?}", lin_state.velocity));
-        ui.label(format!("linear input:  {:03.1?}", lin_state.input));
-        ui.label(format!("linear flame:  {:03.1?}", lin_state.flame));
-        ui.label(format!("angular vel:   {:03.1?}", ang_state.velocity));
-        ui.label(format!("angular input: {:03.1?}", ang_state.input));
-        ui.label(format!("angular flame: {:03.1?}", ang_state.flame));
+        ui.label(format!("position:      {:+03.1?}", craft_xform.translation));
+        ui.label(format!("linear vel:    {:+03.1?}", lin_state.velocity));
+        ui.label(format!("linear input:  {:+03.1?}", lin_state.input));
+        ui.label(format!("linear flame:  {:+03.1?}", lin_state.flame));
+        ui.label(format!("angular vel:   {:+03.1?}", ang_state.velocity));
+        ui.label(format!("angular input: {:+03.1?}", ang_state.input));
+        ui.label(format!("angular flame: {:+03.1?}", ang_state.flame));
         //ui.label(format!("lnear pid: {:+03.1?}", lin_pid));
         //ui.label(format!("angular pid: {:+03.1?}", ang_pid));
     });
+}
+fn tune_ai(
+    egui_context: ResMut<EguiContext>,
+    mut crafts: Query<(
+        &Transform,
+        &mut craft::engine::LinearEngineState,
+        &mut craft::engine::AngularEngineState,
+        &mut craft::engine::LinearDriverPid,
+        &mut craft::engine::AngularDriverPid,
+    )>,
+) {
+    for (_craft_xform, lin_state, ang_state, mut _lin_pid, mut ang_pid) in crafts.iter_mut() {
+        egui::Window::new("mind tune").show(egui_context.ctx(), |ui| {
+            ui.label(format!("linear vel:    {:+03.1?}", lin_state.velocity));
+            ui.label(format!("linear input:  {:+03.1?}", lin_state.input));
+            ui.label(format!("linear flame:  {:+03.1?}", lin_state.flame));
+            ui.label(format!("angular vel:   {:+03.1?}", ang_state.velocity));
+            ui.label(format!("angular input: {:+03.1?}", ang_state.input));
+            ui.label(format!("angular flame: {:+03.1?}", ang_state.flame));
+
+            ui.separator();
+            ui.label("angular pid tune");
+            {
+                let mut proportional_gain = ang_pid.0.proportional_gain.x;
+                ui.add(egui::Slider::new(&mut proportional_gain, 0.0..=10_000.).text("p gain"));
+                ang_pid.0.proportional_gain = [proportional_gain; 3].into();
+            }
+
+            {
+                let mut integral_gain = ang_pid.0.integrat_gain.x;
+                ui.add(egui::Slider::new(&mut integral_gain, 0.0..=1.).text("i gain"));
+                ang_pid.0.integrat_gain = [integral_gain; 3].into();
+            }
+
+            {
+                let mut differntial_gain = ang_pid.0.differntial_gain.x;
+                ui.add(egui::Slider::new(&mut differntial_gain, 0.0..=1000.).text("d gain"));
+                ang_pid.0.differntial_gain = [differntial_gain; 3].into();
+            }
+            //ui.label(format!("lnear pid: {:+03.1?}", lin_pid));
+            //ui.label(format!("angular pid: {:+03.1?}", ang_pid));
+        });
+    }
 }
 
 pub mod math {
@@ -420,4 +477,68 @@ pub mod math {
     pub type Real = f32;
     pub type Vector3 = Vec3;
     pub type IVector3 = IVec3;
+    use real::consts::{PI, TAU};
+
+    #[inline]
+    pub fn delta_angle_radians(a: Real, b: Real) -> Real {
+        let spea1 = smallest_positve_equivalent_angle_rad(a);
+        let spea2 = smallest_positve_equivalent_angle_rad(b);
+        let result = (spea1 - spea2).abs();
+        if result > PI {
+            TAU - result
+        } else {
+            result
+        }
+    }
+
+    #[inline]
+    pub fn smallest_equivalent_angle_radians(mut angle: Real) -> Real {
+        angle %= TAU;
+        if angle > PI {
+            angle -= TAU
+        } else if angle < -PI {
+            angle += TAU;
+        }
+        angle
+    }
+
+    #[inline]
+    pub fn smallest_positve_equivalent_angle_rad(mut angle: Real) -> Real {
+        angle %= TAU;
+        if angle < 0. {
+            angle + TAU
+        } else {
+            angle
+        }
+    }
+
+    #[test]
+    fn smallest_positve_equivalent_angle_rad_test() {
+        let d90 = PI * 0.5;
+        assert!(smallest_positve_equivalent_angle_rad(0.) - 0. < Real::EPSILON);
+        assert!(smallest_positve_equivalent_angle_rad(TAU) - 0. < Real::EPSILON);
+        assert!(smallest_positve_equivalent_angle_rad(PI) - PI < Real::EPSILON);
+        assert!(smallest_positve_equivalent_angle_rad(PI) - PI < Real::EPSILON);
+        assert!(smallest_positve_equivalent_angle_rad(TAU - d90) - (PI + d90) < Real::EPSILON);
+        assert!(smallest_positve_equivalent_angle_rad(TAU + d90) - d90 <= Real::EPSILON);
+        assert!(smallest_positve_equivalent_angle_rad(-0.2) - (TAU - 0.2) <= Real::EPSILON);
+    }
+    #[test]
+    fn delta_angle_radians_test() {
+        let d90 = PI * 0.5;
+        let d45 = d90 * 0.5;
+        let d30 = PI / 3.;
+        assert!(delta_angle_radians(PI, TAU) - PI < Real::EPSILON);
+        assert!(delta_angle_radians(-d90, 0.) - d90 <= Real::EPSILON);
+        assert!(delta_angle_radians(-TAU - d90, d90) - PI <= Real::EPSILON);
+        assert!(delta_angle_radians(0., 2. * TAU) < Real::EPSILON);
+        assert!(delta_angle_radians(PI, d90) - d90 < Real::EPSILON);
+        assert!(delta_angle_radians(TAU - d45, d45) - d90 < Real::EPSILON);
+        assert!(delta_angle_radians(TAU - d45, 0.) - d45 < Real::EPSILON);
+        assert!(delta_angle_radians(TAU + PI, 0.) - PI < Real::EPSILON);
+        assert!(delta_angle_radians(TAU + d45, 0.) - d45 <= Real::EPSILON);
+        assert!(delta_angle_radians(-d45, 0.) - d45 <= Real::EPSILON);
+        assert!(delta_angle_radians(-d30, 0.) - d30 <= 2. * Real::EPSILON);
+        assert!(delta_angle_radians(-0.2, 0.) - 0.2 <= Real::EPSILON);
+    }
 }

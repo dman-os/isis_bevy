@@ -8,6 +8,25 @@ use deps::bevy::utils::HashMap;
 
 use crate::math::Real;
 
+pub struct AttirePlugin;
+impl Plugin for AttirePlugin {
+    fn build(&self, app: &mut AppBuilder) {
+        app.add_system(
+            generate_better_contact_events
+                .system()
+                .label(AttireSystems::GenerateBetterContactEvents),
+        )
+        .add_system(
+            handle_collision_damage_events
+                .system()
+                .after(AttireSystems::GenerateBetterContactEvents),
+        )
+        .add_system(log_damage_events.system())
+        .add_event::<BetterContactEvent>()
+        .add_event::<CollisionDamageEvent>();
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum DamageType {
     Beam,
@@ -250,7 +269,9 @@ pub(super) fn generate_better_contact_events(
                 contact_pair.collider1.entity(),
                 contact_pair.collider2.entity(),
             );
-            contact_pair_store.entry(key).or_insert_with(|| Arc::new(contact_pair.clone()));
+            contact_pair_store
+                .entry(key)
+                .or_insert_with(|| Arc::new(contact_pair.clone()));
         }
     }
     bc_events.send_batch(
