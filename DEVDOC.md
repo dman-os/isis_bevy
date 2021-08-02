@@ -68,3 +68,9 @@ A test for the `smallest_positve_equivalent_angle_rad` on the value `TAU + (PI /
 ### Bug: euler angles for nalgebra
 
 It claims to return roll, pitch yaw but it actually returns pitch, yaw, roll. I'm sure of it.
+
+According to the author:
+
+	Euler angles in nalqebra follows the aircraft convention ,i.e., with yaw the rotation about Z (which is the "up" axis usually chosen in this context).
+	Roll: X, Pitch: Y, Yaw: Z
+	https://discord.com/channels/507548572338880513/507548945912954881/552583968432586753

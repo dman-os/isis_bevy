@@ -4,6 +4,7 @@ use crate::math::*;
 use bevy::{ecs as bevy_ecs, prelude::*};
 use bevy_rapier3d::prelude::*;
 
+pub mod arms;
 pub mod attire;
 pub mod engine;
 pub mod mind;
@@ -16,13 +17,10 @@ impl Plugin for CraftsPlugin {
             .add_system(engine::angular_pid_driver.system())
             .add_system(engine::apply_flames_simple_accel.system())
             .add_plugin(attire::AttirePlugin)
-            .add_plugin(mind::MindPlugin);
+            .add_plugin(mind::MindPlugin)
+            .add_plugin(arms::ArmsPlugin);
     }
 }
-
-pub struct CraftCamera;
-
-pub struct CurrentCraft(pub Entity);
 
 #[derive(Bundle)]
 pub struct CraftBundle {
@@ -66,14 +64,14 @@ impl Default for CraftBundle {
             linear_state: Default::default(),
             angular_state: Default::default(),
             linear_pid: engine::LinearDriverPid(crate::utils::PIDControllerVec3::new(
-                Vector3::ONE * 1000.,
+                Vector3::ONE * 30.,
                 Vector3::ZERO,
                 Vector3::ZERO,
                 Vector3::ZERO,
                 Vector3::ZERO,
             )),
             angular_pid: engine::AngularDriverPid(crate::utils::PIDControllerVec3::new(
-                Vector3::ONE * 1000.0,
+                Vector3::ONE * 4000.0,
                 Vector3::ZERO,
                 Vector3::ZERO,
                 Vector3::ZERO,

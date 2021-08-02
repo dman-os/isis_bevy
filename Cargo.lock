@@ -219,6 +219,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d5f2f58f0aec3c50a20799792c3705e80dd7df327e79791cacec197e84e5e61"
 
 [[package]]
+name = "bevy-inspector-egui"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6abaea0fd1c88e0f6f90b1748f0475b0c3e330496875d3a3cfc6867003214533"
+dependencies = [
+ "bevy",
+ "bevy-inspector-egui-derive",
+ "bevy_egui",
+ "bevy_rapier3d",
+ "emath",
+ "image",
+ "nalgebra",
+ "pretty-type-name",
+ "rand",
+]
+
+[[package]]
+name = "bevy-inspector-egui-derive"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "597c9d3f603a1fa88cfec941661e73ea18fc0010962777f3dbc5866ea3376919"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "bevy_app"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -484,6 +512,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "bevy_mod_debugdump"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "195332d1f6cf330112bd2b0aee671e48772e7e65d5edd2f82a94c562c0dd4abd"
+dependencies = [
+ "bevy",
+ "itertools",
+ "pretty-type-name",
+]
+
+[[package]]
 name = "bevy_pbr"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -499,6 +538,15 @@ dependencies = [
  "bevy_render",
  "bevy_transform",
  "bevy_window",
+]
+
+[[package]]
+name = "bevy_prototype_debug_lines"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3210e7a8f9f90381e56358b7e0747fa434d12146e42df8918f5267655a88ae2"
+dependencies = [
+ "bevy",
 ]
 
 [[package]]
@@ -1293,7 +1341,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bevy",
+ "bevy-inspector-egui",
  "bevy_egui",
+ "bevy_mod_debugdump",
+ "bevy_prototype_debug_lines",
  "bevy_rapier3d",
  "chrono",
  "downcast-rs",
@@ -2010,6 +2061,15 @@ version = "0.1.0"
 dependencies = [
  "deps",
  "dylink",
+]
+
+[[package]]
+name = "itertools"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69ddb889f9d0d08a67338271fa9b62996bc788c7796a5c18cf057420aaed5eaf"
+dependencies = [
+ "either",
 ]
 
 [[package]]
@@ -2833,6 +2893,12 @@ name = "ppv-lite86"
 version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac74c624d6b2d21f425f752262f42188365d7b8ff1aff74c82e45136510a4857"
+
+[[package]]
+name = "pretty-type-name"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8815d101cfb4cb491154896bdab292a395a7ac9ab185a9941a2f5be0135900d"
 
 [[package]]
 name = "proc-macro-crate"

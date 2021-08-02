@@ -7,7 +7,6 @@ use bevy::{
     },
     prelude::*,
 };
-use bevy_rapier3d::prelude::*;
 
 use crate::craft::engine::*;
 use crate::math::{Real, *};
@@ -21,7 +20,6 @@ impl Plugin for MindPlugin {
         .register_component(ComponentDescriptor::new::<steering_systems::Intercept>(
             StorageType::SparseSet,
         ))
-        .add_system(init_default_routines.system())
         .add_system(craft_mind_steering_routines.system())
         .add_system(craft_mind_smarts.system())
         .add_system(steering_systems::intercept.system());
@@ -104,27 +102,6 @@ pub struct ActiveRoutineOutput {
 pub struct CraftMindBundle {
     pub routine_output: ActiveRoutineOutput,
     pub config: MindConfig,
-}
-
-pub fn init_default_routines(
-    mut commands: Commands,
-    player: Res<crate::craft::CurrentCraft>,
-    crafts: Query<Entity, (With<MindConfig>, Without<ActiveRoutineId>)>,
-) {
-    for craft in crafts.iter() {
-        let intercept_routine = commands
-            .spawn_bundle(steering_systems::InterceptRoutineBundle {
-                param: steering_systems::Intercept {
-                    craft_entt: craft,
-                    quarry_rb: player.0.handle(),
-                },
-                output: Default::default(),
-            })
-            .id();
-        commands
-            .entity(craft)
-            .insert(ActiveRoutineId(intercept_routine));
-    }
 }
 
 /// This is a simple system that updates the engine state according to whatever output

@@ -11,19 +11,13 @@ use crate::math::Real;
 pub struct AttirePlugin;
 impl Plugin for AttirePlugin {
     fn build(&self, app: &mut AppBuilder) {
-        app.add_system(
-            generate_better_contact_events
-                .system()
-                .label(AttireSystems::GenerateBetterContactEvents),
-        )
-        .add_system(
-            handle_collision_damage_events
-                .system()
-                .after(AttireSystems::GenerateBetterContactEvents),
-        )
-        .add_system(log_damage_events.system())
-        .add_event::<BetterContactEvent>()
-        .add_event::<CollisionDamageEvent>();
+        app.add_system(generate_better_contact_events.system())
+            .add_system(handle_collision_damage_events.system())
+            .add_system(handle_collider_ixn_events.system())
+            .add_system(log_damage_events.system())
+            .add_event::<BetterContactEvent>()
+            .add_event::<CollisionDamageEvent>()
+            .add_event::<ProjectileDamageEvent>();
     }
 }
 
@@ -248,10 +242,10 @@ impl std::fmt::Debug for CollisionDamageEvent {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, SystemLabel)]
-pub enum AttireSystems {
-    GenerateBetterContactEvents,
-}
+//#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, SystemLabel)]
+//pub enum AttireSystems {
+//GenerateBetterContactEvents,
+//}
 
 /// Generates [`BetterContactEvent`]s for registered listeners using the [`NarrowPhase`] graph..
 pub(super) fn generate_better_contact_events(
@@ -345,6 +339,8 @@ pub(super) fn handle_collision_damage_events(
         }
     }
 
+    // FIXME: premature optimization
+    // FIXME: is this even an optimization?
     cd_events.send_batch(generated_events.drain(0..));
 
     #[inline]
@@ -357,7 +353,7 @@ pub(super) fn handle_collision_damage_events(
         contact: &TrackedContact<ContactData>,
         damage: Damage,
     ) {
-        // FIXME: this might bug out in instances where none of the
+        // FIXME: this bugs out in instances where none of the
         // attires include the deepest point
         let point = {
             let point = if is_entt_1 {
@@ -407,8 +403,44 @@ pub(super) fn handle_collision_damage_events(
     }
 }
 
-pub(super) fn log_damage_events(mut events: EventReader<CollisionDamageEvent>) {
-    for event in events.iter() {
-        tracing::info!("{:?} | Craft: {:?}", event.damage, event.rb_entt);
+use crate::craft::arms::ProjectileIxnEvent;
+
+pub struct ProjectileDamageEvent {
+    pub ixn_event: ProjectileIxnEvent,
+    pub attire_entt: Entity,
+}
+/// Consumes [`ProjectileIxnEvent`]s and damages [`AttireProfile`]s when
+/// the object intersecting has one attached.
+fn handle_collider_ixn_events(
+    mut attires: Query<(Entity, &mut AttireProfile)>,
+    mut proj_ixn_events: EventReader<ProjectileIxnEvent>,
+    mut pd_events: EventWriter<ProjectileDamageEvent>,
+) {
+    for event in proj_ixn_events.iter() {
+        if let Ok((attire_entt, mut attire)) = attires.get_mut(event.collider.entity()) {
+            attire.damage(event.projectile.damage);
+
+            // generate the event to let others know it was damaged
+            pd_events.send(ProjectileDamageEvent {
+                ixn_event: event.clone(),
+                attire_entt,
+            });
+        }
+    }
+}
+
+fn log_damage_events(
+    mut coll_dmg_events: EventReader<CollisionDamageEvent>,
+    mut proj_dmg_events: EventReader<ProjectileDamageEvent>,
+) {
+    for event in coll_dmg_events.iter() {
+        tracing::info!("Collision {:?} | Craft: {:?}", event.damage, event.rb_entt);
+    }
+    for event in proj_dmg_events.iter() {
+        tracing::info!(
+            "Projectile {:?} | Attire: {:?}",
+            event.ixn_event.projectile.damage,
+            event.attire_entt
+        );
     }
 }

@@ -20,7 +20,12 @@ smartstring = "0.2"
 downcast-rs = "1.2"
 parking_lot = { version = "0.11", features = ["nightly"] }
 smallvec = "1.6"
+chrono = "0.4"
+
 bevy = "0.5" 
 bevy_egui = "0.6"
 bevy_rapier3d = { version = "0.10", features = ["simd-nightly", "parallel", "render"]}
-chrono = "0.4"
+bevy_prototype_debug_lines = "0.3.2"
+bevy-inspector-egui = { version = "0.6.1", features =  ["rapier"] }
+bevy_mod_debugdump = "0.2.1"
+# bevy_config_cam = "0.1.2"
