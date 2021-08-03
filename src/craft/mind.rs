@@ -7,6 +7,7 @@ use bevy::{
     },
     prelude::*,
 };
+use bevy_inspector_egui::Inspectable;
 
 use crate::craft::engine::*;
 use crate::math::{Real, *};
@@ -14,70 +15,22 @@ use crate::math::{Real, *};
 pub struct MindPlugin;
 impl Plugin for MindPlugin {
     fn build(&self, app: &mut AppBuilder) {
-        app.register_component(ComponentDescriptor::new::<SteeringSystemOutput>(
+        app.register_component(ComponentDescriptor::new::<LinearRoutineResult>(
+            StorageType::SparseSet,
+        ))
+        .register_component(ComponentDescriptor::new::<AngularRoutineResult>(
             StorageType::SparseSet,
         ))
         .register_component(ComponentDescriptor::new::<steering_systems::Intercept>(
             StorageType::SparseSet,
         ))
-        .add_system(craft_mind_steering_routines.system())
+        .add_system(mind_update_engine_input.system())
         .add_system(craft_mind_smarts.system())
         .add_system(steering_systems::intercept.system());
     }
 }
 
-macro_rules! steering_routine_port {
-    ($type_name:ident) => {
-        #[derive(Debug, Clone, Copy)]
-        pub enum $type_name {
-            Linear {
-                input: Vector3,
-                //phantom: PhantomData<T>,
-            },
-            Angular {
-                input: Vector3,
-                //phantom: PhantomData<T>,
-            },
-            LinearAndAngular {
-                linear: Vector3,
-                angular: Vector3,
-                //phantom: PhantomData<T>,
-            },
-        }
-
-        impl Default for $type_name {
-            fn default() -> Self {
-                Self::Linear {
-                    input: Default::default(),
-                }
-            }
-        }
-
-        #[allow(clippy::from_over_into)]
-        impl Into<ActiveRoutineOutput> for $type_name {
-            fn into(self) -> ActiveRoutineOutput {
-                match self {
-                    Self::Linear { input } => ActiveRoutineOutput {
-                        linear_input: input,
-                        angular_input: Default::default(),
-                    },
-                    Self::Angular { input } => ActiveRoutineOutput {
-                        angular_input: input,
-                        linear_input: Default::default(),
-                    },
-                    Self::LinearAndAngular { linear, angular } => ActiveRoutineOutput {
-                        angular_input: angular,
-                        linear_input: linear,
-                    },
-                }
-            }
-        }
-    };
-}
-//steering_routine_port!(SteeringSystemInput);
-steering_routine_port!(SteeringSystemOutput);
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Inspectable)]
 pub struct MindConfig {
     pub angular_input_multiplier: Real,
 }
@@ -89,99 +42,67 @@ impl Default for MindConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ActiveRoutineOutput {
-    /// Linear velocity desired next frame in fraction of [`EngineConfig:.linear_v_limit`] in world
-    /// space.
-    pub linear_input: Vector3,
-    /// Angular velocity desired next frame in local space.
-    pub angular_input: Vector3,
-}
-
 #[derive(Bundle, Default)]
 pub struct CraftMindBundle {
-    pub routine_output: ActiveRoutineOutput,
+    pub routine_output: ActiveRoutineResult,
     pub config: MindConfig,
 }
 
-/// This is a simple system that updates the engine state according to whatever output
-/// dictated by the active system routine.
-pub fn craft_mind_steering_routines(
+#[derive(Debug, Clone, Copy, Default, Inspectable)]
+pub struct ActiveRoutineResult {
+    /// local space
+    lin: Vector3,
+    /// local space
+    ang: Vector3,
+}
+
+/// Output of linear steering routines which is usually linear velocity desired next frame in
+/// fraction of [`EngineConfig:.linear_v_limit`] in world space.
+#[derive(Debug, Clone, Copy, Default, Inspectable)]
+pub struct LinearRoutineResult(pub Vector3);
+
+/// Output of angular steering routines which is usually angular velocity desired next frame in local space.
+#[derive(Debug, Clone, Copy, Default, Inspectable)]
+pub struct AngularRoutineResult(pub Vector3);
+
+pub fn mind_update_engine_input(
     mut crafts: Query<(
-        &ActiveRoutineOutput,
+        &ActiveRoutineResult,
         &mut LinearEngineState,
         &mut AngularEngineState,
         &EngineConfig,
     )>,
 ) {
-    for (routine_output, mut lin_state, mut ang_state, config) in crafts.iter_mut() {
-        lin_state.input = routine_output.linear_input * config.linear_v_limit;
-        ang_state.input = routine_output.angular_input;
-    }
+    crafts
+        .iter_mut()
+        .for_each(|(routine_res, mut lin_state, mut ang_state, config)| {
+            lin_state.input = routine_res.lin * config.linear_v_limit;
+            ang_state.input = routine_res.ang;
+        });
 }
 
-pub struct ActiveRoutineId(pub Entity);
+/// As of now, we always use
+pub struct ActiveRoutines(pub Entity);
 
 /// This system sets the crafts' [`ActiveRoutineOutput`] and is decopuling layer
 /// between the craft mind and whatever system is currently active. Right now, it's a dumb
 /// system but later on should be replaced with some decision layer.
 pub fn craft_mind_smarts(
     mut crafts: Query<(
-        &mut ActiveRoutineOutput,
-        &ActiveRoutineId,
+        &mut ActiveRoutineResult,
+        &ActiveRoutines,
         &MindConfig,
         &GlobalTransform,
     )>,
-    routines: Query<&SteeringSystemOutput, With<steering_systems::Intercept>>,
+    lin_routines: Query<&LinearRoutineResult, With<steering_systems::Intercept>>,
     //egui_context: ResMut<bevy_egui::EguiContext>,
 ) {
-    for (mut active_output, routine_id, config, xform) in crafts.iter_mut() {
-        if let Ok(routine_output) = routines.get(routine_id.0) {
-            *active_output = (*routine_output).into();
-            active_output.linear_input = xform.rotation.inverse() * active_output.linear_input;
-            active_output.angular_input = config.angular_input_multiplier
-                * steering_systems::face_local_dir(active_output.linear_input);
-
-            //bevy_egui::egui::Window::new("mind peer").show(egui_context.ctx(), |ui| {
-            //ui.label(format!(
-            //"intercept linear output: {:+03.1?}",
-            //routine_output.linear_input
-            //));
-            //ui.label(format!(
-            //"intercept angular output: {:+03.1?}",
-            //steering_systems::face_local_dir(
-            ////xform.rotation * routine_output.linear_input,
-            //xform.rotation.inverse() * routine_output.linear_input
-            //)
-            //));
-            //ui.label(format!(
-            //"fld output: {:+03.1?}",
-            //active_output.angular_input
-            //));
-            //let mut dir = routine_output.linear_input;
-            ////dir.z *= -1.;
-            //let dir = -dir;
-            //let (z, x, y) = {
-            ////// basis facing dir
-            ////let t = {
-            ////let forward = dir.normalize();
-            ////let right = Vector3::Y.cross(forward).normalize();
-            ////let up = forward.cross(right);
-            ////Mat3::from_cols(right, up, forward)
-            ////};
-            //////t.euler_angles()
-            //bevy_rapier3d::na::UnitQuaternion::face_towards(&dir.into(), &Vector3::Y.into())
-            //.euler_angles()
-            //};
-            //let (x, y, z) = (z, x, y);
-            //ui.label(format!("eular angle output: {:+03.1?}", (x, y, z)));
-            //let delta_angled = [
-            //crate::math::delta_angle_radians(0., x).copysign(x),
-            //crate::math::delta_angle_radians(0., y).copysign(y),
-            //crate::math::delta_angle_radians(0., z).copysign(z),
-            //];
-            //ui.label(format!("delta angle output: {:+03.1?}", delta_angled));
-            //});
+    for (mut active_res, routine_id, config, xform) in crafts.iter_mut() {
+        if let Ok(routine_res) = lin_routines.get(routine_id.0) {
+            let local_lin_inp = xform.rotation.inverse() * routine_res.0;
+            active_res.lin = local_lin_inp;
+            active_res.ang =
+                config.angular_input_multiplier * steering_systems::look_at(local_lin_inp).0;
         } else {
             tracing::error!("no routine found for craft");
         }
@@ -197,122 +118,34 @@ pub mod steering_systems {
     use crate::craft::engine::*;
     use crate::math::Vector3;
     //use crate::math::{Real, *};
+    use super::{AngularRoutineResult, LinearRoutineResult};
 
-    use super::SteeringSystemOutput;
+    #[derive(Debug, Clone, Copy)]
+    pub struct AvoidCollision {
+        pub craft_entt: Entity,
+        pub fwd_prediction_secs: f32,
+    }
 
-    //#[derive(Debug, Clone)]
-    //pub struct RigidBodySnap {
-    //pos: RigidBodyPosition,
-    //vel: RigidBodyVelocity,
-    //}
-    //pub struct RbSnapper {
-    //to_be_tracked: HashSet<Entity>,
-    //tracked: HashMap<Entity, RigidBodySnap>,
-    //}
-    //impl RbSnapper {
-    //pub fn get(&self, entt: Entity) -> Option<&RigidBodySnap> {
-    //if let Some(ii) = self.tracked.get(&entt) {
-    //Some(&self.result[*ii])
-    //} else {
-    //None
-    //}
-    //}
-    //pub fn track(&mut self, entt: Entity) {
-    //self.tracked.entry(entt).or_insert(None);
-    //}
-    //pub fn get_and_track(&mut self, entt: Entity) -> Option<&RigidBodySnap> {
-    //if let Some(Some(ii)) = self.tracked.get(&entt) {
-    //Some(&self.result[*ii])
-    //} else {
-    //None
-    //}
-    //}
-    //}
-    //fn rb_sensor(
-    //mut rb_snapper: ResMut<RbSnapper>,
-    //rigidbodies: Query<(&RigidBodyPosition, &RigidBodyVelocity)>,
-    //) {
-    //rb_snapper.tracked.clear();
-    //rb_snapper.to_be_tracked.clear();
-    //}
-    //
-    //pub type RoutineId = u64;
-
-    //#[derive(Debug, Clone, Copy)]
-    //pub struct RoutineHandle<R> {
-    //pub id: RoutineId,
-    //pub phantom: PhantomData<R>,
-    //}
-
-    //pub struct SteeringRoutines<P> {
-    //last_routine_id: u64,
-    //routines: HashMap<RoutineId, (P, SteeringSystemOutput)>,
-    //}
-    //impl<P> SteeringRoutines<P> {
-    //pub fn new() -> Self {
-    //Self {
-    //last_routine_id: 0,
-    //routines: Default::default(),
-    //}
-    //}
-    //pub fn add_routine(&mut self, param: P) -> RoutineHandle<P> {
-    //self.last_routine_id += 1;
-    //self.routines.insert(
-    //self.last_routine_id,
-    //(param, SteeringSystemOutput::default()),
-    //);
-    //RoutineHandle {
-    //id: self.last_routine_id,
-    //phantom: PhantomData,
-    //}
-    //}
-    //pub fn get_routine(
-    //&self,
-    //handle: RoutineHandle<P>,
-    //) -> Option<&(P, SteeringSystemOutput)> {
-    //self.routines.get(&handle.id)
-    //}
-    //}
+    pub fn avoid_collisoin(
+        mut routines: Query<(Entity, &AvoidCollision, &mut LinearRoutineResult)>,
+        crafts: Query<(&GlobalTransform, &EngineConfig)>, // crafts
+    ) {
+    }
 
     #[derive(Debug, Clone, Copy)]
     pub struct Intercept {
         pub craft_entt: Entity,
         pub quarry_rb: RigidBodyHandle,
     }
-    //pub(super) fn intercept(
-    //mut state: ResMut<SteeringRoutines<Intercept>>,
-    //queries: QuerySet<(
-    //Query<(&GlobalTransform, &EngineConfig)>,        // crafts
-    //Query<(&RigidBodyPosition, &RigidBodyVelocity)>, // quarries
-    //)>,
-    //) {
-    //for (routine_id, (params, output)) in state.routines.iter_mut() {
-    //match (
-    //queries.q0().get(params.craft_entt),
-    //queries.q1().get(params.quarry_rb.entity()),
-    //) {
-    //(Ok((xform, config)), Ok(quarry_rb)) => {
-    //*output = intercept_rb(quarry_rb, xform, config);
-    //}
-    //err => {
-    //tracing::error!(
-    //"invalid params for intercept routine {:?}: {:?}",
-    //routine_id,
-    //err
-    //);
-    //}
-    //}
-    //}
-    //}
 
     #[derive(Bundle)]
     pub struct InterceptRoutineBundle {
         pub param: Intercept,
-        pub output: SteeringSystemOutput,
+        pub output: LinearRoutineResult,
     }
 
     pub fn intercept(
-        mut routines: Query<(Entity, &Intercept, &mut SteeringSystemOutput)>,
+        mut routines: Query<(Entity, &Intercept, &mut LinearRoutineResult)>,
         crafts: Query<(&GlobalTransform, &EngineConfig)>, // crafts
         quarries: Query<(&RigidBodyPosition, &RigidBodyVelocity)>, // quarries
     ) {
@@ -322,9 +155,7 @@ pub mod steering_systems {
                 quarries.get(params.quarry_rb.entity()),
             ) {
                 (Ok((xform, config)), Ok((quarry_pos, quarry_vel))) => {
-                    *output = SteeringSystemOutput::Linear {
-                        input: intercept_rb(quarry_pos, quarry_vel, xform, config),
-                    };
+                    *output = intercept_rb(quarry_pos, quarry_vel, xform, config);
                 }
                 err => {
                     tracing::error!(
@@ -343,37 +174,45 @@ pub mod steering_systems {
         quarry_vel: &RigidBodyVelocity,
         current_xform: &GlobalTransform,
         config: &EngineConfig,
-    ) -> Vector3 {
+    ) -> LinearRoutineResult {
         let linear_v_limit = config.linear_v_limit;
-        steering_behaviours::intercept_target(
+        LinearRoutineResult(steering_behaviours::intercept_target(
             current_xform.translation,
             linear_v_limit.z,
             quarry_pos.position.translation.into(),
             quarry_vel.linvel.into(),
-        )
+        ))
     }
 
     #[inline]
-    pub fn face_local_dir(dir: Vector3) -> Vector3 {
-        let dir = -dir;
-        let (z, x, y) = {
-            //// basis facing dir
-            //let t = {
-            //let forward = dir.normalize();
-            //let right = Vector3::Y.cross(forward).normalize();
-            //let up = forward.cross(right);
-            //Mat3::from_cols(right, up, forward)
-            //};
-            ////t.euler_angles()
-            nalgebra::UnitQuaternion::face_towards(&dir.into(), &Vector3::Y.into()).euler_angles()
-        };
-        let (x, y, z) = (z, x, y);
-        [
-            crate::math::delta_angle_radians(0., x).copysign(x),
-            crate::math::delta_angle_radians(0., y).copysign(y),
-            crate::math::delta_angle_radians(0., z).copysign(z),
-        ]
-        .into()
+    pub fn look_at(local_dir: Vector3) -> AngularRoutineResult {
+        AngularRoutineResult({
+            let fwd = -Vector3::Z;
+            let dir = local_dir;
+            fwd.angle_between(dir) * fwd.cross(dir)
+        })
+        /*AngularRoutineResult({
+            // invert since fwd is -Z
+            let dir = -local_dir;
+            let (z, x, y) = {
+                //// basis facing dir
+                //let t = {
+                //let forward = dir.normalize();
+                //let right = Vector3::Y.cross(forward).normalize();
+                //let up = forward.cross(right);
+                //Mat3::from_cols(right, up, forward)
+                //};
+                ////t.euler_angles()
+                nalgebra::UnitQuaternion::face_towards(&dir.into(), &Vector3::Y.into())
+                    .euler_angles()
+            };
+            let (x, y, z) = (z, x, y);
+            Vector3::new(
+                crate::math::delta_angle_radians(0., x).copysign(x),
+                crate::math::delta_angle_radians(0., y).copysign(y),
+                crate::math::delta_angle_radians(0., z).copysign(z),
+            )
+        })*/
     }
 
     pub mod steering_behaviours {

@@ -13,6 +13,7 @@ pub use tracing_subscriber;
 pub use bevy_egui;
 pub use chrono;
 // pub use bytemuck;
+pub use splines;
 pub use bevy;
 pub use bevy_inspector_egui;
 pub use bevy_mod_debugdump;

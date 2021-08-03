@@ -1355,6 +1355,7 @@ dependencies = [
  "serde",
  "smallvec",
  "smartstring",
+ "splines",
  "tracing",
  "tracing-subscriber",
 ]
@@ -3362,6 +3363,17 @@ checksum = "1f5b132530b1ac069df335577e3581765995cba5a13995cdbbdbc8fb057c532c"
 dependencies = [
  "bitflags",
  "num-traits",
+]
+
+[[package]]
+name = "splines"
+version = "4.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c94307351d02448532cdf65ea95bfdd529183d360a60fb8c8bdca6c90af55542"
+dependencies = [
+ "glam 0.15.2",
+ "nalgebra",
+ "serde",
 ]
 
 [[package]]

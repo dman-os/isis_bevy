@@ -53,7 +53,7 @@ For this, I think I'll go back to SteeringRoutines from ISIS Godot.Basic units o
 
 ##### CraftArms input
 
-TODO.
+Making use of basic bevy events for now.
 
 ## devlog
 

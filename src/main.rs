@@ -172,13 +172,13 @@ fn setup_environment(
             });
         });
 
-    //// camera
-    //commands
-    //.spawn_bundle(PerspectiveCameraBundle {
-    //transform: Transform::from_xyz(-20.0, 25., 20.0).looking_at(Vector3::ZERO, Vector3::Y),
-    //..Default::default()
-    //})
-    //.insert(GameCamera);
+    /*// camera
+    commands
+        .spawn_bundle(PerspectiveCameraBundle {
+            transform: Transform::from_xyz(-20.0, 25., 20.0).looking_at(Vector3::ZERO, Vector3::Y),
+            ..Default::default()
+        })
+        .insert(GameCamera);*/
 }
 
 pub struct CraftCamera;
@@ -343,7 +343,7 @@ fn setup_world(
             .spawn()
             .insert_bundle(craft::CraftBundle {
                 config: craft::engine::EngineConfig {
-                    //linear_thruster_force: [2., 2., 2.].into(),
+                    linear_thruster_force: [0.; 3].into(),
                     ..Default::default()
                 },
                 rigid_body: RigidBodyBundle {
@@ -395,11 +395,11 @@ pub fn init_default_routines(
         Entity,
         (
             With<craft::mind::MindConfig>,
-            Without<craft::mind::ActiveRoutineId>,
+            Without<craft::mind::ActiveRoutines>,
         ),
     >,
 ) {
-    return;
+    //return;
     for craft in crafts.iter() {
         let intercept_routine = commands
             .spawn_bundle(craft::mind::steering_systems::InterceptRoutineBundle {
@@ -412,7 +412,7 @@ pub fn init_default_routines(
             .id();
         commands
             .entity(craft)
-            .insert(craft::mind::ActiveRoutineId(intercept_routine));
+            .insert(craft::mind::ActiveRoutines(intercept_routine));
     }
 }
 
