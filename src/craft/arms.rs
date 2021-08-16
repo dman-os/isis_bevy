@@ -3,7 +3,7 @@ use deps::*;
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
-use crate::math::{Real, *};
+use crate::math::{TReal, *};
 
 pub struct ArmsPlugin;
 
@@ -26,10 +26,10 @@ pub struct ProjectileWeapon {
     pub proj_damage: Damage,
     pub proj_mesh: Handle<Mesh>,
     pub proj_mtr: Handle<StandardMaterial>,
-    pub proj_velocity: Vector3,
+    pub proj_velocity: TVec3,
     pub proj_shape: ColliderShape,
     pub proj_lifespan_secs: f64,
-    pub proj_spawn_offset: Vector3,
+    pub proj_spawn_offset: TVec3,
 }
 
 //pub struct CraftArms(pub Children);
@@ -79,7 +79,7 @@ fn handle_activate_weapon_events(
                             ..Default::default()
                         },
                         velocity: RigidBodyVelocity {
-                            linvel: <[Real; 3]>::from(xform.rotation * proj_wpn.proj_velocity)
+                            linvel: <[TReal; 3]>::from(xform.rotation * proj_wpn.proj_velocity)
                                 .into(),
                             ..Default::default()
                         },

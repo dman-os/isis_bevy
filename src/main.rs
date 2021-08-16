@@ -17,7 +17,7 @@ use bevy_egui::*;
 use bevy_rapier3d::prelude::*;
 use rand::prelude::*;
 
-use math::{Real, Vector3, *};
+use math::{TReal, TVec3, *};
 
 pub mod craft;
 pub mod math;
@@ -143,8 +143,8 @@ fn setup_environment(
     commands
         .spawn_bundle(LightBundle {
             // transform: Transform::from_xyz(4.0, 8.0, 4.0),
-            transform: Transform::from_translation(Vector3::Z * -10_000.0)
-                .looking_at(Vector3::ZERO, Vector3::Y),
+            transform: Transform::from_translation(TVec3::Z * -10_000.0)
+                .looking_at(TVec3::ZERO, TVec3::Y),
             light: Light {
                 range: 2_000_000.,
                 intensity: 50_000. * 10_000.,
@@ -154,7 +154,7 @@ fn setup_environment(
         })
         .with_children(|parent| {
             parent.spawn_bundle(PbrBundle {
-                transform: Transform::from_scale(Vector3::ONE * 500.),
+                transform: Transform::from_scale(TVec3::ONE * 500.),
                 mesh: meshes.add(
                     shape::Icosphere {
                         radius: 1.,
@@ -193,15 +193,15 @@ fn setup_world(
     asset_server: Res<AssetServer>,
 ) {
     let mut rng = rand::thread_rng();
-    const SIZE_RANGE: Real = 100.;
-    const MASS_RANGE: Real = 10_000.;
-    const LOCATION_RANGE: Real = 500.;
+    const SIZE_RANGE: TReal = 100.;
+    const MASS_RANGE: TReal = 10_000.;
+    const LOCATION_RANGE: TReal = 500.;
     for _ in (0..50).into_iter() {
-        let size = rng.gen::<Real>() * SIZE_RANGE;
+        let size = rng.gen::<TReal>() * SIZE_RANGE;
         let radius = size * 0.5;
-        let mass = rng.gen::<Real>() * MASS_RANGE;
+        let mass = rng.gen::<TReal>() * MASS_RANGE;
         let pos = {
-            let pos: Vector3 = rng.gen::<[Real; 3]>().into();
+            let pos: TVec3 = rng.gen::<[TReal; 3]>().into();
             let pos = pos * LOCATION_RANGE;
             [
                 pos.x * if rng.gen_bool(0.5) { 1. } else { -1. },
@@ -212,9 +212,9 @@ fn setup_world(
         };
         let mut xform = Transform::from_translation(pos);
         xform.rotate(Quat::from_rotation_ypr(
-            rng.gen::<Real>() * 360.0,
-            rng.gen::<Real>() * 360.0,
-            rng.gen::<Real>() * 360.0,
+            rng.gen::<TReal>() * 360.0,
+            rng.gen::<TReal>() * 360.0,
+            rng.gen::<TReal>() * 360.0,
         ));
 
         commands
@@ -226,7 +226,13 @@ fn setup_world(
                 })),
                 transform: xform,
                 material: materials.add(
-                    Color::rgba(rng.gen::<Real>(), rng.gen::<Real>(), rng.gen::<Real>(), 1.).into(),
+                    Color::rgba(
+                        rng.gen::<TReal>(),
+                        rng.gen::<TReal>(),
+                        rng.gen::<TReal>(),
+                        1.,
+                    )
+                    .into(),
                 ),
                 ..Default::default()
             })
@@ -283,7 +289,7 @@ fn setup_world(
             });
 
             let mut cam = PerspectiveCameraBundle {
-                transform: Transform::from_xyz(0.0, 7., 20.0).looking_at(-Vector3::Z, Vector3::Y),
+                transform: Transform::from_xyz(0.0, 7., 20.0).looking_at(-TVec3::Z, TVec3::Y),
                 ..Default::default()
             };
             cam.perspective_projection.far = 10_000.;
@@ -314,9 +320,9 @@ fn setup_world(
                 ..Default::default()
             }),
             proj_shape: ColliderShape::ball(0.5),
-            proj_velocity: Vector3::Z * -750.,
+            proj_velocity: TVec3::Z * -750.,
             proj_lifespan_secs: 3.,
-            proj_spawn_offset: Vector3::Z * -2.,
+            proj_spawn_offset: TVec3::Z * -2.,
         })
         .insert_bundle(PbrBundle {
             mesh: meshes.add(
@@ -327,7 +333,7 @@ fn setup_world(
                 .into(),
             ),
             transform: {
-                let mut t = Transform::from_translation(Vector3::Y * 3.);
+                let mut t = Transform::from_translation(TVec3::Y * 3.);
                 t.scale = [1., 1., 4.].into();
                 t
             },
@@ -343,11 +349,11 @@ fn setup_world(
             .spawn()
             .insert_bundle(craft::CraftBundle {
                 config: craft::engine::EngineConfig {
-                    linear_thruster_force: [0.; 3].into(),
+                    // linear_thruster_force: [0.; 3].into(),
                     ..Default::default()
                 },
                 rigid_body: RigidBodyBundle {
-                    position: [25. * ii as Real, 0., -50.].into(),
+                    position: [25. * ii as TReal, 0., -50.].into(),
                     ..craft::CraftBundle::default_rb_bundle()
                 },
                 collider: craft::attire::CollisionDamageEnabledColliderBundle {
@@ -400,19 +406,42 @@ pub fn init_default_routines(
     >,
 ) {
     //return;
+    let members: smallvec::SmallVec<[Entity; 8]> = crafts.iter().collect();
+    if members.len() == 0 {
+        // bail if there are no new crafts
+        return;
+    }
+    tracing::info!("setting up routines");
+    let group = commands
+        .spawn_bundle((
+            craft::mind::GroupMind {
+                // add all new crafts into a new group
+                members,
+            },
+            craft::mind::BoidFlock::default(),
+        ))
+        .id();
     for craft in crafts.iter() {
-        let intercept_routine = commands
-            .spawn_bundle(craft::mind::steering_systems::InterceptRoutineBundle {
-                param: craft::mind::steering_systems::Intercept {
-                    craft_entt: craft,
-                    quarry_rb: player.0.handle(),
-                },
-                output: Default::default(),
+        /*let routine = commands
+        .spawn_bundle(craft::mind::steering_systems::InterceptRoutineBundle {
+            param: craft::mind::steering_systems::Intercept {
+                craft_entt: craft,
+                quarry_rb: player.0.handle(),
+            },
+            output: Default::default(),
+        })
+        .id();*/
+        let routine = commands
+            .spawn_bundle(craft::mind::steering_systems::FlyWithFlockRoutineBundle {
+                param: craft::mind::steering_systems::FlyWithFlock { craft_entt: craft },
+                lin_res: Default::default(),
+                ang_res: Default::default(),
             })
             .id();
         commands
             .entity(craft)
-            .insert(craft::mind::ActiveRoutines(intercept_routine));
+            .insert(craft::mind::CraftGroup(group))
+            .insert(craft::mind::ActiveRoutines(routine));
     }
 }
 
@@ -427,8 +456,8 @@ fn craft_input(
     )>,
     mut activate_wpn_events: EventWriter<craft::arms::ActivateWeaponEvent>,
 ) {
-    let mut linear_input = Vector3::ZERO;
-    let mut angular_input = Vector3::ZERO;
+    let mut linear_input = TVec3::ZERO;
+    let mut angular_input = TVec3::ZERO;
 
     if k_input.pressed(KeyCode::W) {
         // inverse z dir since cam faces backward
@@ -609,11 +638,11 @@ pub struct GameCamera;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CameraMovementSettings {
-    linear_speed: Real,
-    angular_speed: Real,
-    shift_multiplier: Real,
-    linear_input: IVector3,
-    angular_input: IVector3,
+    linear_speed: TReal,
+    angular_speed: TReal,
+    shift_multiplier: TReal,
+    linear_input: TIVec3,
+    angular_input: TIVec3,
     shift_on: bool,
 }
 
@@ -654,8 +683,8 @@ fn move_camera_system(
             }
         }
 
-        cam_settings.linear_input = linear_input.clamp(-IVector3::ONE, IVector3::ONE);
-        cam_settings.angular_input = angular_input.clamp(-IVector3::ONE, IVector3::ONE);
+        cam_settings.linear_input = linear_input.clamp(-TIVec3::ONE, TIVec3::ONE);
+        cam_settings.angular_input = angular_input.clamp(-TIVec3::ONE, TIVec3::ONE);
         cam_settings.shift_on = shift_on;
     }
 
@@ -665,7 +694,7 @@ fn move_camera_system(
         linear_speed *= cam_settings.shift_multiplier
     }
 
-    let delta_t = time.delta_seconds_f64() as Real;
+    let delta_t = time.delta_seconds_f64() as TReal;
     let linear_vel = cam_settings.linear_input.as_f32() * (linear_speed * delta_t);
     let angular_vel = cam_settings.angular_input.as_f32() * (cam_settings.angular_speed * delta_t);
 

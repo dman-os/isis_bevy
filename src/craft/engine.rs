@@ -3,33 +3,33 @@ use deps::*;
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
-use crate::math::{Real, *};
+use crate::math::*;
 
 #[derive(Debug, Default, Clone)]
 pub struct LinearEngineState {
     /// Linear velocity in local-space
     /// In m/s.
-    pub velocity: Vector3,
+    pub velocity: TVec3,
 
     /// Input vector for driver. Meaning depends on driver implementation.
     /// e.g. target velocity to attain
-    pub input: Vector3,
+    pub input: TVec3,
 
     /// Vector output of driver and input vector of a motor. Meaning depends on implementation.
     /// e.g. forve to apply
-    pub flame: Vector3,
+    pub flame: TVec3,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct AngularEngineState {
     /// Angular velocity in local-space
     /// In rad/s.
-    pub velocity: Vector3,
+    pub velocity: TVec3,
     /// Input vector for driver. Meaning depends on driver implementation.
     /// e.g. target velocity to attain
-    pub input: Vector3,
+    pub input: TVec3,
     /// Vector output of driver and input vector of a motor. Meaning depends on implementation.
-    pub flame: Vector3,
+    pub flame: TVec3,
 }
 
 // TODO: break this up to multiple components
@@ -37,29 +37,29 @@ pub struct AngularEngineState {
 #[serde(crate = "serde")]
 pub struct EngineConfig {
     ///  Speed to travel at when there is no input i.e. how fast to travel when idle.
-    pub set_speed: Vector3,
+    pub set_speed: TVec3,
 
     /// Total mass of the craft.
     /// In KG.
-    pub mass: Real,
+    pub mass: TReal,
 
     /// Maximum acceleration allowed to the craft.
     /// In m/s.
-    pub acceleration_limit: Vector3,
+    pub acceleration_limit: TVec3,
 
-    pub acceleration_limit_multiplier: Real,
+    pub acceleration_limit_multiplier: TReal,
 
     /// Linear velocity cap no matter the input.
     /// In m/s.
-    pub linear_v_limit: Vector3,
+    pub linear_v_limit: TVec3,
 
     /// Angular velocity cap no matter the input.
     /// In rad/s.
-    pub angular_v_limit: Vector3,
+    pub angular_v_limit: TVec3,
 
     /// Max force the linear thrusters are capable of exerting.
     /// In Newtons.
-    pub linear_thruster_force: Vector3,
+    pub linear_thruster_force: TVec3,
 
     /// Whether or not to respect linear_v_limit in the z axis.
     pub limit_forward_v: bool,
@@ -75,12 +75,13 @@ pub struct EngineConfig {
 
     /// Max force the angular thrusters are capable of exerting.
     /// In Newtons.
-    pub angular_thruster_force: Vector3,
+    pub angular_thruster_force: TVec3,
 
-    pub thruster_force_multiplier: Real,
+    pub thruster_force_multiplier: TReal,
 
     /// The dimensions of the craft.
-    pub extents: Vector3,
+    /// TODO: extract this to own component
+    pub extents: TVec3,
 
     /// DERIVED ITEMS
 
@@ -88,14 +89,14 @@ pub struct EngineConfig {
     /// Angular thruster toruqe, transient auto cacluated value from the
     /// angular_thrustuer_force according to the craft's shape and mass.
     /// In  Newton meters.
-    pub thruster_torque: Option<Vector3>,
+    pub thruster_torque: Option<TVec3>,
     /// Angular acceleration limit, another transient auto cacluated value. It's cacluated from
     /// the normal acceleration limit (which is in m/ss) and adjusted to the size/shape of the craft.
     /// In rad/s/s.
     ///
     /// Curretly unused. Defaults to INFINITY meaning there's no artifical acceleration_limit on
     /// the crafts. They use all of what's availaible from the thrusters.
-    pub angular_acceleration_limit: Option<Vector3>,
+    pub angular_acceleration_limit: Option<TVec3>,
     ///// Moment of inertia, transient auto cacluated value used to convert the required angular
     ///// acceleration into the appropriate torque. Aquried directly from Godot's physics engine.
     ///// In  kg*m*m.
@@ -109,9 +110,10 @@ impl Default for EngineConfig {
     fn default() -> Self {
         Self {
             mass: 15_000.,
-            set_speed: Vector3::ZERO,
+            set_speed: TVec3::ZERO,
             acceleration_limit: [6., 6., 6.].into(),
             acceleration_limit_multiplier: 9.81,
+            // matters not if v_limit.z is negative since this's a limit
             linear_v_limit: [100., 100., 200.].into(),
             angular_v_limit: [3., 3., 3.].into(),
             limit_forward_v: true,
@@ -121,7 +123,7 @@ impl Default for EngineConfig {
             linear_thruster_force: [1., 1., 1.5].into(),
             angular_thruster_force: [1., 1., 1.].into(),
             thruster_force_multiplier: 1_000_000.0,
-            extents: Vector3::ONE * 8.0,
+            extents: TVec3::ONE * 8.0,
             thruster_torque: None,
             angular_acceleration_limit: None,
         }
@@ -132,10 +134,10 @@ impl Default for EngineConfig {
 impl EngineConfig {
     /// Use this everytime the config changes to calculate transiet items,
     pub fn derive_items(mut self) -> Self {
-        self.angular_acceleration_limit = Some([Real::INFINITY; 3].into());
+        self.angular_acceleration_limit = Some([TReal::INFINITY; 3].into());
 
         use bevy::math::vec2;
-        let axes_diameter: Vector3 = [
+        let axes_diameter: TVec3 = [
             vec2(self.extents.y, self.extents.z).length(),
             vec2(self.extents.x, self.extents.z).length(),
             vec2(self.extents.x, self.extents.y).length(),
@@ -163,8 +165,8 @@ pub fn sync_craft_state_velocities(
     for (mut angular_state, mut linear_state, g_xform, rb_velocity) in crafts.iter_mut() {
         // convert it to local space first
         let rotator = g_xform.rotation.inverse();
-        angular_state.velocity = rotator * Vector3::from(rb_velocity.angvel);
-        linear_state.velocity = rotator * Vector3::from(rb_velocity.linvel);
+        angular_state.velocity = rotator * TVec3::from(rb_velocity.angvel);
+        linear_state.velocity = rotator * TVec3::from(rb_velocity.linvel);
     }
 }
 
@@ -246,7 +248,7 @@ pub fn angular_pid_driver(
             // TODO: work out if this is actually the inertia tensor
             let local_moi_inv_sqrt = mass_props.local_mprops.inv_principal_inertia_sqrt;
             // NOTICE: difference here
-            let mut acceleration_limit: Vector3 = [
+            let mut acceleration_limit: TVec3 = [
                 max_torque.x * local_moi_inv_sqrt.x,
                 max_torque.y * local_moi_inv_sqrt.y,
                 max_torque.z * local_moi_inv_sqrt.z,
@@ -290,7 +292,7 @@ pub fn apply_flames_simple_accel(
         forces.force += Vector::from(force);
 
         let local_moi_inv_sqrt = mass_props.local_mprops.inv_principal_inertia_sqrt;
-        let torque: Vector3 = [
+        let torque: TVec3 = [
             ang_state.flame.x / local_moi_inv_sqrt.x,
             ang_state.flame.y / local_moi_inv_sqrt.y,
             ang_state.flame.z / local_moi_inv_sqrt.z,

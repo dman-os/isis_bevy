@@ -6,7 +6,7 @@ use bevy::{ecs as bevy_ecs, prelude::*};
 use bevy_rapier3d::prelude::*;
 use deps::bevy::utils::HashMap;
 
-use crate::math::Real;
+use crate::math::*;
 
 pub struct AttirePlugin;
 impl Plugin for AttirePlugin {
@@ -37,7 +37,7 @@ impl Default for DamageType {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Damage {
-    pub value: Real,
+    pub value: TReal,
     pub damage_type: DamageType,
 }
 
@@ -56,12 +56,12 @@ impl Default for AttireType {
 /// A health bar for some craft component.
 #[derive(Debug, Clone)]
 pub struct Attire {
-    pub remaining_integrity: Real,
+    pub remaining_integrity: f32,
 
     //pub recovery_rate: Real,
     pub attire_type: AttireType,
-    pub factory_integrity: Real,
-    pub damage_multiplier: smallvec::SmallVec<[Real; 6]>,
+    pub factory_integrity: f32,
+    pub damage_multiplier: smallvec::SmallVec<[f32; 6]>,
 }
 
 impl Attire {
@@ -294,7 +294,7 @@ pub(super) fn handle_collision_damage_events(
             let value = contact.data.impulse.abs();
 
             // ignore zero damage values
-            if value <= Real::EPSILON {
+            if value <= TReal::EPSILON {
                 continue;
             }
             let value = value / time.delta_seconds();
@@ -434,10 +434,10 @@ fn log_damage_events(
     mut proj_dmg_events: EventReader<ProjectileDamageEvent>,
 ) {
     for event in coll_dmg_events.iter() {
-        tracing::info!("Collision {:?} | Craft: {:?}", event.damage, event.rb_entt);
+        tracing::trace!("Collision {:?} | Craft: {:?}", event.damage, event.rb_entt);
     }
     for event in proj_dmg_events.iter() {
-        tracing::info!(
+        tracing::trace!(
             "Projectile {:?} | Attire: {:?}",
             event.ixn_event.projectile.damage,
             event.attire_entt
