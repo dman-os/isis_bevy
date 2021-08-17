@@ -4,7 +4,9 @@ use deps::*;
 
 use bevy::{ecs as bevy_ecs, prelude::*};
 use bevy_rapier3d::prelude::*;
+use bitflags::bitflags;
 use deps::bevy::utils::HashMap;
+use once_cell::sync::Lazy;
 
 use crate::math::*;
 
@@ -137,21 +139,60 @@ impl Default for AttireProfile {
     }
 }
 
+bitflags! {
+    pub struct ColliderGroups: u32 {
+        const SOLID = 1 << 1;
+        const ATTIRE = 1 << 2;
+        const PROJECTILE = 1 << 3;
+    }
+}
+
+pub const CRAFT_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
+    InteractionGroups::new(
+        ColliderGroups::SOLID.bits(),
+        (ColliderGroups::SOLID | ColliderGroups::PROJECTILE).bits(),
+    )
+});
+pub const ATTIRE_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
+    InteractionGroups::new(
+        ColliderGroups::ATTIRE.bits(),
+        (ColliderGroups::PROJECTILE).bits(),
+    )
+});
+pub const OBSTACLE_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
+    InteractionGroups::new(
+        ColliderGroups::SOLID.bits(),
+        (ColliderGroups::SOLID | ColliderGroups::PROJECTILE).bits(),
+    )
+});
+pub const PROJECTILE_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
+    InteractionGroups::new(
+        (ColliderGroups::PROJECTILE).bits(),
+        (ColliderGroups::ATTIRE | ColliderGroups::SOLID).bits(),
+    )
+});
+
 #[derive(Bundle)]
 pub struct AttireBundle {
     pub profile: AttireProfile,
     #[bundle]
     pub collider: ColliderBundle,
 }
+
 impl AttireBundle {
     pub fn default_collider_bundle() -> ColliderBundle {
         ColliderBundle {
             collider_type: ColliderType::Sensor,
-            flags: (ActiveEvents::INTERSECTION_EVENTS).into(),
+            flags: ColliderFlags {
+                active_events: ActiveEvents::INTERSECTION_EVENTS,
+                collision_groups: *ATTIRE_COLLIDER_IGROUP,
+                ..Default::default()
+            },
             ..Default::default()
         }
     }
 }
+
 impl Default for AttireBundle {
     fn default() -> Self {
         Self {
@@ -180,7 +221,11 @@ pub struct CollisionDamageEnabledColliderBundle {
 impl CollisionDamageEnabledColliderBundle {
     pub fn default_collider_bundle() -> ColliderBundle {
         ColliderBundle {
-            flags: (ActiveEvents::CONTACT_EVENTS).into(),
+            flags: ColliderFlags {
+                active_events: ActiveEvents::CONTACT_EVENTS,
+                collision_groups: *CRAFT_COLLIDER_IGROUP,
+                ..Default::default()
+            },
             ..Default::default()
         }
     }
@@ -365,16 +410,16 @@ pub(super) fn handle_collision_damage_events(
             point.into()
         };
 
-        let mut attire_found = false;
+        let mut closest_attire = None;
         // for all the rigid body's colliders
         for collider in components.1 .0.iter() {
             // FIXME: this seems expensive
             //
             // if the collider belongs to an attire
             if let Ok((mut attire, coll_shape, coll_pos)) = attires.get_mut(collider.entity()) {
-                attire_found = true;
                 // if the collider contains the point
-                if coll_shape.contains_point(coll_pos, &point) {
+                let dist = coll_shape.distance_to_point(coll_pos, &point, true);
+                if dist < 0.1 {
                     attire.damage(damage);
 
                     // generate the event to let others know it was damaged
@@ -390,13 +435,36 @@ pub(super) fn handle_collision_damage_events(
 
                     // consider the event hadnled once we've damaged an attire
                     return;
+                } else {
+                    closest_attire = if let Some((other, other_dist)) = closest_attire {
+                        if dist < other_dist {
+                            Some((collider.entity(), dist))
+                        } else {
+                            Some((other, other_dist))
+                        }
+                    } else {
+                        Some((collider.entity(), dist))
+                    }
                 }
             }
         }
-        if attire_found {
+        if let Some((attire_entt, dist)) = closest_attire {
             tracing::warn!(
-                "CollisonDamageEnabledRb collided but no attires covored deepest contact point"
+                "CollisonDamageEnabledRb collided but no attires covered deepest contact point, damaging closest attire ({:?}) with dist_sqr {:?}",
+                attire_entt, dist
             );
+            let (mut attire, coll_shape, coll_pos) = attires.get_mut(attire_entt).unwrap();
+            attire.damage(damage);
+            // generate the event to let others know it was damaged
+            generated_events.push(CollisionDamageEvent {
+                damage,
+                rb_entt: components.0,
+                attire_entt,
+                contact_event: event.clone(),
+                selection_shape: coll_shape.clone(),
+                selection_position: *coll_pos,
+                is_entt_1,
+            });
         } else {
             tracing::warn!("CollisonDamageEnabledRb registered but no attire found");
         }

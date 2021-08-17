@@ -3,7 +3,8 @@ use deps::*;
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
-use crate::math::{TReal, *};
+use crate::craft::attire::*;
+use crate::math::*;
 
 pub struct ArmsPlugin;
 
@@ -28,6 +29,7 @@ pub struct ProjectileWeapon {
     pub proj_mtr: Handle<StandardMaterial>,
     pub proj_velocity: TVec3,
     pub proj_shape: ColliderShape,
+    pub proj_mass: ColliderMassProps,
     pub proj_lifespan_secs: f64,
     pub proj_spawn_offset: TVec3,
 }
@@ -89,6 +91,13 @@ fn handle_activate_weapon_events(
                     .insert_bundle(ColliderBundle {
                         shape: proj_wpn.proj_shape.clone(),
                         collider_type: ColliderType::Sensor,
+                        // TODO: massive colliders
+                        // mass_properties: proj_wpn.proj_mass.clone(),
+                        flags: ColliderFlags {
+                            active_events: ActiveEvents::INTERSECTION_EVENTS,
+                            collision_groups: *PROJECTILE_COLLIDER_IGROUP,
+                            ..Default::default()
+                        },
                         ..Default::default()
                     });
             }

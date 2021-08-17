@@ -196,7 +196,8 @@ fn setup_world(
     const SIZE_RANGE: TReal = 100.;
     const MASS_RANGE: TReal = 10_000.;
     const LOCATION_RANGE: TReal = 500.;
-    for _ in (0..50).into_iter() {
+    // for _ in (0..50).into_iter() {
+    for _ in (0..1).into_iter() {
         let size = rng.gen::<TReal>() * SIZE_RANGE;
         let radius = size * 0.5;
         let mass = rng.gen::<TReal>() * MASS_RANGE;
@@ -243,6 +244,10 @@ fn setup_world(
             })
             .insert(RigidBodyPositionSync::Discrete)
             .insert_bundle(ColliderBundle {
+                flags: ColliderFlags {
+                    collision_groups: *craft::attire::OBSTACLE_COLLIDER_IGROUP,
+                    ..Default::default()
+                },
                 shape: ColliderShape::ball(radius),
                 mass_properties: ColliderMassProps::Density(
                     mass / (4. * math::real::consts::PI * radius * radius),
@@ -323,6 +328,7 @@ fn setup_world(
             proj_velocity: TVec3::Z * -750.,
             proj_lifespan_secs: 3.,
             proj_spawn_offset: TVec3::Z * -2.,
+            proj_mass: ColliderMassProps::Density(0.25 / (4. * math::real::consts::PI * 0.5 * 0.5)),
         })
         .insert_bundle(PbrBundle {
             mesh: meshes.add(
@@ -344,7 +350,8 @@ fn setup_world(
         .id();
     commands.insert_resource(CurrentWeapon(wpn_id));
 
-    for ii in -7..=7 {
+    //for ii in -7..=7 {
+    for ii in 0..1 {
         commands
             .spawn()
             .insert_bundle(craft::CraftBundle {
@@ -422,26 +429,41 @@ pub fn init_default_routines(
         ))
         .id();
     for craft in crafts.iter() {
-        /*let routine = commands
-        .spawn_bundle(craft::mind::steering_systems::InterceptRoutineBundle {
-            param: craft::mind::steering_systems::Intercept {
-                craft_entt: craft,
-                quarry_rb: player.0.handle(),
-            },
-            output: Default::default(),
-        })
-        .id();*/
-        let routine = commands
-            .spawn_bundle(craft::mind::steering_systems::FlyWithFlockRoutineBundle {
-                param: craft::mind::steering_systems::FlyWithFlock { craft_entt: craft },
-                lin_res: Default::default(),
-                ang_res: Default::default(),
-            })
+        let avoid_collision = commands
+            .spawn_bundle(
+                craft::mind::steering_systems::AvoidCollisionRoutineBundle::new(
+                    craft::mind::steering_systems::AvoidCollision {
+                        craft_entt: craft,
+                        fwd_prediction_secs: 5.0,
+                        raycast_exclusion: Default::default(),
+                    },
+                ),
+            )
             .id();
+        let active_routine = commands
+            .spawn_bundle(craft::mind::steering_systems::InterceptRoutineBundle::new(
+                craft::mind::steering_systems::Intercept {
+                    craft_entt: craft,
+                    quarry_rb: player.0.handle(),
+                },
+            ))
+            .id();
+        /*let active_routine = commands
+        .spawn_bundle(
+            craft::mind::steering_systems::FlyWithFlockRoutineBundle::new(
+                craft::mind::steering_systems::FlyWithFlock { craft_entt: craft },
+            ),
+        )
+        .id();*/
         commands
             .entity(craft)
             .insert(craft::mind::CraftGroup(group))
-            .insert(craft::mind::ActiveRoutines(routine));
+            .insert(craft::mind::ActiveRoutines::PriorityOverride {
+                routines: smallvec::smallvec![
+                    // avoid_collision,
+                    active_routine
+                ],
+            });
     }
 }
 

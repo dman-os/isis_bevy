@@ -22,6 +22,8 @@ parking_lot = { version = "0.11", features = ["nightly"] }
 smallvec = "1.6"
 chrono = "0.4"
 splines = { version = "4.0.3", features = ["serde", "glam", "nalgebra"] }
+bitflags = "1.2"
+once_cell = "1.8"
 # derivative = { version = "2.2.0", }
 
 bevy = "0.5" 

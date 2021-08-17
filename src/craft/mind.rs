@@ -29,6 +29,7 @@ impl Plugin for MindPlugin {
         .add_system(craft_mind_smarts.system())
         .add_system(steering_systems::intercept.system())
         .add_system(steering_systems::fly_with_flock.system())
+        .add_system(steering_systems::avoid_collision.system())
         .add_system(update_flocks.system());
     }
 }
@@ -58,6 +59,24 @@ pub struct ActiveRoutineResult {
     /// local space
     ang: TVec3,
 }
+impl std::ops::Add for ActiveRoutineResult {
+    type Output = Self;
+
+    #[inline]
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            lin: self.lin + rhs.lin,
+            ang: self.ang + rhs.ang,
+        }
+    }
+}
+impl ActiveRoutineResult {
+    #[inline]
+    pub fn is_zero(&self) -> bool {
+        // TODO: benchmark this vs. `TVec3.max_element() < TReal::EPSILON`
+        self.lin.length_squared() < TReal::EPSILON && self.ang.length_squared() < TReal::EPSILON
+    }
+}
 
 /// Output of linear steering routines which is usually linear velocity desired next frame in
 /// fraction of [`EngineConfig:.linear_v_limit`] in world space.
@@ -84,8 +103,65 @@ pub fn mind_update_engine_input(
         });
 }
 
-/// As of now, we always use
-pub struct ActiveRoutines(pub Entity);
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ActiveRoutineWeight {
+    lin: TReal,
+    ang: TReal,
+}
+
+impl std::ops::Mul<ActiveRoutineResult> for ActiveRoutineWeight {
+    type Output = ActiveRoutineResult;
+
+    fn mul(self, rhs: ActiveRoutineResult) -> Self::Output {
+        ActiveRoutineResult {
+            lin: rhs.lin * self.lin,
+            ang: rhs.ang * self.ang,
+        }
+    }
+}
+
+// FIXME: find a new fucking name
+pub enum ActiveRoutines {
+    Single {
+        entt: Entity,
+    },
+    WeightSummed {
+        routines: smallvec::SmallVec<[(ActiveRoutineWeight, Entity); 2]>,
+    },
+    /// The first routine that returns a non zero value will be used.
+    PriorityOverride {
+        routines: smallvec::SmallVec<[Entity; 4]>,
+    },
+}
+
+impl ActiveRoutines {
+    fn get_active_res(
+        xform: &GlobalTransform,
+        lin_res: Option<&LinearRoutineResult>,
+        ang_res: Option<&AngularRoutineResult>,
+    ) -> ActiveRoutineResult {
+        let mut active_res = ActiveRoutineResult::default();
+        let mut is_empty = true;
+        if let Some(lin_res) = lin_res {
+            // let local_lin_inp = (xform.rotation.inverse() * lin_res.0) + (-TVec3::Z * 0.15);// add foward movement
+            let local_lin_inp = xform.rotation.inverse() * lin_res.0; // add foward movement
+            active_res.lin = local_lin_inp;
+            is_empty = false;
+        }
+
+        if let Some(ang_res) = ang_res {
+            active_res.ang = ang_res.0;
+        } else {
+            // defaults to look where you want to go
+            active_res.ang = steering_systems::look_at(active_res.lin).0;
+            is_empty = false;
+        }
+        if is_empty {
+            tracing::error!("Routine doesn't have linear or angular results");
+        }
+        active_res
+    }
+}
 
 /// This system sets the crafts' [`ActiveRoutineOutput`] and is decopuling layer
 /// between the craft mind and whatever system is currently active. Right now, it's a dumb
@@ -97,24 +173,57 @@ pub fn craft_mind_smarts(
         &MindConfig,
         &GlobalTransform,
     )>,
-    routines: Query<(&LinearRoutineResult, Option<&AngularRoutineResult>)>,
+    routines: Query<
+        (Option<&LinearRoutineResult>, Option<&AngularRoutineResult>),
+        With<steering_systems::SteeringRoutine>,
+    >,
     // routines: Query<&LinearRoutineResult, With<steering_systems::Intercept>>,
     //egui_context: ResMut<bevy_egui::EguiContext>,
 ) {
-    for (mut active_res, routine_id, config, xform) in crafts.iter_mut() {
-        if let Ok((lin_res, ang_res)) = routines.get(routine_id.0) {
-            // let local_lin_inp = xform.rotation.inverse() * (lin_res.0 + (-TVec3::Z * 0.15));// add foward movement
-            let local_lin_inp = xform.rotation.inverse() * lin_res.0; // add foward movement
-            active_res.lin = local_lin_inp;
-            if let Some(ang_res) = ang_res {
-                active_res.ang = ang_res.0;
-            } else {
-                active_res.ang =
-                    config.angular_input_multiplier * steering_systems::look_at(local_lin_inp).0;
+    for (mut active_res, active_routines, config, xform) in crafts.iter_mut() {
+        // FIXME: i hate this code
+        match &active_routines {
+            ActiveRoutines::Single { entt } => {
+                if let Ok((lin_res, ang_res)) = routines.get(*entt) {
+                    *active_res = ActiveRoutines::get_active_res(xform, lin_res, ang_res);
+                } else {
+                    *active_res = ActiveRoutineResult::default();
+                    tracing::error!("routine not found for ActiveRoutines::Single");
+                }
             }
-        } else {
-            tracing::error!("no routine found for craft");
+            ActiveRoutines::WeightSummed { routines: summed } => {
+                // zero it out first
+                let mut sum = ActiveRoutineResult::default();
+                for (weight, entt) in summed {
+                    if let Ok((lin_res, ang_res)) = routines.get(*entt) {
+                        sum = sum
+                            + (*weight * ActiveRoutines::get_active_res(xform, lin_res, ang_res));
+                    } else {
+                        tracing::error!("routine not found for ActiveRoutines::WeightSummed");
+                        *active_res = ActiveRoutineResult::default();
+                        break;
+                    }
+                }
+                *active_res = sum;
+            }
+            ActiveRoutines::PriorityOverride { routines: priority } => {
+                // zero it out first
+                *active_res = ActiveRoutineResult::default();
+                for entt in priority {
+                    if let Ok((lin_res, ang_res)) = routines.get(*entt) {
+                        if !active_res.is_zero() {
+                            break;
+                        }
+                        *active_res = ActiveRoutines::get_active_res(xform, lin_res, ang_res);
+                    } else {
+                        tracing::error!("routine not found for ActiveRoutines::WeightSummed");
+                        *active_res = ActiveRoutineResult::default();
+                        break;
+                    }
+                }
+            }
         }
+        active_res.ang *= config.angular_input_multiplier;
     }
 }
 
@@ -177,43 +286,86 @@ pub mod steering_systems {
     use bevy_rapier3d::prelude::*;
 
     use super::{AngularRoutineResult, BoidFlock, CraftGroup, LinearRoutineResult};
+    use crate::craft::attire::*;
     use crate::craft::engine::*;
     use crate::math::*;
 
-    /*#[derive(Debug, Clone)]
+    pub struct SteeringRoutine;
+
+    #[derive(Debug, Clone)]
     pub struct AvoidCollision {
         pub craft_entt: Entity,
         pub fwd_prediction_secs: f32,
-        pub raycast_exclusion: smallvec::SmallVec<[ColliderHandle; 8]>,
+        pub raycast_exclusion: smallvec::SmallVec<[ColliderHandle; 4]>,
+    }
+
+    #[derive(Bundle)]
+    pub struct AvoidCollisionRoutineBundle {
+        pub param: AvoidCollision,
+        pub output: LinearRoutineResult,
+        pub mark: SteeringRoutine,
+    }
+
+    impl AvoidCollisionRoutineBundle {
+        pub fn new(param: AvoidCollision) -> Self {
+            Self {
+                param,
+                output: Default::default(),
+                mark: SteeringRoutine,
+            }
+        }
     }
 
     pub fn avoid_collision(
         mut routines: Query<(Entity, &AvoidCollision, &mut LinearRoutineResult)>,
-        crafts: Query<(&GlobalTransform, &EngineConfig, &RigidBodyVelocity)>, // crafts
+        crafts: Query<(
+            &GlobalTransform,
+            &EngineConfig,
+            &RigidBodyVelocity,
+            &RigidBodyColliders,
+        )>,
         query_pipeline: Res<QueryPipeline>,
         collider_query: QueryPipelineColliderComponentsQuery,
     ) {
         // Wrap the bevy query so it can be used by the query pipeline.
         let collider_set = QueryPipelineColliderComponentsSet(&collider_query);
         for (_, avoid_coll, result) in routines.iter_mut() {
-            if let Ok((xform, config, vel)) = crafts.get(avoid_coll.craft_entt) {
+            if let Ok((xform, config, vel, craft_colliders)) = crafts.get(avoid_coll.craft_entt) {
                 // check for collision
-                let ray = vel.linvel;
+                let vel = vel.linvel;
                 let widest_dim = config.extents.max_element();
-                if let Some((handle, toi)) = query_pipeline.cast_shape(
+                let toi = avoid_coll.fwd_prediction_secs * (vel.magnitude() + widest_dim);
+                tracing::trace!(
+                    "vel: {:?}, widest_dim: {:?}, toi: {:?}, craft_colliders: {:?}",
+                    vel,
+                    widest_dim,
+                    toi,
+                    craft_colliders.0
+                );
+                if let Some((handle, hit)) = query_pipeline.cast_shape(
                     &collider_set,
                     &(xform.translation, xform.rotation).into(),
-                    &ray,
+                    &vel,
                     &Ball::new(0.5 * widest_dim),
-                    avoid_coll.fwd_prediction_secs,
-                    InteractionGroups::all(),
-                    Some(&|handle| avoid_coll.raycast_exclusion[..].contains(&handle)),
-                ) {}
+                    toi,
+                    InteractionGroups::new(
+                        ColliderGroups::SOLID.bits(),
+                        ColliderGroups::SOLID.bits(),
+                    ),
+                    Some(&|handle| {
+                        // not a craft collider
+                        !craft_colliders.0[..].contains(&handle)
+                            // not in the exclusion list
+                            && !avoid_coll.raycast_exclusion[..].contains(&handle)
+                    }),
+                ) {
+                    tracing::info!("collision predicted with {:?}", handle);
+                }
             } else {
                 tracing::error!("craft_entt of AvoidCollision routine not found");
             }
         }
-    }*/
+    }
 
     #[derive(Debug, Clone, Copy)]
     pub struct Intercept {
@@ -225,6 +377,17 @@ pub mod steering_systems {
     pub struct InterceptRoutineBundle {
         pub param: Intercept,
         pub output: LinearRoutineResult,
+        pub mark: SteeringRoutine,
+    }
+
+    impl InterceptRoutineBundle {
+        pub fn new(param: Intercept) -> Self {
+            Self {
+                param,
+                output: LinearRoutineResult::default(),
+                mark: SteeringRoutine,
+            }
+        }
     }
 
     pub fn intercept(
@@ -308,6 +471,18 @@ pub mod steering_systems {
         pub param: FlyWithFlock,
         pub lin_res: LinearRoutineResult,
         pub ang_res: AngularRoutineResult,
+        pub mark: SteeringRoutine,
+    }
+
+    impl FlyWithFlockRoutineBundle {
+        pub fn new(param: FlyWithFlock) -> Self {
+            Self {
+                param,
+                lin_res: LinearRoutineResult::default(),
+                ang_res: AngularRoutineResult::default(),
+                mark: SteeringRoutine,
+            }
+        }
     }
 
     pub fn fly_with_flock(
