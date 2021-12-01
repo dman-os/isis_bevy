@@ -78,6 +78,7 @@ impl Plugin for GamePlugin {
             //.add_system(tune_ai.system())
             .add_system(init_default_routines.system())
             .add_system(craft_input.system())
+            .add_system(drive_circuit.system())
             .insert_resource(ClearColor(Color::BLACK));
     }
 }
@@ -192,69 +193,111 @@ fn setup_world(
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
 ) {
-    let mut rng = rand::thread_rng();
-    const SIZE_RANGE: TReal = 100.;
-    const MASS_RANGE: TReal = 10_000.;
-    const LOCATION_RANGE: TReal = 500.;
-    // for _ in (0..50).into_iter() {
-    for _ in (0..1).into_iter() {
-        let size = rng.gen::<TReal>() * SIZE_RANGE;
-        let radius = size * 0.5;
-        let mass = rng.gen::<TReal>() * MASS_RANGE;
-        let pos = {
-            let pos: TVec3 = rng.gen::<[TReal; 3]>().into();
-            let pos = pos * LOCATION_RANGE;
-            [
-                pos.x * if rng.gen_bool(0.5) { 1. } else { -1. },
-                pos.y * if rng.gen_bool(0.5) { 1. } else { -1. },
-                pos.z * if rng.gen_bool(0.5) { 1. } else { -1. },
-            ]
-            .into()
-        };
-        let mut xform = Transform::from_translation(pos);
-        xform.rotate(Quat::from_rotation_ypr(
-            rng.gen::<TReal>() * 360.0,
-            rng.gen::<TReal>() * 360.0,
-            rng.gen::<TReal>() * 360.0,
-        ));
+    // setup the floating spheres
+    {
+        let mut rng = rand::thread_rng();
+        const SIZE_RANGE: TReal = 100.;
+        const MASS_RANGE: TReal = 1000.;
+        //const LOCATION_RANGE: [TReal; 3]= [500.; 3];
+        const LOCATION_RANGE: [TReal; 3] = [500., 50.0, 500.0];
+        for _ in (0..50).into_iter() {
+            //for _ in (0..1).into_iter() {
+            let size = rng.gen::<TReal>() * SIZE_RANGE;
+            let radius = size * 0.5;
+            let mass = rng.gen::<TReal>() * MASS_RANGE;
+            let pos = {
+                let pos: TVec3 = rng.gen::<[TReal; 3]>().into();
+                let pos = pos * TVec3::from(LOCATION_RANGE);
+                [
+                    pos.x * if rng.gen_bool(0.5) { 1. } else { -1. },
+                    pos.y * if rng.gen_bool(0.5) { 1. } else { -1. },
+                    pos.z * if rng.gen_bool(0.5) { 1. } else { -1. },
+                ]
+                .into()
+            };
+            let mut xform = Transform::from_translation(pos);
+            xform.rotate(Quat::from_rotation_ypr(
+                rng.gen::<TReal>() * 360.0,
+                rng.gen::<TReal>() * 360.0,
+                rng.gen::<TReal>() * 360.0,
+            ));
 
-        commands
-            .spawn()
-            .insert_bundle(PbrBundle {
-                mesh: meshes.add(Mesh::from(shape::Icosphere {
-                    radius,
+            commands
+                .spawn()
+                .insert_bundle(PbrBundle {
+                    mesh: meshes.add(Mesh::from(shape::Icosphere {
+                        radius,
+                        ..Default::default()
+                    })),
+                    transform: xform,
+                    material: materials.add(
+                        Color::rgba(
+                            rng.gen::<TReal>(),
+                            rng.gen::<TReal>(),
+                            rng.gen::<TReal>(),
+                            1.,
+                        )
+                        .into(),
+                    ),
                     ..Default::default()
-                })),
-                transform: xform,
-                material: materials.add(
-                    Color::rgba(
-                        rng.gen::<TReal>(),
-                        rng.gen::<TReal>(),
-                        rng.gen::<TReal>(),
-                        1.,
-                    )
-                    .into(),
-                ),
-                ..Default::default()
-            })
-            .insert_bundle(RigidBodyBundle {
-                activation: RigidBodyActivation::inactive(),
-                position: pos.into(),
-                ..Default::default()
-            })
-            .insert(RigidBodyPositionSync::Discrete)
-            .insert_bundle(ColliderBundle {
-                flags: ColliderFlags {
-                    collision_groups: *craft::attire::OBSTACLE_COLLIDER_IGROUP,
+                })
+                .insert_bundle(RigidBodyBundle {
+                    body_type: RigidBodyType::Static,
+                    activation: RigidBodyActivation::inactive(),
+                    position: pos.into(),
                     ..Default::default()
-                },
-                shape: ColliderShape::ball(radius),
-                mass_properties: ColliderMassProps::Density(
-                    mass / (4. * math::real::consts::PI * radius * radius),
-                ),
-                ..Default::default()
-            });
+                })
+                .insert(RigidBodyPositionSync::Discrete)
+                .insert_bundle(ColliderBundle {
+                    flags: ColliderFlags {
+                        collision_groups: *craft::attire::OBSTACLE_COLLIDER_IGROUP,
+                        ..Default::default()
+                    },
+                    shape: ColliderShape::ball(radius),
+                    mass_properties: ColliderMassProps::Density(
+                        mass / (4. * math::real::consts::PI * radius * radius),
+                    ),
+                    ..Default::default()
+                });
+        }
     }
+    // setup the test circuit
+    {
+        let material = materials.add(Color::PINK.into());
+        let mesh = meshes.add(Mesh::from(shape::Icosphere {
+            radius: 10.0,
+            ..Default::default()
+        }));
+        let points = [
+            [1000.0, 0., 1000.0 as TReal].into(),
+            //[-1000.0, 0., 1000.0].into(),
+            [-1000.0, 0., -1000.0].into(),
+            //[1000.0, 0., -1000.0].into(),
+        ];
+        for ii in 0..points.len() {
+            commands
+                .spawn()
+                .insert_bundle(PbrBundle {
+                    mesh: mesh.clone(),
+                    material: material.clone(),
+                    ..Default::default()
+                })
+                .insert_bundle(ColliderBundle {
+                    flags: ColliderFlags {
+                        ..Default::default()
+                    },
+                    collider_type: ColliderType::Sensor,
+                    shape: ColliderShape::ball(10.),
+                    position: (points[ii], TQuat::IDENTITY).into(),
+                    ..Default::default()
+                })
+                .insert(ColliderPositionSync::Discrete)
+                .insert(CircuitCheckpoint {
+                    next_point: points[(ii + 1) % points.len()],
+                });
+        }
+    }
+
     let ball_fighter_model = asset_server.load("models/ball_fighter.gltf#Scene0");
 
     // Spawn the craft
@@ -304,6 +347,7 @@ fn setup_world(
 
     commands.insert_resource(CurrentCraft(player_craft_id));
 
+    // spawn player weapon
     let wpn_id = commands
         .spawn()
         .insert(craft::arms::ProjectileWeapon {
@@ -397,12 +441,14 @@ fn setup_world(
                         ..craft::attire::AttireBundle::default_collider_bundle()
                     },
                 });
-            });
+            })
+            .insert(CircuitRunner);
     }
 }
 
 pub fn init_default_routines(
     mut commands: Commands,
+    checkpoints: Query<&ColliderPosition, With<CircuitCheckpoint>>,
     player: Res<CurrentCraft>,
     crafts: Query<
         Entity,
@@ -418,7 +464,9 @@ pub fn init_default_routines(
         // bail if there are no new crafts
         return;
     }
-    tracing::info!("setting up routines");
+
+    let checkpoint1_pos = checkpoints.iter().next().unwrap().translation.into();
+
     let group = commands
         .spawn_bundle((
             craft::mind::GroupMind {
@@ -440,14 +488,14 @@ pub fn init_default_routines(
                 ),
             )
             .id();
-        let active_routine = commands
-            .spawn_bundle(craft::mind::steering_systems::InterceptRoutineBundle::new(
-                craft::mind::steering_systems::Intercept {
-                    craft_entt: craft,
-                    quarry_rb: player.0.handle(),
-                },
-            ))
-            .id();
+        /*let active_routine = commands
+        .spawn_bundle(craft::mind::steering_systems::InterceptRoutineBundle::new(
+            craft::mind::steering_systems::Intercept {
+                craft_entt: craft,
+                quarry_rb: player.0.handle(),
+            },
+        ))
+        .id();*/
         /*let active_routine = commands
         .spawn_bundle(
             craft::mind::steering_systems::FlyWithFlockRoutineBundle::new(
@@ -455,14 +503,21 @@ pub fn init_default_routines(
             ),
         )
         .id();*/
+        let active_routine = commands
+            .spawn_bundle(craft::mind::steering_systems::SeekRoutineBundle::new(
+                craft::mind::steering_systems::Seek {
+                    craft_entt: craft,
+                    target: craft::mind::steering_systems::SeekTarget::Position {
+                        pos: checkpoint1_pos,
+                    },
+                },
+            ))
+            .id();
         commands
             .entity(craft)
             .insert(craft::mind::CraftGroup(group))
             .insert(craft::mind::ActiveRoutines::PriorityOverride {
-                routines: smallvec::smallvec![
-                    // avoid_collision,
-                    active_routine
-                ],
+                routines: smallvec::smallvec![avoid_collision, active_routine],
             });
     }
 }
@@ -609,7 +664,7 @@ fn craft_state_display(
             //ui.label(format!("angular pid: {:+03.1?}", ang_pid));
         });
 }
-fn tune_ai(
+fn tune_engin(
     egui_context: ResMut<EguiContext>,
     mut crafts: Query<(
         &Transform,
@@ -663,8 +718,8 @@ pub struct CameraMovementSettings {
     linear_speed: TReal,
     angular_speed: TReal,
     shift_multiplier: TReal,
-    linear_input: TIVec3,
-    angular_input: TIVec3,
+    linear_input: IVec3,
+    angular_input: IVec3,
     shift_on: bool,
 }
 
@@ -705,8 +760,8 @@ fn move_camera_system(
             }
         }
 
-        cam_settings.linear_input = linear_input.clamp(-TIVec3::ONE, TIVec3::ONE);
-        cam_settings.angular_input = angular_input.clamp(-TIVec3::ONE, TIVec3::ONE);
+        cam_settings.linear_input = linear_input.clamp(-IVec3::ONE, IVec3::ONE);
+        cam_settings.angular_input = angular_input.clamp(-IVec3::ONE, IVec3::ONE);
         cam_settings.shift_on = shift_on;
     }
 
@@ -728,5 +783,54 @@ fn move_camera_system(
         camera_xform.translation += cam_rotation * linear_vel;
         camera_xform.rotation *= rotator;
         // tracing::info!("resulting xform: {:?}", camera_xform);
+    }
+}
+
+pub struct CircuitRunner;
+
+pub struct CircuitCheckpoint {
+    next_point: TVec3,
+}
+
+fn drive_circuit(
+    checkpoints: Query<(Entity, &CircuitCheckpoint)>,
+    colliders: Query<&ColliderParent>,
+    crafts: Query<&craft::mind::ActiveRoutines, With<CircuitRunner>>,
+    mut seek_routines: Query<&mut craft::mind::steering_systems::Seek>,
+    narrow_phase: Res<NarrowPhase>,
+) {
+    for (checkpt_entt, checkpoint) in checkpoints.iter() {
+        // if our projectile is intersecting with anything
+        for (collider1, collider2) in narrow_phase
+            .intersections_with(checkpt_entt.handle())
+            .filter_map(|(c1, c2, ixing)| if ixing { Some((c1, c2)) } else { None })
+        {
+            let other = if collider1.entity() == checkpt_entt {
+                collider2
+            } else {
+                collider1
+            };
+            let other = other.entity();
+            match colliders
+                .get(other)
+                .map(|parent| crafts.get(parent.handle.entity()))
+            {
+                Ok(Ok(active_routine)) => match active_routine {
+                    craft::mind::ActiveRoutines::PriorityOverride { routines } => {
+                        if let Ok(mut seek_params) = seek_routines.get_mut(routines[1]) {
+                            tracing::trace!("craft arrived at checkpoint {:?}", seek_params);
+                            seek_params.target =
+                                craft::mind::steering_systems::SeekTarget::Position {
+                                    pos: checkpoint.next_point,
+                                }
+                        } else {
+                            tracing::error!("seek routine wasn't found at HARD CODED index");
+                        }
+                    }
+                    _ => tracing::error!("non priority override setup craft"),
+                },
+                _ => (),
+            }
+        }
     }
 }

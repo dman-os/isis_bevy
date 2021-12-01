@@ -30,6 +30,7 @@ impl Plugin for MindPlugin {
         .add_system(steering_systems::intercept.system())
         .add_system(steering_systems::fly_with_flock.system())
         .add_system(steering_systems::avoid_collision.system())
+        .add_system(steering_systems::seek.system())
         .add_system(update_flocks.system());
     }
 }
@@ -74,7 +75,8 @@ impl ActiveRoutineResult {
     #[inline]
     pub fn is_zero(&self) -> bool {
         // TODO: benchmark this vs. `TVec3.max_element() < TReal::EPSILON`
-        self.lin.length_squared() < TReal::EPSILON && self.ang.length_squared() < TReal::EPSILON
+        // self.lin.length_squared() < TReal::EPSILON && self.ang.length_squared() < TReal::EPSILON
+        self.lin.max_element() < TReal::EPSILON && self.ang.max_element() < TReal::EPSILON
     }
 }
 
@@ -206,15 +208,28 @@ pub fn craft_mind_smarts(
                 }
                 *active_res = sum;
             }
+            // FIXME: CLEAN ME UP
             ActiveRoutines::PriorityOverride { routines: priority } => {
                 // zero it out first
                 *active_res = ActiveRoutineResult::default();
-                for entt in priority {
+                'priority_loop: for entt in priority {
                     if let Ok((lin_res, ang_res)) = routines.get(*entt) {
-                        if !active_res.is_zero() {
-                            break;
+                        let is_zero = match (lin_res, ang_res) {
+                            (Some(lin_res), Some(ang_res)) => {
+                                lin_res.0.length_squared() < TReal::EPSILON
+                                    && ang_res.0.length_squared() < TReal::EPSILON
+                            }
+                            (Some(lin_res), None) => lin_res.0.length_squared() < TReal::EPSILON,
+                            (None, Some(ang_res)) => ang_res.0.length_squared() < TReal::EPSILON,
+                            (None, None) => {
+                                tracing::error!("result less routine");
+                                true
+                            }
+                        };
+                        if !is_zero {
+                            *active_res = ActiveRoutines::get_active_res(xform, lin_res, ang_res);
+                            break 'priority_loop;
                         }
-                        *active_res = ActiveRoutines::get_active_res(xform, lin_res, ang_res);
                     } else {
                         tracing::error!("routine not found for ActiveRoutines::WeightSummed");
                         *active_res = ActiveRoutineResult::default();
@@ -292,22 +307,21 @@ pub mod steering_systems {
 
     pub struct SteeringRoutine;
 
-    #[derive(Debug, Clone)]
-    pub struct AvoidCollision {
-        pub craft_entt: Entity,
-        pub fwd_prediction_secs: f32,
-        pub raycast_exclusion: smallvec::SmallVec<[ColliderHandle; 4]>,
-    }
-
     #[derive(Bundle)]
-    pub struct AvoidCollisionRoutineBundle {
-        pub param: AvoidCollision,
+    pub struct LinOnlyRoutineBundle<P>
+    where
+        P: Send + Sync + 'static,
+    {
+        pub param: P,
         pub output: LinearRoutineResult,
         pub mark: SteeringRoutine,
     }
 
-    impl AvoidCollisionRoutineBundle {
-        pub fn new(param: AvoidCollision) -> Self {
+    impl<P> LinOnlyRoutineBundle<P>
+    where
+        P: Send + Sync + 'static,
+    {
+        pub fn new(param: P) -> Self {
             Self {
                 param,
                 output: Default::default(),
@@ -316,6 +330,40 @@ pub mod steering_systems {
         }
     }
 
+    #[derive(Bundle)]
+    pub struct LinAngRoutineBundle<P>
+    where
+        P: Send + Sync + 'static,
+    {
+        pub param: P,
+        pub lin_res: LinearRoutineResult,
+        pub ang_res: AngularRoutineResult,
+        pub mark: SteeringRoutine,
+    }
+
+    impl<P> LinAngRoutineBundle<P>
+    where
+        P: Send + Sync + 'static,
+    {
+        pub fn new(param: P) -> Self {
+            Self {
+                param,
+                lin_res: LinearRoutineResult::default(),
+                ang_res: AngularRoutineResult::default(),
+                mark: SteeringRoutine,
+            }
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct AvoidCollision {
+        pub craft_entt: Entity,
+        pub fwd_prediction_secs: f32,
+        pub raycast_exclusion: smallvec::SmallVec<[ColliderHandle; 4]>,
+    }
+
+    pub type AvoidCollisionRoutineBundle = LinOnlyRoutineBundle<AvoidCollision>;
+
     pub fn avoid_collision(
         mut routines: Query<(Entity, &AvoidCollision, &mut LinearRoutineResult)>,
         crafts: Query<(
@@ -323,18 +371,26 @@ pub mod steering_systems {
             &EngineConfig,
             &RigidBodyVelocity,
             &RigidBodyColliders,
+            &crate::craft::engine::LinearEngineState,
         )>,
         query_pipeline: Res<QueryPipeline>,
         collider_query: QueryPipelineColliderComponentsQuery,
     ) {
+        let mut raycast_ctr = 0;
         // Wrap the bevy query so it can be used by the query pipeline.
         let collider_set = QueryPipelineColliderComponentsSet(&collider_query);
-        for (_, avoid_coll, result) in routines.iter_mut() {
-            if let Ok((xform, config, vel, craft_colliders)) = crafts.get(avoid_coll.craft_entt) {
+        for (_, avoid_coll, mut result) in routines.iter_mut() {
+            *result = LinearRoutineResult::default();
+            if let Ok((xform, config, vel, craft_colliders, lin_state)) =
+                crafts.get(avoid_coll.craft_entt)
+            {
                 // check for collision
-                let vel = vel.linvel;
+                //let dir = vel.linvel;
+                let dir = xform.rotation * lin_state.input;
+                let toi = avoid_coll.fwd_prediction_secs * dir.length();
+                // adjust for the dimensions of the craft
                 let widest_dim = config.extents.max_element();
-                let toi = avoid_coll.fwd_prediction_secs * (vel.magnitude() + widest_dim);
+                let toi = toi + widest_dim;
                 tracing::trace!(
                     "vel: {:?}, widest_dim: {:?}, toi: {:?}, craft_colliders: {:?}",
                     vel,
@@ -342,10 +398,11 @@ pub mod steering_systems {
                     toi,
                     craft_colliders.0
                 );
+                raycast_ctr += 1;
                 if let Some((handle, hit)) = query_pipeline.cast_shape(
                     &collider_set,
                     &(xform.translation, xform.rotation).into(),
-                    &vel,
+                    &dir.into(),
                     &Ball::new(0.5 * widest_dim),
                     toi,
                     InteractionGroups::new(
@@ -359,12 +416,44 @@ pub mod steering_systems {
                             && !avoid_coll.raycast_exclusion[..].contains(&handle)
                     }),
                 ) {
-                    tracing::info!("collision predicted with {:?}", handle);
+                    tracing::trace!(
+                        "collision predicted with {:?} {:?} seconds away",
+                        handle,
+                        hit.toi
+                    );
+                    *result = LinearRoutineResult(steering_behaviours::avoid_obstacle_seblague(
+                        dir.into(),
+                        &mut |dir| {
+                            raycast_ctr += 1;
+                            query_pipeline
+                                .cast_shape(
+                                    &collider_set,
+                                    &(xform.translation, xform.rotation).into(),
+                                    &dir.into(),
+                                    &Ball::new(0.5 * widest_dim),
+                                    toi,
+                                    InteractionGroups::new(
+                                        ColliderGroups::SOLID.bits(),
+                                        ColliderGroups::SOLID.bits(),
+                                    ),
+                                    Some(&|handle| {
+                                        // not a craft collider
+                                        !craft_colliders.0[..].contains(&handle)
+                            // not in the exclusion list
+                            && !avoid_coll.raycast_exclusion[..].contains(&handle)
+                                    }),
+                                )
+                                .is_some()
+                        },
+                        &xform,
+                    ));
                 }
             } else {
                 tracing::error!("craft_entt of AvoidCollision routine not found");
             }
+            //*result = LinearRoutineResult(TVec3::ONE * 100.0);
         }
+        tracing::info!(raycast_ctr);
     }
 
     #[derive(Debug, Clone, Copy)]
@@ -372,23 +461,7 @@ pub mod steering_systems {
         pub craft_entt: Entity,
         pub quarry_rb: RigidBodyHandle,
     }
-
-    #[derive(Bundle)]
-    pub struct InterceptRoutineBundle {
-        pub param: Intercept,
-        pub output: LinearRoutineResult,
-        pub mark: SteeringRoutine,
-    }
-
-    impl InterceptRoutineBundle {
-        pub fn new(param: Intercept) -> Self {
-            Self {
-                param,
-                output: LinearRoutineResult::default(),
-                mark: SteeringRoutine,
-            }
-        }
-    }
+    pub type InterceptRoutineBundle = LinOnlyRoutineBundle<Intercept>;
 
     pub fn intercept(
         mut routines: Query<(Entity, &Intercept, &mut LinearRoutineResult)>,
@@ -405,7 +478,7 @@ pub mod steering_systems {
                 }
                 err => {
                     tracing::error!(
-                        "invalid params for intercept routine {:?}: {:?}",
+                        "unable to find craft_entt for Intercept routine {:?}: {:?}",
                         routine_id,
                         err
                     );
@@ -466,24 +539,7 @@ pub mod steering_systems {
         pub craft_entt: Entity,
     }
 
-    #[derive(Bundle)]
-    pub struct FlyWithFlockRoutineBundle {
-        pub param: FlyWithFlock,
-        pub lin_res: LinearRoutineResult,
-        pub ang_res: AngularRoutineResult,
-        pub mark: SteeringRoutine,
-    }
-
-    impl FlyWithFlockRoutineBundle {
-        pub fn new(param: FlyWithFlock) -> Self {
-            Self {
-                param,
-                lin_res: LinearRoutineResult::default(),
-                ang_res: AngularRoutineResult::default(),
-                mark: SteeringRoutine,
-            }
-        }
-    }
+    pub type FlyWithFlockRoutineBundle = LinAngRoutineBundle<FlyWithFlock>;
 
     pub fn fly_with_flock(
         mut routines: Query<(
@@ -521,13 +577,67 @@ pub mod steering_systems {
                     tracing::error!("unable to find craft_group for fly_with_flock routine");
                 }
             } else {
-                tracing::error!("invalid params for fly_with_flock routine {:?}", routine_id,);
+                tracing::error!(
+                    "unable to find craft_entt for FlyWithFlock routine {:?}",
+                    routine_id,
+                );
+            }
+        }
+    }
+    #[derive(Debug, Clone, Copy)]
+    pub enum SeekTarget {
+        /// must have a global xform
+        Object { entt: Entity },
+        /// must be global position
+        Position { pos: TVec3 },
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    pub struct Seek {
+        pub craft_entt: Entity,
+        pub target: SeekTarget,
+    }
+
+    pub type SeekRoutineBundle = LinOnlyRoutineBundle<Seek>;
+
+    pub fn seek(
+        mut routines: Query<(Entity, &Seek, &mut LinearRoutineResult)>,
+        objects: Query<&GlobalTransform>,
+    ) {
+        for (routine_id, params, mut output) in routines.iter_mut() {
+            if let Ok(xform) = objects.get(params.craft_entt) {
+                match params.target {
+                    SeekTarget::Object { entt } => match objects.get(entt) {
+                        Ok(obj_xform) => {
+                            *output = LinearRoutineResult(steering_behaviours::seek_position(
+                                xform.translation,
+                                obj_xform.translation,
+                            ))
+                        }
+                        Err(err) => {
+                            tracing::error!("error getting SeekTarget Object g_xform: {:?}", err);
+                        }
+                    },
+                    SeekTarget::Position { pos } => {
+                        *output = LinearRoutineResult(steering_behaviours::seek_position(
+                            xform.translation,
+                            pos,
+                        ))
+                    }
+                }
+            } else {
+                tracing::error!(
+                    "unable to find craft_entt for Seek routine {:?}",
+                    routine_id
+                );
             }
         }
     }
 
     pub mod steering_behaviours {
         use crate::math::*;
+        use bevy::prelude::*;
+        use deps::*;
 
         #[inline]
         pub fn seek_position(current_pos: TVec3, target_pos: TVec3) -> TVec3 {
@@ -615,6 +725,48 @@ pub mod steering_systems {
                 // steering /= flock_positions.len() as TReal;
             }
             steering
+        }
+        use once_cell::sync::Lazy;
+
+        /// Based on Craig Reynold's OpenSteer
+        #[inline]
+        pub fn avoid_obstacle_seblague(
+            cast_root: TVec3,
+            is_dir_obstructed: &mut dyn FnMut(TVec3) -> bool,
+            xform: &GlobalTransform,
+        ) -> TVec3 {
+            const RAY_COUNT: usize = 30;
+            const RAY_DIRECTIONS: Lazy<[TVec3; RAY_COUNT]> = Lazy::new(|| {
+                let mut directions = [TVec3::ZERO; RAY_COUNT];
+                let golden_ratio = (1.0 + (5.0 as TReal).sqrt()) * 0.5;
+                let angle_increment = real::consts::TAU * golden_ratio;
+                for ii in 0..RAY_COUNT {
+                    let t = (ii / RAY_COUNT) as TReal;
+                    let inclination = (1.0 - (2.0 * t)).acos();
+                    let azimuth = angle_increment * (ii as TReal);
+                    directions[ii] = TVec3::new(
+                        inclination.sin() * azimuth.cos(),
+                        inclination.sin() * azimuth.sin(),
+                        inclination.cos(),
+                    )
+                    .normalize();
+                }
+                directions
+            });
+            let current_pos = xform.translation;
+
+            // since we'll be testing from the castRoot vector outwards (not the forward vector)
+            // we can't use the object's transform
+            let transformer =
+                Transform::from_translation(current_pos).looking_at(cast_root, xform.local_y());
+
+            for ii in 0..RAY_COUNT {
+                let dir = transformer.mul_vec3(RAY_DIRECTIONS[ii]);
+                if !is_dir_obstructed(dir) {
+                    return dir;
+                }
+            }
+            TVec3::ZERO
         }
     }
 }

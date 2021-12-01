@@ -8,7 +8,6 @@ pub mod real {
 
 pub type TReal = f32;
 pub type TVec3 = Vec3;
-pub type TIVec3 = IVec3;
 pub type TQuat = Quat;
 
 use real::consts::{PI, TAU};

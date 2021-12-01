@@ -351,7 +351,7 @@ pub(super) fn handle_collision_damage_events(
 
         // if there was a rigidbody involved in the contact
         if let Some(rb_handle) = manifold.data.rigid_body1 {
-            // if it's collision enabled
+            // if it's __better collision__ enabled
             if let Ok(set) = crafts.get(rb_handle.entity()) {
                 inner(
                     true,
@@ -398,8 +398,6 @@ pub(super) fn handle_collision_damage_events(
         contact: &TrackedContact<ContactData>,
         damage: Damage,
     ) {
-        // FIXME: this bugs out in instances where none of the
-        // attires include the deepest point
         let point = {
             let point = if is_entt_1 {
                 contact.local_p1
@@ -502,7 +500,7 @@ fn log_damage_events(
     mut proj_dmg_events: EventReader<ProjectileDamageEvent>,
 ) {
     for event in coll_dmg_events.iter() {
-        tracing::trace!("Collision {:?} | Craft: {:?}", event.damage, event.rb_entt);
+        tracing::info!("Collision {:?} | Craft: {:?}", event.damage, event.rb_entt);
     }
     for event in proj_dmg_events.iter() {
         tracing::trace!(
