@@ -1,11 +1,12 @@
 use deps::*;
 
+use bevy::ecs as bevy_ecs;
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
 use crate::math::*;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Component)]
 pub struct LinearEngineState {
     /// Linear velocity in local-space
     /// In m/s.
@@ -20,7 +21,7 @@ pub struct LinearEngineState {
     pub flame: TVec3,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Component)]
 pub struct AngularEngineState {
     /// Angular velocity in local-space
     /// In rad/s.
@@ -33,7 +34,7 @@ pub struct AngularEngineState {
 }
 
 // TODO: break this up to multiple components
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Component)]
 #[serde(crate = "serde")]
 pub struct EngineConfig {
     ///  Speed to travel at when there is no input i.e. how fast to travel when idle.
@@ -149,9 +150,9 @@ impl EngineConfig {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Component)]
 pub struct LinearDriverPid(pub crate::utils::PIDControllerVec3);
-#[derive(Debug)]
+#[derive(Debug, Component)]
 pub struct AngularDriverPid(pub crate::utils::PIDControllerVec3);
 
 pub fn sync_craft_state_velocities(
@@ -159,7 +160,7 @@ pub fn sync_craft_state_velocities(
         &mut AngularEngineState,
         &mut LinearEngineState,
         &GlobalTransform,
-        &RigidBodyVelocity,
+        &RigidBodyVelocityComponent,
     )>,
 ) {
     for (mut angular_state, mut linear_state, g_xform, rb_velocity) in crafts.iter_mut() {
@@ -228,7 +229,7 @@ pub fn angular_pid_driver(
         &mut AngularEngineState,
         &EngineConfig,
         &mut AngularDriverPid,
-        &RigidBodyMassProps,
+        &RigidBodyMassPropsComponent,
     )>,
     //time: Time,
 ) {
@@ -281,8 +282,8 @@ pub fn apply_flames_simple_accel(
         &LinearEngineState,
         &AngularEngineState,
         &EngineConfig,
-        &RigidBodyMassProps,
-        &mut RigidBodyForces,
+        &RigidBodyMassPropsComponent,
+        &mut RigidBodyForcesComponent,
     )>,
     //time: Time,
 ) {

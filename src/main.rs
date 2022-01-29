@@ -8,6 +8,7 @@ use deps::*;
 use anyhow::Result;
 use bevy::{
     diagnostic::*,
+    ecs as bevy_ecs,
     input::{keyboard::KeyboardInput, ElementState},
     prelude::*,
     render::camera::Camera,
@@ -28,22 +29,46 @@ fn main() -> Result<()> {
     #[cfg(feature = "dylink")]
     println!("WARNING: dylink enabled");
 
-    let mut app = App::build();
+    let mut inspect_registry = bevy_inspector_egui::InspectableRegistry::default();
+    inspect_registry.register_raw::<RigidBodyPositionComponent, _>(|cmp, ui, _ctx| {
+        ui.label(format!("{:#?}", cmp.0));
+        false
+    });
+    inspect_registry.register_raw::<RigidBodyTypeComponent, _>(|cmp, ui, _ctx| {
+        ui.label(format!("{:#?}", cmp.0));
+        false
+    });
+    inspect_registry.register_raw::<ColliderPositionComponent, _>(|cmp, ui, _ctx| {
+        ui.label(format!("{:#?}", cmp.0));
+        false
+    });
+    inspect_registry.register_raw::<ColliderTypeComponent, _>(|cmp, ui, _ctx| {
+        ui.label(format!("{:#?}", cmp.0));
+        false
+    });
+    let mut app = App::new();
     app.add_plugins(DefaultPlugins)
         .insert_resource(WindowDescriptor {
             title: "ISIS".to_string(),
             ..Default::default()
         })
         .add_plugin(EguiPlugin)
+        .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
+        .insert_resource(RapierConfiguration {
+            gravity: [0.0, 0.0, 0.0].into(),
+            ..Default::default()
+        })
         .add_plugin(RapierRenderPlugin)
         .add_plugin(DiagnosticsPlugin)
         // .add_plugin(LogDiagnosticsPlugin::default())
         .add_plugin(EntityCountDiagnosticsPlugin)
         .add_plugin(FrameTimeDiagnosticsPlugin)
-        .add_plugin(GamePlugin)
-        //.add_plugin(bevy_prototype_debug_lines::DebugLinesPlugin)
-        .add_plugin(bevy_inspector_egui::WorldInspectorPlugin::new());
-    //.insert_resource(bevy::ecs::schedule::ReportExecutionOrderAmbiguities);
+        .add_plugin(bevy_inspector_egui::WorldInspectorPlugin::new())
+        .insert_resource(inspect_registry)
+        .add_plugin(bevy_polyline::PolylinePlugin)
+        // .add_plugin(bevy_prototype_debug_lines::DebugLinesPlugin)
+        //.insert_resource(bevy::ecs::schedule::ReportExecutionOrderAmbiguities);
+        .add_plugin(GamePlugin);
     //println!(
     //"{}",
     //bevy_mod_debugdump::schedule_graph::schedule_graph_dot(&app.app.schedule)
@@ -56,34 +81,32 @@ fn main() -> Result<()> {
 pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
-    fn build(&self, app: &mut AppBuilder) {
-        app.add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
-            .add_plugin(craft::CraftsPlugin)
-            .insert_resource(RapierConfiguration {
-                gravity: [0.0, 0.0, 0.0].into(),
-                ..Default::default()
-            })
-            .add_startup_system(setup_fps_display.system())
-            .add_system(text_update_system.system())
+    fn build(&self, app: &mut App) {
+        app.add_plugin(craft::CraftsPlugin)
+            .add_startup_system(setup_fps_display)
+            .add_system(text_update_system)
+            .add_system(move_camera_system)
             .insert_resource(CameraMovementSettings {
                 angular_speed: std::f32::consts::PI / 2.,
                 linear_speed: 20.0,
                 shift_multiplier: 4.0,
                 ..Default::default()
             })
-            .add_startup_system(setup_environment.system())
-            .add_startup_system(setup_world.system())
-            .add_system(craft_state_display.system())
-            .add_system(move_camera_system.system())
-            //.add_system(tune_ai.system())
-            .add_system(init_default_routines.system())
-            .add_system(craft_input.system())
-            .add_system(drive_circuit.system())
+            .add_startup_system(setup_environment)
+            .add_startup_system(setup_world)
+            .add_system(craft_state_display)
+            .add_system(init_default_routines)
+            .add_system(engine_input)
+            .add_system(wpn_input)
+            .add_system(drive_circuit)
+            //.add_system(tune_ai)
+            // .add_startup_system(my_system)
             .insert_resource(ClearColor(Color::BLACK));
     }
 }
 
 // A unit struct to help identify the FPS UI component, since there may be many Text components
+#[derive(Component)]
 struct FpsText;
 
 fn setup_fps_display(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -142,13 +165,13 @@ fn setup_environment(
 ) {
     // light
     commands
-        .spawn_bundle(LightBundle {
+        .spawn_bundle(DirectionalLightBundle {
             // transform: Transform::from_xyz(4.0, 8.0, 4.0),
             transform: Transform::from_translation(TVec3::Z * -10_000.0)
                 .looking_at(TVec3::ZERO, TVec3::Y),
-            light: Light {
-                range: 2_000_000.,
-                intensity: 50_000. * 10_000.,
+            directional_light: DirectionalLight {
+                illuminance: 100_000.,
+                shadows_enabled: true,
                 ..Default::default()
             },
             ..Default::default()
@@ -173,15 +196,61 @@ fn setup_environment(
             });
         });
 
-    /*// camera
+    /*
+    // camera
     commands
         .spawn_bundle(PerspectiveCameraBundle {
-            transform: Transform::from_xyz(-20.0, 25., 20.0).looking_at(Vector3::ZERO, Vector3::Y),
+            transform: Transform::from_xyz(-20.0, 25., 20.0).looking_at(TVec3::ZERO, TVec3::Y),
+            perspective_projection: PerspectiveProjection{
+                far: 10_000.,
+                ..Default::default()
+            },
             ..Default::default()
         })
-        .insert(GameCamera);*/
+        .insert(GameCamera);
+    */
+}
+fn my_system(
+    mut commands: Commands,
+    mut polylines: ResMut<Assets<bevy_polyline::Polyline>>,
+    mut polyline_materials: ResMut<Assets<bevy_polyline::PolylineMaterial>>,
+) {
+    const RAY_COUNT: usize = 100;
+    let RAY_DIRECTIONS = {
+        let mut directions = [TVec3::ZERO; RAY_COUNT];
+        let golden_ratio = (1.0 + (5.0 as TReal).sqrt()) * 0.5;
+        let angle_increment = real::consts::TAU * golden_ratio;
+        for ii in 0..RAY_COUNT {
+            let t = ii as TReal / RAY_COUNT as TReal;
+            let inclination = (1.0 - (2.0 * t)).acos();
+            let azimuth = angle_increment * (ii as TReal);
+            directions[ii] = TVec3::new(
+                inclination.sin() * azimuth.cos(),
+                inclination.sin() * azimuth.sin(),
+                inclination.cos(),
+            )
+            .normalize();
+        }
+        directions
+    };
+    for ray in RAY_DIRECTIONS {
+        commands.spawn_bundle(bevy_polyline::PolylineBundle {
+            polyline: polylines.add(bevy_polyline::Polyline {
+                vertices: vec![TVec3::ZERO, ray],
+                ..Default::default()
+            }),
+            material: polyline_materials.add(bevy_polyline::PolylineMaterial {
+                width: 3.0,
+                color: Color::RED,
+                perspective: false,
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+    }
 }
 
+#[derive(Component)]
 pub struct CraftCamera;
 
 pub struct CurrentCraft(pub Entity);
@@ -193,14 +262,15 @@ fn setup_world(
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
 ) {
+    let mut rng = rand::thread_rng();
+
     // setup the floating spheres
     {
-        let mut rng = rand::thread_rng();
         const SIZE_RANGE: TReal = 100.;
         const MASS_RANGE: TReal = 1000.;
         //const LOCATION_RANGE: [TReal; 3]= [500.; 3];
-        const LOCATION_RANGE: [TReal; 3] = [500., 50.0, 500.0];
-        for _ in (0..50).into_iter() {
+        const LOCATION_RANGE: [TReal; 3] = [500., 100.0, 500.0];
+        for _i in (0..100).into_iter() {
             //for _ in (0..1).into_iter() {
             let size = rng.gen::<TReal>() * SIZE_RANGE;
             let radius = size * 0.5;
@@ -216,7 +286,8 @@ fn setup_world(
                 .into()
             };
             let mut xform = Transform::from_translation(pos);
-            xform.rotate(Quat::from_rotation_ypr(
+            xform.rotate(TQuat::from_euler(
+                EulerRot::YXZ,
                 rng.gen::<TReal>() * 360.0,
                 rng.gen::<TReal>() * 360.0,
                 rng.gen::<TReal>() * 360.0,
@@ -241,26 +312,90 @@ fn setup_world(
                     ),
                     ..Default::default()
                 })
+                /*
                 .insert_bundle(RigidBodyBundle {
-                    body_type: RigidBodyType::Static,
-                    activation: RigidBodyActivation::inactive(),
-                    position: pos.into(),
+                    body_type: RigidBodyType::Dynamic.into(),
+                    activation: RigidBodyActivation::inactive().into(),
+                    position: RigidBodyPositionComponent(pos.into()),
                     ..Default::default()
                 })
                 .insert(RigidBodyPositionSync::Discrete)
+                // */
+                .insert(ColliderPositionSync::Discrete)
                 .insert_bundle(ColliderBundle {
+                    material: ColliderMaterial {
+                        ..Default::default()
+                    }
+                    .into(),
+                    position: ColliderPositionComponent(pos.into()),
                     flags: ColliderFlags {
                         collision_groups: *craft::attire::OBSTACLE_COLLIDER_IGROUP,
                         ..Default::default()
-                    },
-                    shape: ColliderShape::ball(radius),
+                    }
+                    .into(),
+                    shape: ColliderShape::ball(radius).into(),
                     mass_properties: ColliderMassProps::Density(
                         mass / (4. * math::real::consts::PI * radius * radius),
-                    ),
+                    )
+                    .into(),
                     ..Default::default()
                 });
         }
     }
+    /*
+        let radius = 100.;
+        let pos = TVec3::new(500., 0., 500.);
+        let xform = Transform::from_translation(pos);
+        let mass = 10_000.;
+        commands
+            .spawn()
+            .insert_bundle(PbrBundle {
+                mesh: meshes.add(Mesh::from(shape::Icosphere {
+                    radius,
+                    ..Default::default()
+                })),
+                transform: xform,
+                material: materials.add(
+                    Color::rgba(
+                        rng.gen::<TReal>(),
+                        rng.gen::<TReal>(),
+                        rng.gen::<TReal>(),
+                        1.,
+                    )
+                    .into(),
+                ),
+                ..Default::default()
+            })
+            /*
+            .insert_bundle(RigidBodyBundle {
+                body_type: RigidBodyType::Dynamic.into(),
+                activation: RigidBodyActivation::inactive().into(),
+                position: RigidBodyPositionComponent(pos.into()),
+                ..Default::default()
+            })
+            .insert(RigidBodyPositionSync::Discrete)
+            // */
+            .insert(ColliderPositionSync::Discrete)
+            .insert_bundle(ColliderBundle {
+                material: ColliderMaterial {
+                    ..Default::default()
+                }
+                .into(),
+                position: ColliderPositionComponent(pos.into()),
+                flags: ColliderFlags {
+                    collision_groups: *craft::attire::OBSTACLE_COLLIDER_IGROUP,
+                    ..Default::default()
+                }
+                .into(),
+                shape: ColliderShape::ball(radius).into(),
+                mass_properties: ColliderMassProps::Density(
+                    mass / (4. * math::real::consts::PI * radius * radius),
+                )
+                .into(),
+                ..Default::default()
+            });
+    */
+
     // setup the test circuit
     {
         let material = materials.add(Color::PINK.into());
@@ -284,10 +419,12 @@ fn setup_world(
                 })
                 .insert_bundle(ColliderBundle {
                     flags: ColliderFlags {
+                        collision_groups: *craft::attire::SENSOR_COLLIDER_IGROUP,
                         ..Default::default()
-                    },
-                    collider_type: ColliderType::Sensor,
-                    shape: ColliderShape::ball(10.),
+                    }
+                    .into(),
+                    collider_type: ColliderType::Sensor.into(),
+                    shape: ColliderShape::ball(10.).into(),
                     position: (points[ii], TQuat::IDENTITY).into(),
                     ..Default::default()
                 })
@@ -305,10 +442,11 @@ fn setup_world(
         .spawn_bundle(craft::CraftBundle {
             collider: craft::attire::CollisionDamageEnabledColliderBundle {
                 collider: ColliderBundle {
-                    shape: ColliderShape::ball(4.),
+                    shape: ColliderShape::ball(4.).into(),
                     mass_properties: ColliderMassProps::Density(
                         15_000. / (4. * math::real::consts::PI * 4. * 4.),
-                    ),
+                    )
+                    .into(),
                     ..craft::attire::CollisionDamageEnabledColliderBundle::default_collider_bundle()
                 },
                 ..Default::default()
@@ -331,7 +469,7 @@ fn setup_world(
                     ..Default::default()
                 },
                 collider: ColliderBundle {
-                    shape: ColliderShape::ball(4.),
+                    shape: ColliderShape::ball(4.).into(),
                     ..craft::attire::AttireBundle::default_collider_bundle()
                 },
             });
@@ -394,13 +532,13 @@ fn setup_world(
         .id();
     commands.insert_resource(CurrentWeapon(wpn_id));
 
-    //for ii in -7..=7 {
-    for ii in 0..1 {
+    for ii in -7..=7 {
+        // for ii in 0..1 {
         commands
             .spawn()
             .insert_bundle(craft::CraftBundle {
                 config: craft::engine::EngineConfig {
-                    // linear_thruster_force: [0.; 3].into(),
+                    // linear_thruster_force: [3.; 3].into(),
                     ..Default::default()
                 },
                 rigid_body: RigidBodyBundle {
@@ -409,10 +547,10 @@ fn setup_world(
                 },
                 collider: craft::attire::CollisionDamageEnabledColliderBundle {
                     collider: ColliderBundle {
-                    shape: ColliderShape::ball(4.),
+                    shape: ColliderShape::ball(4.).into(),
                     mass_properties: ColliderMassProps::Density(
                     15_000. / (4. * math::real::consts::PI * 4. * 4.),
-                    ),
+                    ).into(),
                     ..craft::attire::CollisionDamageEnabledColliderBundle::default_collider_bundle()
                     },
                     ..Default::default()
@@ -437,7 +575,7 @@ fn setup_world(
                         ..Default::default()
                     },
                     collider: ColliderBundle {
-                        shape: ColliderShape::ball(4.),
+                        shape: ColliderShape::ball(4.).into(),
                         ..craft::attire::AttireBundle::default_collider_bundle()
                     },
                 });
@@ -448,8 +586,8 @@ fn setup_world(
 
 pub fn init_default_routines(
     mut commands: Commands,
-    checkpoints: Query<&ColliderPosition, With<CircuitCheckpoint>>,
-    player: Res<CurrentCraft>,
+    checkpoints: Query<&ColliderPositionComponent, With<CircuitCheckpoint>>,
+    _player: Res<CurrentCraft>,
     crafts: Query<
         Entity,
         (
@@ -484,6 +622,9 @@ pub fn init_default_routines(
                         craft_entt: craft,
                         fwd_prediction_secs: 5.0,
                         raycast_exclusion: Default::default(),
+                        last_dodge_direction: Default::default(),
+                        last_dodge_timestamp: 0.,
+                        upheld_dodge_seconds: 1.0,
                     },
                 ),
             )
@@ -518,20 +659,31 @@ pub fn init_default_routines(
             .insert(craft::mind::CraftGroup(group))
             .insert(craft::mind::ActiveRoutines::PriorityOverride {
                 routines: smallvec::smallvec![avoid_collision, active_routine],
-            });
+            })
+            .push_children(&[avoid_collision, active_routine]);
     }
 }
 
-fn craft_input(
+fn wpn_input(
+    k_input: Res<Input<KeyCode>>,
+    cur_wpn: Res<CurrentWeapon>,
+    mut activate_wpn_events: EventWriter<craft::arms::ActivateWeaponEvent>,
+) {
+    if k_input.pressed(KeyCode::Space) {
+        activate_wpn_events.send(craft::arms::ActivateWeaponEvent {
+            weapon_id: cur_wpn.0,
+        });
+    }
+}
+
+fn engine_input(
     k_input: Res<Input<KeyCode>>,
     cur_craft: Res<CurrentCraft>,
-    cur_wpn: Res<CurrentWeapon>,
     mut crafts: Query<(
         &mut craft::engine::LinearEngineState,
         &mut craft::engine::AngularEngineState,
         &craft::engine::EngineConfig,
     )>,
-    mut activate_wpn_events: EventWriter<craft::arms::ActivateWeaponEvent>,
 ) {
     let mut linear_input = TVec3::ZERO;
     let mut angular_input = TVec3::ZERO;
@@ -587,12 +739,6 @@ fn craft_input(
     ang_state.input = angular_input;
     //ang_state.input.z *= -1.0;
     ang_state.input *= craft_config.angular_v_limit;
-
-    if k_input.pressed(KeyCode::Space) {
-        activate_wpn_events.send(craft::arms::ActivateWeaponEvent {
-            weapon_id: cur_wpn.0,
-        });
-    }
 }
 
 fn craft_state_display(
@@ -710,7 +856,7 @@ fn tune_engin(
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Component)]
 pub struct GameCamera;
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -772,12 +918,12 @@ fn move_camera_system(
     }
 
     let delta_t = time.delta_seconds_f64() as TReal;
-    let linear_vel = cam_settings.linear_input.as_f32() * (linear_speed * delta_t);
-    let angular_vel = cam_settings.angular_input.as_f32() * (cam_settings.angular_speed * delta_t);
+    let linear_vel = cam_settings.linear_input.as_vec3() * (linear_speed * delta_t);
+    let angular_vel = cam_settings.angular_input.as_vec3() * (cam_settings.angular_speed * delta_t);
 
     // tracing::info!("linear_vel: {}, angular_vel: {}", linear_vel, angular_vel);
 
-    let rotator = Quat::from_rotation_ypr(angular_vel.y, angular_vel.x, angular_vel.z);
+    let rotator = Quat::from_euler(EulerRot::YXZ, angular_vel.y, angular_vel.x, angular_vel.z);
     for mut camera_xform in cameras.iter_mut() {
         let cam_rotation = camera_xform.rotation;
         camera_xform.translation += cam_rotation * linear_vel;
@@ -786,15 +932,17 @@ fn move_camera_system(
     }
 }
 
+#[derive(Component)]
 pub struct CircuitRunner;
 
+#[derive(Component)]
 pub struct CircuitCheckpoint {
     next_point: TVec3,
 }
 
 fn drive_circuit(
     checkpoints: Query<(Entity, &CircuitCheckpoint)>,
-    colliders: Query<&ColliderParent>,
+    colliders: Query<&ColliderParentComponent>,
     crafts: Query<&craft::mind::ActiveRoutines, With<CircuitRunner>>,
     mut seek_routines: Query<&mut craft::mind::steering_systems::Seek>,
     narrow_phase: Res<NarrowPhase>,
@@ -803,7 +951,8 @@ fn drive_circuit(
         // if our projectile is intersecting with anything
         for (collider1, collider2) in narrow_phase
             .intersections_with(checkpt_entt.handle())
-            .filter_map(|(c1, c2, ixing)| if ixing { Some((c1, c2)) } else { None })
+            .filter(|(_, _, ixing)| *ixing)
+            .map(|(c1, c2, _)| (c1, c2))
         {
             let other = if collider1.entity() == checkpt_entt {
                 collider2

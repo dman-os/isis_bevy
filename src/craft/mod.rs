@@ -10,12 +10,13 @@ pub mod engine;
 pub mod mind;
 
 pub struct CraftsPlugin;
+
 impl Plugin for CraftsPlugin {
-    fn build(&self, app: &mut AppBuilder) {
-        app.add_system(engine::sync_craft_state_velocities.system())
-            .add_system(engine::linear_pid_driver.system())
-            .add_system(engine::angular_pid_driver.system())
-            .add_system(engine::apply_flames_simple_accel.system())
+    fn build(&self, app: &mut App) {
+        app.add_system(engine::sync_craft_state_velocities)
+            .add_system(engine::linear_pid_driver)
+            .add_system(engine::angular_pid_driver)
+            .add_system(engine::apply_flames_simple_accel)
             .add_plugin(attire::AttirePlugin)
             .add_plugin(mind::MindPlugin)
             .add_plugin(arms::ArmsPlugin);
@@ -49,7 +50,8 @@ impl CraftBundle {
             ccd: RigidBodyCcd {
                 ccd_active: true,
                 ..Default::default()
-            },
+            }
+            .into(),
             ..Default::default()
         }
     }
@@ -64,14 +66,14 @@ impl Default for CraftBundle {
             linear_state: Default::default(),
             angular_state: Default::default(),
             linear_pid: engine::LinearDriverPid(crate::utils::PIDControllerVec3::new(
-                TVec3::ONE * 30.,
+                TVec3::ONE * 30. * 1.,
                 TVec3::ZERO,
                 TVec3::ZERO,
                 TVec3::ZERO,
                 TVec3::ZERO,
             )),
             angular_pid: engine::AngularDriverPid(crate::utils::PIDControllerVec3::new(
-                TVec3::ONE * 4000.0,
+                TVec3::ONE * 4000.0 * 1.,
                 TVec3::ZERO,
                 TVec3::ZERO,
                 TVec3::ZERO,

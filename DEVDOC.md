@@ -1,9 +1,16 @@
 #  IN SPACE IN SPACESHIP DEVDOCS
 
+WORLD TO LOCAL - inverse transformation you idiot!
+
 ## TODO
 
 - [ ] Surmount technical hurdles
 - [ ] Refine loop
+
+- crates to check out
+ - [ ] bevy polyline
+ - [ ] big brain
+ - [ ] bevy remote dev tools
 
 ## design doc
 
@@ -12,7 +19,7 @@
 #### Prior art
 
 - Mount & Blade
-- Void Destroters
+- Void Destrotters
 
 #### Focus areas
 
@@ -31,29 +38,42 @@ If we agree that AI needs three abilities:
 
 ...we need to design each in an ECS manner.
 
-#### Sensors
+- Layers
+    - Sensors
+        - Where do they store their stimuli?
+            - Must be general enough to allow multiple descision makers to read from them.
+            - Blackboard
+                - Entities?
+                - Resources?
+                - Hybrid?
+        - Do they run every frame?
+        - Idea 0
+            - Entity outputs
+            - Run every frame.
+    - Decision making
+        - State
+            - Blackboard
+        - A need for frame distribution?
+        - Where do they store their results?
+            - Specialized?
+        - Idea 0
+            - Behavior Trees
+        - Idea 1
+            - Utility AI
+                - Big Brain
+    - Actuation
+        - Specialized per task?
+        - Multi frame actions?
+            - Action cancelling
+                - Stateful?
+        - CratEngine input
+            - ISIS Godot
+        - CraftArms input
+            - Bevy Events
 
-##### Idea 0
-
-Some components that hold state and systems that update them every frame. The decision systems can then look at the components or something.
-
-#### Decision Making
-
-##### Idea 0
-
-Utility AI.
-
-#### Actuation
+#### Behavior trees
 
 Basic BehaviorTrees that are used for micro deciesion making for sequencing actions. As outlined by [Bobby Anguelov](https://takinginitiative.files.wordpress.com/2020/01/behaviortrees_breaking-the-cycle-of-misuse.pdf), small trees who only affect decisions related to the specfic task, we can avoid complex, hard to extend trees everyone complains about. How will this work out in practice, we'll see I suppose.
-
-##### CraftEngine input
-
-For this, I think I'll go back to SteeringRoutines from ISIS Godot.Basic units of logic that recieve some input and output the acceleration or velocity desired the next frame.
-
-##### CraftArms input
-
-Making use of basic bevy events for now.
 
 ## devlog
 
@@ -74,3 +94,7 @@ According to the author:
 	Euler angles in nalqebra follows the aircraft convention ,i.e., with yaw the rotation about Z (which is the "up" axis usually chosen in this context).
 	Roll: X, Pitch: Y, Yaw: Z
 	https://discord.com/channels/507548572338880513/507548945912954881/552583968432586753
+
+### ii as TReal / RAY_COUNT as TReal != (ii / RAY_COUNT) as TReal;
+
+Obviously. This bug might have actually cost me months.

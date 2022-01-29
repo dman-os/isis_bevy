@@ -1,44 +1,37 @@
 use deps::*;
 
-use bevy::{
-    ecs::{
-        self as bevy_ecs,
-        component::{ComponentDescriptor, StorageType},
-    },
-    prelude::*,
-};
+use bevy::{ecs as bevy_ecs, prelude::*};
 use bevy_inspector_egui::Inspectable;
+use bevy_inspector_egui::RegisterInspectable;
 use bevy_rapier3d::prelude::*;
 
 use crate::craft::engine::*;
 use crate::math::*;
 
 pub struct MindPlugin;
+
 impl Plugin for MindPlugin {
-    fn build(&self, app: &mut AppBuilder) {
-        app.register_component(ComponentDescriptor::new::<LinearRoutineResult>(
-            StorageType::SparseSet,
-        ))
-        .register_component(ComponentDescriptor::new::<AngularRoutineResult>(
-            StorageType::SparseSet,
-        ))
-        .register_component(ComponentDescriptor::new::<steering_systems::Intercept>(
-            StorageType::SparseSet,
-        ))
-        .add_system(mind_update_engine_input.system())
-        .add_system(craft_mind_smarts.system())
-        .add_system(steering_systems::intercept.system())
-        .add_system(steering_systems::fly_with_flock.system())
-        .add_system(steering_systems::avoid_collision.system())
-        .add_system(steering_systems::seek.system())
-        .add_system(update_flocks.system());
+    fn build(&self, app: &mut App) {
+        app.add_system(mind_update_engine_input)
+            .add_system(craft_mind_smarts)
+            .add_system(steering_systems::intercept)
+            .add_system(steering_systems::fly_with_flock)
+            .add_system(steering_systems::avoid_collision)
+            .add_system(steering_systems::seek)
+            .add_system(update_flocks)
+            .register_inspectable::<MindConfig>()
+            .register_inspectable::<ActiveRoutineResult>()
+            .register_inspectable::<LinearRoutineResult>()
+            .register_inspectable::<AngularRoutineResult>()
+            .register_inspectable::<steering_systems::AvoidCollision>();
     }
 }
 
-#[derive(Debug, Clone, Copy, Inspectable)]
+#[derive(Debug, Clone, Copy, Inspectable, Component)]
 pub struct MindConfig {
     pub angular_input_multiplier: TReal,
 }
+
 impl Default for MindConfig {
     fn default() -> Self {
         Self {
@@ -53,13 +46,14 @@ pub struct CraftMindBundle {
     pub config: MindConfig,
 }
 
-#[derive(Debug, Clone, Copy, Default, Inspectable)]
+#[derive(Debug, Clone, Copy, Default, Inspectable, Component)]
 pub struct ActiveRoutineResult {
     /// local space
     lin: TVec3,
     /// local space
     ang: TVec3,
 }
+
 impl std::ops::Add for ActiveRoutineResult {
     type Output = Self;
 
@@ -71,6 +65,7 @@ impl std::ops::Add for ActiveRoutineResult {
         }
     }
 }
+
 impl ActiveRoutineResult {
     #[inline]
     pub fn is_zero(&self) -> bool {
@@ -82,11 +77,13 @@ impl ActiveRoutineResult {
 
 /// Output of linear steering routines which is usually linear velocity desired next frame in
 /// fraction of [`EngineConfig:.linear_v_limit`] in world space.
-#[derive(Debug, Clone, Copy, Default, Inspectable)]
+#[derive(Debug, Clone, Copy, Default, Inspectable, Component)]
+#[component(storage = "SparseSet")]
 pub struct LinearRoutineResult(pub TVec3);
 
 /// Output of angular steering routines which is usually angular velocity desired next frame in local space.
-#[derive(Debug, Clone, Copy, Default, Inspectable)]
+#[derive(Debug, Clone, Copy, Default, Inspectable, Component)]
+#[component(storage = "SparseSet")]
 pub struct AngularRoutineResult(pub TVec3);
 
 pub fn mind_update_engine_input(
@@ -123,6 +120,7 @@ impl std::ops::Mul<ActiveRoutineResult> for ActiveRoutineWeight {
 }
 
 // FIXME: find a new fucking name
+#[derive(Component)]
 pub enum ActiveRoutines {
     Single {
         entt: Entity,
@@ -253,15 +251,15 @@ pub enum ScanPresence {
     },
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Component)]
 pub struct GroupMind {
     pub members: smallvec::SmallVec<[Entity; 8]>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Component)]
 pub struct CraftGroup(pub Entity);
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Component)]
 pub struct BoidFlock {
     pub craft_positions: Vec<TVec3>,
     pub heading_sum: TVec3,
@@ -273,7 +271,7 @@ pub struct BoidFlock {
 
 pub fn update_flocks(
     mut flocks: Query<(&GroupMind, &mut BoidFlock)>,
-    crafts: Query<(&GlobalTransform, &RigidBodyVelocity)>,
+    crafts: Query<(&GlobalTransform, &RigidBodyVelocityComponent)>,
 ) {
     for (g_mind, mut flock) in flocks.iter_mut() {
         flock.craft_positions.clear();
@@ -281,7 +279,7 @@ pub fn update_flocks(
         flock.center_sum = TVec3::ZERO;
         for craft in g_mind.members.iter() {
             if let Ok((xform, vel)) = crafts.get(*craft) {
-                flock.heading_sum += vel.linvel.into();
+                flock.heading_sum += TVec3::from(vel.linvel);
                 flock.center_sum += xform.translation;
                 flock.craft_positions.push(xform.translation);
             } else {
@@ -297,7 +295,7 @@ pub fn update_flocks(
 pub mod steering_systems {
     use deps::*;
 
-    use bevy::{ecs as bevy_ecs, prelude::*};
+    use bevy::{ecs as bevy_ecs, prelude::*, reflect as bevy_reflect};
     use bevy_rapier3d::prelude::*;
 
     use super::{AngularRoutineResult, BoidFlock, CraftGroup, LinearRoutineResult};
@@ -305,12 +303,13 @@ pub mod steering_systems {
     use crate::craft::engine::*;
     use crate::math::*;
 
+    #[derive(Component)]
     pub struct SteeringRoutine;
 
     #[derive(Bundle)]
     pub struct LinOnlyRoutineBundle<P>
     where
-        P: Send + Sync + 'static,
+        P: Component,
     {
         pub param: P,
         pub output: LinearRoutineResult,
@@ -319,7 +318,7 @@ pub mod steering_systems {
 
     impl<P> LinOnlyRoutineBundle<P>
     where
-        P: Send + Sync + 'static,
+        P: Component,
     {
         pub fn new(param: P) -> Self {
             Self {
@@ -333,7 +332,7 @@ pub mod steering_systems {
     #[derive(Bundle)]
     pub struct LinAngRoutineBundle<P>
     where
-        P: Send + Sync + 'static,
+        P: Component,
     {
         pub param: P,
         pub lin_res: LinearRoutineResult,
@@ -343,7 +342,7 @@ pub mod steering_systems {
 
     impl<P> LinAngRoutineBundle<P>
     where
-        P: Send + Sync + 'static,
+        P: Component,
     {
         pub fn new(param: P) -> Self {
             Self {
@@ -355,55 +354,61 @@ pub mod steering_systems {
         }
     }
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Component, bevy_inspector_egui::Inspectable)]
     pub struct AvoidCollision {
         pub craft_entt: Entity,
         pub fwd_prediction_secs: f32,
+        // #[reflect(ignore)]
+        #[inspectable(ignore)]
         pub raycast_exclusion: smallvec::SmallVec<[ColliderHandle; 4]>,
+        /// in world space
+        pub last_dodge_direction: TVec3,
+        pub last_dodge_timestamp: f64,
+        pub upheld_dodge_seconds: f64,
     }
 
     pub type AvoidCollisionRoutineBundle = LinOnlyRoutineBundle<AvoidCollision>;
 
     pub fn avoid_collision(
-        mut routines: Query<(Entity, &AvoidCollision, &mut LinearRoutineResult)>,
+        // NOTE: this steering system is stateful.
+        mut routines: Query<(Entity, &mut AvoidCollision, &mut LinearRoutineResult)>,
         crafts: Query<(
             &GlobalTransform,
             &EngineConfig,
-            &RigidBodyVelocity,
-            &RigidBodyColliders,
+            &RigidBodyVelocityComponent,
+            &RigidBodyCollidersComponent,
             &crate::craft::engine::LinearEngineState,
         )>,
         query_pipeline: Res<QueryPipeline>,
         collider_query: QueryPipelineColliderComponentsQuery,
+        time: Res<Time>,
     ) {
-        let mut raycast_ctr = 0;
+        let mut avoid_collision_raycast_ctr = 0usize;
         // Wrap the bevy query so it can be used by the query pipeline.
         let collider_set = QueryPipelineColliderComponentsSet(&collider_query);
-        for (_, avoid_coll, mut result) in routines.iter_mut() {
+        for (_, mut avoid_coll, mut result) in routines.iter_mut() {
             *result = LinearRoutineResult::default();
             if let Ok((xform, config, vel, craft_colliders, lin_state)) =
                 crafts.get(avoid_coll.craft_entt)
             {
-                // check for collision
-                //let dir = vel.linvel;
-                let dir = xform.rotation * lin_state.input;
-                let toi = avoid_coll.fwd_prediction_secs * dir.length();
+                // let dir = TVec3::from(vel.linvel).normalize();
+                let dir = xform.rotation * lin_state.input.normalize();
+                let speed = vel.linvel.magnitude();
+                let toi = avoid_coll.fwd_prediction_secs * speed;
                 // adjust for the dimensions of the craft
                 let widest_dim = config.extents.max_element();
                 let toi = toi + widest_dim;
-                tracing::trace!(
-                    "vel: {:?}, widest_dim: {:?}, toi: {:?}, craft_colliders: {:?}",
-                    vel,
-                    widest_dim,
-                    toi,
-                    craft_colliders.0
-                );
-                raycast_ctr += 1;
+                avoid_collision_raycast_ctr += 1;
+                let cast_shape = Ball::new(0.5 * widest_dim);
+                // shape rotation matters not for balls
+                let cast_pose = (xform.translation, xform.rotation).into();
+                // if collision predicted
                 if let Some((handle, hit)) = query_pipeline.cast_shape(
                     &collider_set,
-                    &(xform.translation, xform.rotation).into(),
+                    &cast_pose,
+                    // world space
                     &dir.into(),
-                    &Ball::new(0.5 * widest_dim),
+                    &cast_shape,
                     toi,
                     InteractionGroups::new(
                         ColliderGroups::SOLID.bits(),
@@ -411,52 +416,65 @@ pub mod steering_systems {
                     ),
                     Some(&|handle| {
                         // not a craft collider
-                        !craft_colliders.0[..].contains(&handle)
+                        !craft_colliders.0.0[..].contains(&handle)
                             // not in the exclusion list
                             && !avoid_coll.raycast_exclusion[..].contains(&handle)
                     }),
                 ) {
-                    tracing::trace!(
-                        "collision predicted with {:?} {:?} seconds away",
-                        handle,
-                        hit.toi
-                    );
+                    // use behavior to avoid it
                     *result = LinearRoutineResult(steering_behaviours::avoid_obstacle_seblague(
                         dir.into(),
-                        &mut |dir| {
-                            raycast_ctr += 1;
+                        &mut |cast_dir| {
+                            avoid_collision_raycast_ctr += 1;
                             query_pipeline
                                 .cast_shape(
                                     &collider_set,
-                                    &(xform.translation, xform.rotation).into(),
-                                    &dir.into(),
-                                    &Ball::new(0.5 * widest_dim),
+                                    &cast_pose,
+                                    &cast_dir.into(),
+                                    &cast_shape,
                                     toi,
-                                    InteractionGroups::new(
-                                        ColliderGroups::SOLID.bits(),
-                                        ColliderGroups::SOLID.bits(),
-                                    ),
+                                    *OBSTACLE_COLLIDER_IGROUP,
                                     Some(&|handle| {
                                         // not a craft collider
-                                        !craft_colliders.0[..].contains(&handle)
-                            // not in the exclusion list
-                            && !avoid_coll.raycast_exclusion[..].contains(&handle)
+                                        !craft_colliders.0.0[..].contains(&handle)
+                                        // not in the exclusion list
+                                        && !avoid_coll.raycast_exclusion[..].contains(&handle)
                                     }),
                                 )
                                 .is_some()
                         },
                         &xform,
                     ));
+                    // cache avoidance vector
+                    avoid_coll.last_dodge_timestamp = time.seconds_since_startup();
+                    avoid_coll.last_dodge_direction = result.0;
+                    tracing::trace!(
+                        ?dir,
+                        ?result,
+                        ?toi,
+                        "collision predicted with {:?}\n{:?} meters away\n{:?} seconds away\ncorrecting {:?} degrees away",
+                        handle,
+                        hit.toi,
+                        hit.toi / speed,
+                        dir.angle_between(result.0) * (180. / crate::math::real::consts::PI)
+                    );
                 }
-            } else {
-                tracing::error!("craft_entt of AvoidCollision routine not found");
+                // if recently had avoided collision
+                else if avoid_coll.last_dodge_timestamp > 0.0
+                    && time.seconds_since_startup()
+                        < (avoid_coll.last_dodge_timestamp + avoid_coll.upheld_dodge_seconds)
+                {
+                    // stick to it until upheld time expires
+                    *result = LinearRoutineResult(avoid_coll.last_dodge_direction);
+                }
             }
             //*result = LinearRoutineResult(TVec3::ONE * 100.0);
         }
-        tracing::info!(raycast_ctr);
+        tracing::trace!(avoid_collision_raycast_ctr);
     }
 
-    #[derive(Debug, Clone, Copy)]
+    #[derive(Debug, Clone, Copy, Component)]
+    #[component(storage = "SparseSet")]
     pub struct Intercept {
         pub craft_entt: Entity,
         pub quarry_rb: RigidBodyHandle,
@@ -466,7 +484,7 @@ pub mod steering_systems {
     pub fn intercept(
         mut routines: Query<(Entity, &Intercept, &mut LinearRoutineResult)>,
         crafts: Query<(&GlobalTransform, &EngineConfig)>, // crafts
-        quarries: Query<(&RigidBodyPosition, &RigidBodyVelocity)>, // quarries
+        quarries: Query<(&RigidBodyPositionComponent, &RigidBodyVelocityComponent)>, // quarries
     ) {
         for (routine_id, params, mut output) in routines.iter_mut() {
             match (
@@ -476,11 +494,10 @@ pub mod steering_systems {
                 (Ok((xform, config)), Ok((quarry_pos, quarry_vel))) => {
                     *output = intercept_rb(quarry_pos, quarry_vel, xform, config);
                 }
-                err => {
+                _err => {
                     tracing::error!(
-                        "unable to find craft_entt for Intercept routine {:?}: {:?}",
-                        routine_id,
-                        err
+                        "unable to find craft_entt for Intercept routine {:?}",
+                        routine_id
                     );
                 }
             }
@@ -535,6 +552,7 @@ pub mod steering_systems {
         })*/
     }
 
+    #[derive(Debug, Clone, Copy, Component)]
     pub struct FlyWithFlock {
         pub craft_entt: Entity,
     }
@@ -549,7 +567,7 @@ pub mod steering_systems {
             &mut AngularRoutineResult,
         )>,
         flocks: Query<&BoidFlock>,
-        crafts: Query<(&GlobalTransform, &RigidBodyVelocity, &CraftGroup)>, // crafts
+        crafts: Query<(&GlobalTransform, &RigidBodyVelocityComponent, &CraftGroup)>, // crafts
     ) {
         for (routine_id, params, mut lin_out, mut ang_out) in routines.iter_mut() {
             if let Ok((xform, vel, craft_group)) = crafts.get(params.craft_entt) {
@@ -584,7 +602,7 @@ pub mod steering_systems {
             }
         }
     }
-    #[derive(Debug, Clone, Copy)]
+    #[derive(Debug, Clone, Copy, Component)]
     pub enum SeekTarget {
         /// must have a global xform
         Object { entt: Entity },
@@ -592,7 +610,7 @@ pub mod steering_systems {
         Position { pos: TVec3 },
     }
 
-    #[derive(Debug, Clone, Copy)]
+    #[derive(Debug, Clone, Copy, Component)]
     pub struct Seek {
         pub craft_entt: Entity,
         pub target: SeekTarget,
@@ -732,16 +750,18 @@ pub mod steering_systems {
         #[inline]
         pub fn avoid_obstacle_seblague(
             cast_root: TVec3,
+            // A function that casts _something_ from the craft's position into the given
+            // direction and checks for obstruction.
             is_dir_obstructed: &mut dyn FnMut(TVec3) -> bool,
             xform: &GlobalTransform,
         ) -> TVec3 {
-            const RAY_COUNT: usize = 30;
+            const RAY_COUNT: usize = 90;
             const RAY_DIRECTIONS: Lazy<[TVec3; RAY_COUNT]> = Lazy::new(|| {
                 let mut directions = [TVec3::ZERO; RAY_COUNT];
                 let golden_ratio = (1.0 + (5.0 as TReal).sqrt()) * 0.5;
                 let angle_increment = real::consts::TAU * golden_ratio;
                 for ii in 0..RAY_COUNT {
-                    let t = (ii / RAY_COUNT) as TReal;
+                    let t = ii as TReal / RAY_COUNT as TReal;
                     let inclination = (1.0 - (2.0 * t)).acos();
                     let azimuth = angle_increment * (ii as TReal);
                     directions[ii] = TVec3::new(
@@ -753,20 +773,21 @@ pub mod steering_systems {
                 }
                 directions
             });
-            let current_pos = xform.translation;
 
-            // since we'll be testing from the castRoot vector outwards (not the forward vector)
+            // since we'll be testing from the cast_root vector outwards (not the forward vector)
             // we can't use the object's transform
-            let transformer =
-                Transform::from_translation(current_pos).looking_at(cast_root, xform.local_y());
+            let transformer = Transform::identity().looking_at(cast_root, xform.local_y());
 
             for ii in 0..RAY_COUNT {
-                let dir = transformer.mul_vec3(RAY_DIRECTIONS[ii]);
+                let dir = RAY_DIRECTIONS[ii];
+                // in world space
+                let dir = transformer.rotation.mul_vec3(dir);
                 if !is_dir_obstructed(dir) {
                     return dir;
                 }
             }
-            TVec3::ZERO
+            // TVec3::ZERO
+            cast_root
         }
     }
 }

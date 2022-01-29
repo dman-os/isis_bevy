@@ -1,6 +1,6 @@
 use deps::*;
 
-use bevy::prelude::*;
+use bevy::{ecs as bevy_ecs, prelude::*};
 use bevy_rapier3d::prelude::*;
 
 use crate::craft::attire::*;
@@ -9,9 +9,9 @@ use crate::math::*;
 pub struct ArmsPlugin;
 
 impl Plugin for ArmsPlugin {
-    fn build(&self, app: &mut AppBuilder) {
-        app.add_system(handle_activate_weapon_events.system())
-            .add_system(cull_old_colliding_projectiles.system())
+    fn build(&self, app: &mut App) {
+        app.add_system(handle_activate_weapon_events)
+            .add_system(cull_old_colliding_projectiles)
             .add_event::<ActivateWeaponEvent>()
             .add_event::<ProjectileIxnEvent>();
     }
@@ -23,6 +23,7 @@ pub struct ActivateWeaponEvent {
 
 use crate::craft::attire::Damage;
 
+#[derive(Component)]
 pub struct ProjectileWeapon {
     pub proj_damage: Damage,
     pub proj_mesh: Handle<Mesh>,
@@ -35,7 +36,7 @@ pub struct ProjectileWeapon {
 }
 
 //pub struct CraftArms(pub Children);
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Component)]
 pub struct Projectile {
     pub damage: Damage,
     pub source_wpn: Entity,
@@ -79,25 +80,28 @@ fn handle_activate_weapon_events(
                                 + (xform.rotation * proj_wpn.proj_spawn_offset))
                                 .into(),
                             ..Default::default()
-                        },
+                        }
+                        .into(),
                         velocity: RigidBodyVelocity {
                             linvel: <[TReal; 3]>::from(xform.rotation * proj_wpn.proj_velocity)
                                 .into(),
                             ..Default::default()
-                        },
+                        }
+                        .into(),
                         ..Default::default()
                     })
                     .insert(RigidBodyPositionSync::Discrete)
                     .insert_bundle(ColliderBundle {
-                        shape: proj_wpn.proj_shape.clone(),
-                        collider_type: ColliderType::Sensor,
-                        // TODO: massive colliders
+                        shape: ColliderShapeComponent(proj_wpn.proj_shape.clone()),
+                        collider_type: ColliderType::Sensor.into(),
+                        // TODO: massive projectiles
                         // mass_properties: proj_wpn.proj_mass.clone(),
                         flags: ColliderFlags {
                             active_events: ActiveEvents::INTERSECTION_EVENTS,
                             collision_groups: *PROJECTILE_COLLIDER_IGROUP,
                             ..Default::default()
-                        },
+                        }
+                        .into(),
                         ..Default::default()
                     });
             }

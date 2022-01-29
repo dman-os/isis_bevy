@@ -31,12 +31,16 @@ bitflags = "1.2"
 once_cell = "1.8"
 # derivative = { version = "2.2.0", }
 
-bevy = "0.5" 
-bevy_egui = "0.6"
-bevy_rapier3d = { version = "0.10", features = ["simd-nightly", "parallel", "render"]}
-bevy_prototype_debug_lines = "0.3.2"
-bevy-inspector-egui = { version = "0.6.1", features =  ["rapier"] }
-bevy_mod_debugdump = "0.2.1"
+bevy = { version = "0.6", features = ["jpeg"] } 
+bevy_egui = "0.10"
+# bevy_rapier3d = { version = "0.12", features = [ "parallel", "render", "simd-nightly"]}
+bevy_rapier3d = { version = "0.12", features = ["render"]}
+# bevy_prototype_debug_lines = "0.3.2"
+bevy-inspector-egui = { version = "0.7.3", features =  [] }
+educe = "0.4.18"
+bevy_polyline = "0.1.1"
+big-brain = "0.10.0"
+# bevy_mod_debugdump = "0.2.1"
 # bevy_config_cam = "0.1.2"
 
 

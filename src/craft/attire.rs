@@ -12,11 +12,11 @@ use crate::math::*;
 
 pub struct AttirePlugin;
 impl Plugin for AttirePlugin {
-    fn build(&self, app: &mut AppBuilder) {
-        app.add_system(generate_better_contact_events.system())
-            .add_system(handle_collision_damage_events.system())
-            .add_system(handle_collider_ixn_events.system())
-            .add_system(log_damage_events.system())
+    fn build(&self, app: &mut App) {
+        app.add_system(generate_better_contact_events)
+            .add_system(handle_collision_damage_events)
+            .add_system(handle_collider_ixn_events)
+            .add_system(log_damage_events)
             .add_event::<BetterContactEvent>()
             .add_event::<CollisionDamageEvent>()
             .add_event::<ProjectileDamageEvent>();
@@ -37,7 +37,7 @@ impl Default for DamageType {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Component)]
 pub struct Damage {
     pub value: TReal,
     pub damage_type: DamageType,
@@ -56,7 +56,7 @@ impl Default for AttireType {
 }
 
 /// A health bar for some craft component.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Component)]
 pub struct Attire {
     pub remaining_integrity: f32,
 
@@ -106,7 +106,7 @@ impl Default for AttireCoverage {
 }
 
 /// A collider and a health bar(s) for location based damage to crafts.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Component)]
 pub struct AttireProfile {
     pub coverage: AttireCoverage,
     pub members: smallvec::SmallVec<[Attire; 1]>,
@@ -144,13 +144,14 @@ bitflags! {
         const SOLID = 1 << 1;
         const ATTIRE = 1 << 2;
         const PROJECTILE = 1 << 3;
+        const SENSOR = 1 << 4;
     }
 }
 
 pub const CRAFT_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
     InteractionGroups::new(
         ColliderGroups::SOLID.bits(),
-        (ColliderGroups::SOLID | ColliderGroups::PROJECTILE).bits(),
+        (ColliderGroups::SOLID | ColliderGroups::PROJECTILE | ColliderGroups::SENSOR).bits(),
     )
 });
 pub const ATTIRE_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
@@ -171,6 +172,12 @@ pub const PROJECTILE_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
         (ColliderGroups::ATTIRE | ColliderGroups::SOLID).bits(),
     )
 });
+pub const SENSOR_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
+    InteractionGroups::new(
+        (ColliderGroups::SENSOR).bits(),
+        (ColliderGroups::PROJECTILE | ColliderGroups::SOLID).bits(),
+    )
+});
 
 #[derive(Bundle)]
 pub struct AttireBundle {
@@ -182,12 +189,13 @@ pub struct AttireBundle {
 impl AttireBundle {
     pub fn default_collider_bundle() -> ColliderBundle {
         ColliderBundle {
-            collider_type: ColliderType::Sensor,
+            collider_type: ColliderType::Sensor.into(),
             flags: ColliderFlags {
                 active_events: ActiveEvents::INTERSECTION_EVENTS,
                 collision_groups: *ATTIRE_COLLIDER_IGROUP,
                 ..Default::default()
-            },
+            }
+            .into(),
             ..Default::default()
         }
     }
@@ -204,6 +212,7 @@ impl Default for AttireBundle {
 
 /// Tags a rigidbody that's able to receive collision damage. This
 /// requires a [`CollisionDamageEnabledCollider`] attached to function.
+#[derive(Component)]
 pub struct CollisionDamageEnabledRb;
 
 ///// Tags a collider that's able to detect collision damage. Note, this's
@@ -225,7 +234,8 @@ impl CollisionDamageEnabledColliderBundle {
                 active_events: ActiveEvents::CONTACT_EVENTS,
                 collision_groups: *CRAFT_COLLIDER_IGROUP,
                 ..Default::default()
-            },
+            }
+            .into(),
             ..Default::default()
         }
     }
@@ -242,6 +252,7 @@ impl Default for CollisionDamageEnabledColliderBundle {
 
 /// Tags a collider so that more detailed contact events are
 /// generated for it.
+#[derive(Component)]
 pub struct BetterContactListener;
 
 /// A more detailed contact event that has data from the [`NarrowPhase`] graph.
@@ -324,8 +335,15 @@ pub(super) fn generate_better_contact_events(
 /// the object colliding has one attached.
 pub(super) fn handle_collision_damage_events(
     time: Res<Time>,
-    crafts: Query<(Entity, &RigidBodyColliders, &GlobalTransform), With<CollisionDamageEnabledRb>>,
-    mut attires: Query<(&mut AttireProfile, &ColliderShape, &ColliderPosition)>,
+    crafts: Query<
+        (Entity, &RigidBodyCollidersComponent, &GlobalTransform),
+        With<CollisionDamageEnabledRb>,
+    >,
+    mut attires: Query<(
+        &mut AttireProfile,
+        &ColliderShapeComponent,
+        &ColliderPositionComponent,
+    )>,
     mut contact_events: EventReader<BetterContactEvent>,
     mut cd_events: EventWriter<CollisionDamageEvent>,
     mut generated_events: Local<Vec<CollisionDamageEvent>>,
@@ -349,8 +367,32 @@ pub(super) fn handle_collision_damage_events(
             }
         };
 
+        /*
+            match (manifold.data.rigid_body1, manifold.data.rigid_body2) {
+                // if there was a rigidbody involved in the contact
+                (Some(rb_handle), None) | (None, Some(rb_handle)) | (Some(rb_handle), Some(_)) => {
+                    // if it's __better collision__ enabled
+                    if let Ok(set) = crafts.get(rb_handle.entity()) {
+                        inner(
+                            true,
+                            event,
+                            set,
+                            &mut attires,
+                            &mut generated_events,
+                            contact,
+                            damage,
+                        );
+                    }
+                }
+                (None, None) => tracing::warn!("no rigidbody involved in better contact event"),
+            }
+        }
+            */
+
+        let mut rigd_body_involved = false;
         // if there was a rigidbody involved in the contact
         if let Some(rb_handle) = manifold.data.rigid_body1 {
+            rigd_body_involved = true;
             // if it's __better collision__ enabled
             if let Ok(set) = crafts.get(rb_handle.entity()) {
                 inner(
@@ -363,11 +405,10 @@ pub(super) fn handle_collision_damage_events(
                     damage,
                 );
             }
-        } else {
-            tracing::warn!("contact event without rigidbody");
         }
 
         if let Some(rb_handle) = manifold.data.rigid_body2 {
+            rigd_body_involved = true;
             if let Ok(set) = crafts.get(rb_handle.entity()) {
                 inner(
                     false,
@@ -379,8 +420,10 @@ pub(super) fn handle_collision_damage_events(
                     damage,
                 );
             }
-        } else {
-            tracing::warn!("contact event without rigidbody");
+        }
+
+        if !rigd_body_involved {
+            tracing::warn!(?event, "contact event without rigidbody");
         }
     }
 
@@ -392,8 +435,12 @@ pub(super) fn handle_collision_damage_events(
     fn inner(
         is_entt_1: bool,
         event: &BetterContactEvent,
-        components: (Entity, &RigidBodyColliders, &GlobalTransform),
-        attires: &mut Query<(&mut AttireProfile, &ColliderShape, &ColliderPosition)>,
+        components: (Entity, &RigidBodyCollidersComponent, &GlobalTransform),
+        attires: &mut Query<(
+            &mut AttireProfile,
+            &ColliderShapeComponent,
+            &ColliderPositionComponent,
+        )>,
         generated_events: &mut Vec<CollisionDamageEvent>,
         contact: &TrackedContact<ContactData>,
         damage: Damage,
@@ -410,7 +457,7 @@ pub(super) fn handle_collision_damage_events(
 
         let mut closest_attire = None;
         // for all the rigid body's colliders
-        for collider in components.1 .0.iter() {
+        for collider in components.1 .0 .0.iter() {
             // FIXME: this seems expensive
             //
             // if the collider belongs to an attire
@@ -426,8 +473,8 @@ pub(super) fn handle_collision_damage_events(
                         rb_entt: components.0,
                         attire_entt: collider.entity(),
                         contact_event: event.clone(),
-                        selection_shape: coll_shape.clone(),
-                        selection_position: *coll_pos,
+                        selection_shape: coll_shape.0.clone(),
+                        selection_position: coll_pos.0,
                         is_entt_1,
                     });
 
@@ -459,8 +506,8 @@ pub(super) fn handle_collision_damage_events(
                 rb_entt: components.0,
                 attire_entt,
                 contact_event: event.clone(),
-                selection_shape: coll_shape.clone(),
-                selection_position: *coll_pos,
+                selection_shape: coll_shape.0.clone(),
+                selection_position: coll_pos.0,
                 is_entt_1,
             });
         } else {

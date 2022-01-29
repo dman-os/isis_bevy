@@ -1,8 +1,8 @@
 use deps::*;
 
-use bevy::prelude::*;
+use bevy::{ecs as bevy_ecs, prelude::*};
 
-#[derive(Debug)]
+#[derive(Debug, Component)]
 pub struct PIDControllerVec3 {
     last_state: Vec3,
     integrat_err: Vec3,
