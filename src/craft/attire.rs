@@ -142,40 +142,45 @@ impl Default for AttireProfile {
 bitflags! {
     pub struct ColliderGroups: u32 {
         const SOLID = 1 << 1;
-        const ATTIRE = 1 << 2;
-        const PROJECTILE = 1 << 3;
-        const SENSOR = 1 << 4;
+        const CRAFT_SOLID = 1 << 2;
+        const ATTIRE = 1 << 3;
+        const PROJECTILE = 1 << 4;
+        const SENSOR = 1 << 5;
     }
 }
 
-pub const CRAFT_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
+pub static CRAFT_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
     InteractionGroups::new(
-        ColliderGroups::SOLID.bits(),
-        (ColliderGroups::SOLID | ColliderGroups::PROJECTILE | ColliderGroups::SENSOR).bits(),
+        (ColliderGroups::CRAFT_SOLID).bits(),
+        (ColliderGroups::SOLID
+            | ColliderGroups::PROJECTILE
+            | ColliderGroups::SENSOR
+            | ColliderGroups::CRAFT_SOLID)
+            .bits(),
     )
 });
-pub const ATTIRE_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
+pub static ATTIRE_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
     InteractionGroups::new(
         ColliderGroups::ATTIRE.bits(),
         (ColliderGroups::PROJECTILE).bits(),
     )
 });
-pub const OBSTACLE_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
+pub static OBSTACLE_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
     InteractionGroups::new(
         ColliderGroups::SOLID.bits(),
-        (ColliderGroups::SOLID | ColliderGroups::PROJECTILE).bits(),
+        (ColliderGroups::SOLID | ColliderGroups::PROJECTILE | ColliderGroups::CRAFT_SOLID).bits(),
     )
 });
-pub const PROJECTILE_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
+pub static PROJECTILE_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
     InteractionGroups::new(
         (ColliderGroups::PROJECTILE).bits(),
         (ColliderGroups::ATTIRE | ColliderGroups::SOLID).bits(),
     )
 });
-pub const SENSOR_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
+pub static SENSOR_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
     InteractionGroups::new(
         (ColliderGroups::SENSOR).bits(),
-        (ColliderGroups::PROJECTILE | ColliderGroups::SOLID).bits(),
+        (ColliderGroups::PROJECTILE | ColliderGroups::SOLID | ColliderGroups::CRAFT_SOLID).bits(),
     )
 });
 
@@ -281,6 +286,7 @@ pub struct CollisionDamageEvent {
     is_entt_1: bool,
     /// The shape of the attire that included the deepest contact point
     /// so that had this attire ended up being selected for taking damage.
+    #[allow(dead_code)]
     selection_shape: ColliderShape,
     /// The position of the `selection_shape` during selection.
     selection_position: ColliderPosition,
@@ -547,10 +553,10 @@ fn log_damage_events(
     mut proj_dmg_events: EventReader<ProjectileDamageEvent>,
 ) {
     for event in coll_dmg_events.iter() {
-        tracing::info!("Collision {:?} | Craft: {:?}", event.damage, event.rb_entt);
+        tracing::trace!("Collision {:?} | Craft: {:?}", event.damage, event.rb_entt);
     }
     for event in proj_dmg_events.iter() {
-        tracing::trace!(
+        tracing::info!(
             "Projectile {:?} | Attire: {:?}",
             event.ixn_event.projectile.damage,
             event.attire_entt

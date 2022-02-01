@@ -16,19 +16,76 @@ impl Plugin for ArmsPlugin {
             .add_event::<ProjectileIxnEvent>();
     }
 }
+/// A generic bundle for craft strategies.
+#[derive(Bundle)]
+pub struct WeaponBundle<P>
+where
+    P: Component,
+{
+    pub param: P,
+    pub tag: CraftWeapon,
+}
+
+impl<P> WeaponBundle<P>
+where
+    P: Component,
+{
+    pub fn new(param: P, craft_entt: Entity, class: WeaponClass) -> Self {
+        Self {
+            param,
+            tag: CraftWeapon::new(craft_entt, WeaponKind::of::<P>(), class),
+        }
+    }
+}
+
+pub type WeaponClass = &'static str;
+pub type WeaponKind = std::any::TypeId;
+
+/// This tags an entity as a steering routine
+#[derive(Debug, Clone, Copy, Component)]
+pub struct CraftWeapon {
+    craft_entt: Entity,
+    kind: WeaponKind,
+    class: WeaponClass,
+}
+
+impl CraftWeapon {
+    pub fn new(craft_entt: Entity, kind: WeaponKind, class: WeaponClass) -> Self {
+        Self {
+            craft_entt,
+            kind,
+            class,
+        }
+    }
+
+    /// Get a reference to the craft weapon's craft entt.
+    #[inline]
+    pub fn craft_entt(&self) -> Entity {
+        self.craft_entt
+    }
+
+    /// Get a reference to the craft weapon's kind.
+    #[inline]
+    pub fn kind(&self) -> WeaponKind {
+        self.kind
+    }
+
+    /// Get a reference to the craft weapon's class.
+    pub fn class(self) -> WeaponClass {
+        self.class
+    }
+}
 
 pub struct ActivateWeaponEvent {
     pub weapon_id: Entity,
 }
-
-use crate::craft::attire::Damage;
 
 #[derive(Component)]
 pub struct ProjectileWeapon {
     pub proj_damage: Damage,
     pub proj_mesh: Handle<Mesh>,
     pub proj_mtr: Handle<StandardMaterial>,
-    pub proj_velocity: TVec3,
+    pub proj_velocity: TVec3, // TODO: replace with speed
     pub proj_shape: ColliderShape,
     pub proj_mass: ColliderMassProps,
     pub proj_lifespan_secs: f64,

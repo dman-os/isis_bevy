@@ -46,6 +46,10 @@ fn main() -> Result<()> {
         ui.label(format!("{:#?}", cmp.0));
         false
     });
+    inspect_registry.register_raw::<craft::mind::sensors::CraftWeaponsIndex, _>(|cmp, ui, _ctx| {
+        ui.label(format!("{:#?}", cmp));
+        false
+    });
     let mut app = App::new();
     app.add_plugins(DefaultPlugins)
         .insert_resource(WindowDescriptor {
@@ -67,7 +71,7 @@ fn main() -> Result<()> {
         .insert_resource(inspect_registry)
         .add_plugin(bevy_polyline::PolylinePlugin)
         // .add_plugin(bevy_prototype_debug_lines::DebugLinesPlugin)
-        //.insert_resource(bevy::ecs::schedule::ReportExecutionOrderAmbiguities);
+        .insert_resource(bevy::ecs::schedule::ReportExecutionOrderAmbiguities)
         .add_plugin(GamePlugin);
     //println!(
     //"{}",
@@ -98,7 +102,6 @@ impl Plugin for GamePlugin {
             .add_system(init_default_routines)
             .add_system(engine_input)
             .add_system(wpn_input)
-            .add_system(drive_circuit)
             //.add_system(tune_ai)
             // .add_startup_system(my_system)
             .insert_resource(ClearColor(Color::BLACK));
@@ -210,7 +213,8 @@ fn setup_environment(
         .insert(GameCamera);
     */
 }
-fn my_system(
+
+/* fn my_system(
     mut commands: Commands,
     mut polylines: ResMut<Assets<bevy_polyline::Polyline>>,
     mut polyline_materials: ResMut<Assets<bevy_polyline::PolylineMaterial>>,
@@ -248,7 +252,7 @@ fn my_system(
             ..Default::default()
         });
     }
-}
+} */
 
 #[derive(Component)]
 pub struct CraftCamera;
@@ -270,7 +274,7 @@ fn setup_world(
         const MASS_RANGE: TReal = 1000.;
         //const LOCATION_RANGE: [TReal; 3]= [500.; 3];
         const LOCATION_RANGE: [TReal; 3] = [500., 100.0, 500.0];
-        for _i in (0..100).into_iter() {
+        for _i in 0..100 {
             //for _ in (0..1).into_iter() {
             let size = rng.gen::<TReal>() * SIZE_RANGE;
             let radius = size * 0.5;
@@ -429,8 +433,8 @@ fn setup_world(
                     ..Default::default()
                 })
                 .insert(ColliderPositionSync::Discrete)
-                .insert(CircuitCheckpoint {
-                    next_point: points[(ii + 1) % points.len()],
+                .insert(craft::mind::boid::strategies::CircuitCheckpoint {
+                    next_point_location: points[(ii + 1) % points.len()],
                 });
         }
     }
@@ -513,15 +517,9 @@ fn setup_world(
             proj_mass: ColliderMassProps::Density(0.25 / (4. * math::real::consts::PI * 0.5 * 0.5)),
         })
         .insert_bundle(PbrBundle {
-            mesh: meshes.add(
-                shape::Cube {
-                    size: 1.,
-                    ..Default::default()
-                }
-                .into(),
-            ),
+            mesh: meshes.add(shape::Cube { size: 1. }.into()),
             transform: {
-                let mut t = Transform::from_translation(TVec3::Y * 3.);
+                let mut t = Transform::from_translation(TVec3::Y * 0.);
                 t.scale = [1., 1., 4.].into();
                 t
             },
@@ -533,7 +531,6 @@ fn setup_world(
     commands.insert_resource(CurrentWeapon(wpn_id));
 
     for ii in -7..=7 {
-        // for ii in 0..1 {
         commands
             .spawn()
             .insert_bundle(craft::CraftBundle {
@@ -557,10 +554,8 @@ fn setup_world(
                 },
                 ..Default::default()
             })
-            .insert_bundle(craft::mind::CraftMindBundle {
-                ..Default::default()
-            })
             .with_children(|parent| {
+                let parent_entt = parent.parent_entity();
                 parent
                     .spawn_bundle((
                         Transform::from_rotation(Quat::from_rotation_y(math::real::consts::PI)),
@@ -579,56 +574,86 @@ fn setup_world(
                         ..craft::attire::AttireBundle::default_collider_bundle()
                     },
                 });
-            })
-            .insert(CircuitRunner);
+                parent
+                .spawn()
+                .insert_bundle(craft::arms::WeaponBundle::new(craft::arms::ProjectileWeapon {
+                        proj_damage: craft::attire::Damage {
+                            value: 100.,
+                            damage_type: craft::attire::DamageType::Kinetic,
+                        },
+                        proj_mesh: meshes.add(
+                            shape::Icosphere {
+                                radius: 0.5,
+                                ..Default::default()
+                            }
+                            .into(),
+                        ),
+                        proj_mtr: materials.add(StandardMaterial {
+                            base_color: Color::WHITE,
+                            emissive: Color::GOLD * 20.,
+                            unlit: true,
+                            ..Default::default()
+                        }),
+                        proj_shape: ColliderShape::ball(0.5),
+                        proj_velocity: TVec3::Z * -750.,
+                        proj_lifespan_secs: 3.,
+                        proj_spawn_offset: TVec3::Z * -2.,
+                        proj_mass: ColliderMassProps::Density(0.25 / (4. * math::real::consts::PI * 0.5 * 0.5)),
+                    },
+                    parent_entt, 
+                    "kinetic_cannon")
+                ).insert_bundle(PbrBundle {
+                    mesh: meshes.add(shape::Cube { size: 1. }.into()),
+                    transform: {
+                        let mut t = Transform::from_translation(TVec3::Y * 0.);
+                        t.scale = [1., 1., 4.].into();
+                        t
+                    },
+                    material: materials.add(Color::WHITE.into()),
+                    ..Default::default()
+                });
+            }).insert(MindDrivenCraft);
     }
 }
 
-pub fn init_default_routines(
+#[derive(Component)]
+struct MindDrivenCraft;
+
+fn init_default_routines(
     mut commands: Commands,
-    checkpoints: Query<&ColliderPositionComponent, With<CircuitCheckpoint>>,
+    _checkpoints: Query<
+        &ColliderPositionComponent,
+        With<craft::mind::boid::strategies::CircuitCheckpoint>,
+    >,
     _player: Res<CurrentCraft>,
     crafts: Query<
         Entity,
         (
-            With<craft::mind::MindConfig>,
-            Without<craft::mind::ActiveRoutines>,
+            With<MindDrivenCraft>,
+            Without<craft::mind::boid::BoidMindConfig>,
         ),
     >,
 ) {
     //return;
     let members: smallvec::SmallVec<[Entity; 8]> = crafts.iter().collect();
-    if members.len() == 0 {
+    if members.is_empty() {
         // bail if there are no new crafts
         return;
     }
 
-    let checkpoint1_pos = checkpoints.iter().next().unwrap().translation.into();
+    // let checkpoint1_pos = _checkpoints.iter().next().unwrap().translation.into();
 
     let group = commands
         .spawn_bundle((
-            craft::mind::GroupMind {
+            craft::mind::flock::FlockMind {
                 // add all new crafts into a new group
                 members,
+                ..Default::default()
             },
-            craft::mind::BoidFlock::default(),
+            craft::mind::flock::BoidFlock::default(),
         ))
         .id();
     for craft in crafts.iter() {
-        let avoid_collision = commands
-            .spawn_bundle(
-                craft::mind::steering_systems::AvoidCollisionRoutineBundle::new(
-                    craft::mind::steering_systems::AvoidCollision {
-                        craft_entt: craft,
-                        fwd_prediction_secs: 5.0,
-                        raycast_exclusion: Default::default(),
-                        last_dodge_direction: Default::default(),
-                        last_dodge_timestamp: 0.,
-                        upheld_dodge_seconds: 1.0,
-                    },
-                ),
-            )
-            .id();
         /*let active_routine = commands
         .spawn_bundle(craft::mind::steering_systems::InterceptRoutineBundle::new(
             craft::mind::steering_systems::Intercept {
@@ -644,23 +669,33 @@ pub fn init_default_routines(
             ),
         )
         .id();*/
-        let active_routine = commands
-            .spawn_bundle(craft::mind::steering_systems::SeekRoutineBundle::new(
-                craft::mind::steering_systems::Seek {
-                    craft_entt: craft,
-                    target: craft::mind::steering_systems::SeekTarget::Position {
-                        pos: checkpoint1_pos,
-                    },
+
+        /* let strategy = commands
+        .spawn()
+        .insert_bundle(craft::mind::boid::strategies::RunCircuitBundle::new(
+            craft::mind::boid::strategies::RunCircuit {
+                initial_location: checkpoint1_pos,
+            },
+            craft,
+            Default::default(),
+        ))
+        .id(); */
+        let strategy = commands
+            .spawn()
+            .insert_bundle(craft::mind::boid::strategies::AttackPersueBundle::new(
+                craft::mind::boid::strategies::AttackPersue {
+                    quarry_rb: _player.0.handle(),
+                    attacking_range: 200.,
                 },
+                craft,
+                Default::default(),
             ))
             .id();
         commands
             .entity(craft)
-            .insert(craft::mind::CraftGroup(group))
-            .insert(craft::mind::ActiveRoutines::PriorityOverride {
-                routines: smallvec::smallvec![avoid_collision, active_routine],
-            })
-            .push_children(&[avoid_collision, active_routine]);
+            .insert(craft::mind::flock::CraftGroup(group))
+            .insert_bundle(craft::mind::boid::BoidMindBundle::new(strategy))
+            .push_children(&[strategy]);
     }
 }
 
@@ -929,57 +964,5 @@ fn move_camera_system(
         camera_xform.translation += cam_rotation * linear_vel;
         camera_xform.rotation *= rotator;
         // tracing::info!("resulting xform: {:?}", camera_xform);
-    }
-}
-
-#[derive(Component)]
-pub struct CircuitRunner;
-
-#[derive(Component)]
-pub struct CircuitCheckpoint {
-    next_point: TVec3,
-}
-
-fn drive_circuit(
-    checkpoints: Query<(Entity, &CircuitCheckpoint)>,
-    colliders: Query<&ColliderParentComponent>,
-    crafts: Query<&craft::mind::ActiveRoutines, With<CircuitRunner>>,
-    mut seek_routines: Query<&mut craft::mind::steering_systems::Seek>,
-    narrow_phase: Res<NarrowPhase>,
-) {
-    for (checkpt_entt, checkpoint) in checkpoints.iter() {
-        // if our projectile is intersecting with anything
-        for (collider1, collider2) in narrow_phase
-            .intersections_with(checkpt_entt.handle())
-            .filter(|(_, _, ixing)| *ixing)
-            .map(|(c1, c2, _)| (c1, c2))
-        {
-            let other = if collider1.entity() == checkpt_entt {
-                collider2
-            } else {
-                collider1
-            };
-            let other = other.entity();
-            match colliders
-                .get(other)
-                .map(|parent| crafts.get(parent.handle.entity()))
-            {
-                Ok(Ok(active_routine)) => match active_routine {
-                    craft::mind::ActiveRoutines::PriorityOverride { routines } => {
-                        if let Ok(mut seek_params) = seek_routines.get_mut(routines[1]) {
-                            tracing::trace!("craft arrived at checkpoint {:?}", seek_params);
-                            seek_params.target =
-                                craft::mind::steering_systems::SeekTarget::Position {
-                                    pos: checkpoint.next_point,
-                                }
-                        } else {
-                            tracing::error!("seek routine wasn't found at HARD CODED index");
-                        }
-                    }
-                    _ => tracing::error!("non priority override setup craft"),
-                },
-                _ => (),
-            }
-        }
     }
 }
