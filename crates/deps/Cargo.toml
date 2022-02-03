@@ -42,5 +42,6 @@ bevy_polyline = "0.1.1"
 big-brain = "0.10.0"
 # bevy_mod_debugdump = "0.2.1"
 # bevy_config_cam = "0.1.2"
+bevy_mod_picking = "0.5.2"
 
 

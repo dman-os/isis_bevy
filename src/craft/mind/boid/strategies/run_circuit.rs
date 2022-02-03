@@ -117,7 +117,7 @@ pub fn run_circuit(
 
                         if let SeekTarget::Position { pos: prev_pos } = seek_params.target {
                             if prev_pos.distance_squared(checkopoint_xform.translation) < 1. {
-                                tracing::info!("craft arrived at checkpoint {:?}", prev_pos);
+                                tracing::info!("craft arrived at checkpoint {prev_pos:?}",);
                                 seek_params.target = SeekTarget::Position {
                                     pos: checkpoint.next_point_location,
                                 }

@@ -9,6 +9,8 @@ pub mod boid;
 use boid::*;
 pub mod flock;
 use flock::*;
+pub mod player;
+use player::*;
 
 pub struct MindPlugin;
 
@@ -76,6 +78,10 @@ impl Plugin for MindPlugin {
                     .after(SteeringSystems),
             )
             .add_system(mind_update_engine_input.after(RoutineComposer))
+            .add_system(cam_input)
+            .add_system(engine_input)
+            .add_system(wpn_input)
+            .register_inspectable::<CraftCamera>()
             .register_inspectable::<BoidMindConfig>()
             .register_inspectable::<BoidSteeringSystemOutput>()
             .register_inspectable::<LinearRoutineOutput>()
@@ -93,3 +99,7 @@ pub enum ScanPresence {
 /*
 use master_mind::*;
 mod master_mind {} */
+
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+pub struct MindDrivenCraft;

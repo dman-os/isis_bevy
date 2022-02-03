@@ -15,7 +15,7 @@ impl Plugin for AttirePlugin {
     fn build(&self, app: &mut App) {
         app.add_system(generate_better_contact_events)
             .add_system(handle_collision_damage_events)
-            .add_system(handle_collider_ixn_events)
+            .add_system(handle_projectile_xin_evenns)
             .add_system(log_damage_events)
             .add_event::<BetterContactEvent>()
             .add_event::<CollisionDamageEvent>()
@@ -99,6 +99,7 @@ pub enum AttireCoverage {
     StarBoard,
     Stern,
 }
+
 impl Default for AttireCoverage {
     fn default() -> Self {
         Self::Omni
@@ -501,8 +502,7 @@ pub(super) fn handle_collision_damage_events(
         }
         if let Some((attire_entt, dist)) = closest_attire {
             tracing::warn!(
-                "CollisonDamageEnabledRb collided but no attires covered deepest contact point, damaging closest attire ({:?}) with dist_sqr {:?}",
-                attire_entt, dist
+                "CollisonDamageEnabledRb collided but no attires covered deepest contact point, damaging closest attire ({attire_entt:?}) with dist_sqr {dist:?}",
             );
             let (mut attire, coll_shape, coll_pos) = attires.get_mut(attire_entt).unwrap();
             attire.damage(damage);
@@ -530,15 +530,21 @@ pub struct ProjectileDamageEvent {
 }
 /// Consumes [`ProjectileIxnEvent`]s and damages [`AttireProfile`]s when
 /// the object intersecting has one attached.
-fn handle_collider_ixn_events(
-    mut attires: Query<(Entity, &mut AttireProfile)>,
+fn handle_projectile_xin_evenns(
+    mut commands: Commands,
+    mut attires: Query<(Entity, &mut AttireProfile, &ColliderParentComponent)>,
     mut proj_ixn_events: EventReader<ProjectileIxnEvent>,
     mut pd_events: EventWriter<ProjectileDamageEvent>,
 ) {
     for event in proj_ixn_events.iter() {
-        if let Ok((attire_entt, mut attire)) = attires.get_mut(event.collider.entity()) {
-            attire.damage(event.projectile.damage);
-
+        if let Ok((attire_entt, mut attire, parent)) = attires.get_mut(event.collider.entity()) {
+            if attire.damage(event.projectile.damage).is_some() {
+                tracing::info!(
+                    "Craft {:?} destroyed by Projectile damage",
+                    parent.handle.entity()
+                );
+                commands.entity(parent.handle.entity()).despawn_recursive();
+            }
             // generate the event to let others know it was damaged
             pd_events.send(ProjectileDamageEvent {
                 ixn_event: event.clone(),

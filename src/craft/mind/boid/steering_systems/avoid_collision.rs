@@ -123,8 +123,7 @@ pub fn avoid_collision(
                 ?dir,
                 ?result,
                 ?toi,
-                "collision predicted with {:?}\n{:?} meters away\n{:?} seconds away\ncorrecting {:?} degrees away",
-                handle,
+                "collision predicted with {handle:?}\n{:?} meters away\n{:?} seconds away\ncorrecting {:?} degrees away",
                 hit.toi,
                 hit.toi / speed,
                 dir.angle_between(result.0) * (180. / crate::math::real::consts::PI)

@@ -26,5 +26,6 @@ pub use bevy_rapier3d;
 pub use educe;
 pub use splines;
 // pub use bevy_config_cam;
+pub use bevy_mod_picking;
 pub use bevy_polyline;
 pub use big_brain;

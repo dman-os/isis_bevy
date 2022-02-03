@@ -37,7 +37,7 @@ pub fn seek(
                     ))
                 }
                 Err(err) => {
-                    tracing::error!("error getting SeekTarget Object g_xform: {:?}", err);
+                    tracing::error!("error getting SeekTarget Object g_xform: {err:?}");
                 }
             },
             SeekTarget::Position { pos } => {

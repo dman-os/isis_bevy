@@ -164,9 +164,8 @@ fn handle_activate_weapon_events(
             }
             Err(err) => {
                 tracing::warn!(
-                    "ActivateWeaponEvent for unrecognized wepon_id ({:?}): {:?}",
+                    "ActivateWeaponEvent for unrecognized wepon_id ({:?}): {err:?}",
                     event.weapon_id,
-                    err
                 );
             }
         }

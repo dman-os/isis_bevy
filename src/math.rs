@@ -74,3 +74,131 @@ fn delta_angle_radians_test() {
     assert!(delta_angle_radians(-d30, 0.) - d30 <= 2. * TReal::EPSILON);
     assert!(delta_angle_radians(-0.2, 0.) - 0.2 <= TReal::EPSILON);
 }
+
+pub trait TransformExt {
+    /// Calculate the parent transform from the entity's [`Transform`] and [`GlobalTransform`].
+    /// Forget not to check if the entity indeed has a parent first.
+    ///
+    /// ```
+    /// let parent_xform = Transform::from_translation([1., 2., 3.].into())
+    ///     .with_rotation(Quat::from_rotation_y(3.145))
+    ///     .with_scale([2., 2., 2.].into());
+    /// let xform = Transform::from_translation([1., 2., 3.].into())
+    ///     .with_rotation(Quat::from_rotation_y(3.145))
+    ///     .with_scale([2., 2., 2.].into())
+    ///     .into();
+    ///
+    /// let glob_xform = parent_xform.mul_transform(xform);
+    ///
+    /// let calc_parent_xform = calc_parent_xform(&xform, &glob_xform.into());
+    ///
+    /// assert!(parent_xform == calc_parent_xform);
+    /// ```
+    fn calc_parent_xform(&self, glob_xform: &GlobalTransform) -> GlobalTransform;
+    fn is_nan(&self) -> bool;
+    fn inverse(self) -> Transform;
+}
+
+impl TransformExt for Transform {
+    #[inline]
+    fn calc_parent_xform(&self, glob_xform: &GlobalTransform) -> GlobalTransform {
+        // glob_xform.inverse().mul_transform(*self).into()
+        let scale = glob_xform.scale / self.scale;
+        let rotation = self.rotation.inverse() * glob_xform.rotation;
+        GlobalTransform {
+            translation: rotation.inverse() * ((glob_xform.translation - self.translation) / scale),
+            // translation: glob_xform.translation - ((rotation.inverse() * self.translation) / scale),
+            rotation,
+            scale,
+        }
+    }
+
+    #[inline]
+    fn is_nan(&self) -> bool {
+        self.translation.is_nan() || self.rotation.is_nan() || self.scale.is_nan()
+    }
+
+    #[inline]
+    fn inverse(self) -> Transform {
+        Self::from_matrix(self.compute_matrix().inverse())
+    }
+}
+
+impl TransformExt for GlobalTransform {
+    #[inline]
+    fn calc_parent_xform(&self, glob_xform: &GlobalTransform) -> GlobalTransform {
+        let scale = glob_xform.scale / self.scale;
+        let rotation = (self.rotation.inverse() * glob_xform.rotation).normalize();
+        GlobalTransform {
+            translation: rotation.inverse() * ((glob_xform.translation - self.translation) / scale),
+            rotation,
+            scale,
+        }
+    }
+
+    #[inline]
+    fn is_nan(&self) -> bool {
+        self.translation.is_nan() || self.rotation.is_nan() || self.scale.is_nan()
+    }
+    #[inline]
+    fn inverse(self) -> Transform {
+        Transform::from_matrix(self.compute_matrix().inverse())
+    }
+}
+
+pub trait QuatExt {
+    fn looking_to(to: Vec3, up: Vec3) -> Self;
+}
+
+impl QuatExt for TQuat {
+    fn looking_to(to: Vec3, up: Vec3) -> Self {
+        let forward = Vec3::normalize(to);
+        let right = up.cross(forward).normalize();
+        let up = forward.cross(right);
+        TQuat::from_mat3(&Mat3::from_cols(right, up, forward))
+    }
+}
+
+#[test]
+fn parent_xform_calc() {
+    let parent_xform = Transform::from_translation([1., 2., 3.].into())
+        .with_rotation(Quat::from_rotation_y(3.145))
+        .with_scale([2., 2., 2.].into());
+
+    let xform = Transform::from_translation([1., 2., 3.].into())
+        .with_rotation(Quat::from_rotation_y(3.145))
+        .with_scale([2., 2., 2.].into());
+
+    let glob_xform = parent_xform.mul_transform(xform);
+
+    let calc_parent_xform = xform.calc_parent_xform(&glob_xform.into());
+
+    assert!(
+        (parent_xform.translation - calc_parent_xform.translation).length_squared() < f32::EPSILON,
+        "\n{parent_xform:?}\n{calc_parent_xform:?}"
+    );
+    assert!((parent_xform.rotation - calc_parent_xform.rotation).length_squared() < f32::EPSILON);
+    assert!((parent_xform.scale - calc_parent_xform.scale).length_squared() < f32::EPSILON);
+}
+
+#[test]
+fn inverse_xform() {
+    let xform = Transform::from_translation([1., 2., 3.].into())
+        .with_rotation(Quat::from_rotation_y(3.145))
+        .with_scale([2., 2., 2.].into());
+    let inv_xform = xform.inverse();
+    let inv_mat_xform = Transform::from_matrix(xform.compute_matrix().inverse());
+
+    assert!(
+        (inv_xform.translation - inv_mat_xform.translation).length_squared() < f32::EPSILON,
+        "\n{inv_xform:?}\n{inv_mat_xform:?}"
+    );
+    assert!((inv_xform.rotation - inv_mat_xform.rotation).length_squared() < f32::EPSILON);
+    assert!((inv_xform.scale - inv_mat_xform.scale).length_squared() < f32::EPSILON);
+
+    let inv_inv_xform = inv_xform.inverse();
+
+    assert!((xform.translation - inv_inv_xform.translation).length_squared() < f32::EPSILON);
+    assert!((xform.rotation - inv_inv_xform.rotation).length_squared() < f32::EPSILON);
+    assert!((xform.scale - inv_inv_xform.scale).length_squared() < f32::EPSILON);
+}

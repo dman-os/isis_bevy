@@ -46,8 +46,13 @@ fn main() -> Result<()> {
         ui.label(format!("{:#?}", cmp.0));
         false
     });
+
     inspect_registry.register_raw::<craft::mind::sensors::CraftWeaponsIndex, _>(|cmp, ui, _ctx| {
-        ui.label(format!("{:#?}", cmp));
+        ui.label(format!("{cmp:#?}",));
+        false
+    });
+    inspect_registry.register_raw::<craft::mind::player::CraftCamera, _>(|cmp, ui, _ctx| {
+        ui.label(format!("{cmp:#?}",));
         false
     });
     let mut app = App::new();
@@ -71,7 +76,7 @@ fn main() -> Result<()> {
         .insert_resource(inspect_registry)
         .add_plugin(bevy_polyline::PolylinePlugin)
         // .add_plugin(bevy_prototype_debug_lines::DebugLinesPlugin)
-        .insert_resource(bevy::ecs::schedule::ReportExecutionOrderAmbiguities)
+        // .insert_resource(bevy::ecs::schedule::ReportExecutionOrderAmbiguities)
         .add_plugin(GamePlugin);
     //println!(
     //"{}",
@@ -100,8 +105,6 @@ impl Plugin for GamePlugin {
             .add_startup_system(setup_world)
             .add_system(craft_state_display)
             .add_system(init_default_routines)
-            .add_system(engine_input)
-            .add_system(wpn_input)
             //.add_system(tune_ai)
             // .add_startup_system(my_system)
             .insert_resource(ClearColor(Color::BLACK));
@@ -254,12 +257,6 @@ fn setup_environment(
     }
 } */
 
-#[derive(Component)]
-pub struct CraftCamera;
-
-pub struct CurrentCraft(pub Entity);
-pub struct CurrentWeapon(pub Entity);
-
 fn setup_world(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -269,7 +266,7 @@ fn setup_world(
     let mut rng = rand::thread_rng();
 
     // setup the floating spheres
-    {
+    /* {
         const SIZE_RANGE: TReal = 100.;
         const MASS_RANGE: TReal = 1000.;
         //const LOCATION_RANGE: [TReal; 3]= [500.; 3];
@@ -346,59 +343,58 @@ fn setup_world(
                 });
         }
     }
-    /*
-        let radius = 100.;
-        let pos = TVec3::new(500., 0., 500.);
-        let xform = Transform::from_translation(pos);
-        let mass = 10_000.;
-        commands
-            .spawn()
-            .insert_bundle(PbrBundle {
-                mesh: meshes.add(Mesh::from(shape::Icosphere {
-                    radius,
-                    ..Default::default()
-                })),
-                transform: xform,
-                material: materials.add(
-                    Color::rgba(
-                        rng.gen::<TReal>(),
-                        rng.gen::<TReal>(),
-                        rng.gen::<TReal>(),
-                        1.,
-                    )
-                    .into(),
-                ),
+     */
+    let radius = 100.;
+    let pos = TVec3::new(500., 0., 500.);
+    let xform = Transform::from_translation(pos);
+    let mass = 10_000.;
+    commands
+        .spawn()
+        .insert_bundle(PbrBundle {
+            mesh: meshes.add(Mesh::from(shape::Icosphere {
+                radius,
                 ..Default::default()
-            })
-            /*
-            .insert_bundle(RigidBodyBundle {
-                body_type: RigidBodyType::Dynamic.into(),
-                activation: RigidBodyActivation::inactive().into(),
-                position: RigidBodyPositionComponent(pos.into()),
-                ..Default::default()
-            })
-            .insert(RigidBodyPositionSync::Discrete)
-            // */
-            .insert(ColliderPositionSync::Discrete)
-            .insert_bundle(ColliderBundle {
-                material: ColliderMaterial {
-                    ..Default::default()
-                }
-                .into(),
-                position: ColliderPositionComponent(pos.into()),
-                flags: ColliderFlags {
-                    collision_groups: *craft::attire::OBSTACLE_COLLIDER_IGROUP,
-                    ..Default::default()
-                }
-                .into(),
-                shape: ColliderShape::ball(radius).into(),
-                mass_properties: ColliderMassProps::Density(
-                    mass / (4. * math::real::consts::PI * radius * radius),
+            })),
+            transform: xform,
+            material: materials.add(
+                Color::rgba(
+                    rng.gen::<TReal>(),
+                    rng.gen::<TReal>(),
+                    rng.gen::<TReal>(),
+                    1.,
                 )
                 .into(),
+            ),
+            ..Default::default()
+        })
+        /*
+        .insert_bundle(RigidBodyBundle {
+            body_type: RigidBodyType::Dynamic.into(),
+            activation: RigidBodyActivation::inactive().into(),
+            position: RigidBodyPositionComponent(pos.into()),
+            ..Default::default()
+        })
+        .insert(RigidBodyPositionSync::Discrete)
+        // */
+        .insert(ColliderPositionSync::Discrete)
+        .insert_bundle(ColliderBundle {
+            material: ColliderMaterial {
                 ..Default::default()
-            });
-    */
+            }
+            .into(),
+            position: ColliderPositionComponent(pos.into()),
+            flags: ColliderFlags {
+                collision_groups: *craft::attire::OBSTACLE_COLLIDER_IGROUP,
+                ..Default::default()
+            }
+            .into(),
+            shape: ColliderShape::ball(radius).into(),
+            mass_properties: ColliderMassProps::Density(
+                mass / (4. * math::real::consts::PI * radius * radius),
+            )
+            .into(),
+            ..Default::default()
+        });
 
     // setup the test circuit
     {
@@ -477,17 +473,22 @@ fn setup_world(
                     ..craft::attire::AttireBundle::default_collider_bundle()
                 },
             });
-
+        })
+        .id();
+    commands
+        .spawn_bundle({
             let mut cam = PerspectiveCameraBundle {
-                transform: Transform::from_xyz(0.0, 7., 20.0).looking_at(-TVec3::Z, TVec3::Y),
+                // transform: Transform::from_xyz(0.0, 7., 20.0).looking_at(-TVec3::Z, TVec3::Y),
                 ..Default::default()
             };
             cam.perspective_projection.far = 10_000.;
-            parent.spawn_bundle(cam).insert(CraftCamera);
+            cam
         })
-        .id();
-
-    commands.insert_resource(CurrentCraft(player_craft_id));
+        .insert(craft::mind::player::CraftCamera {
+            // target: Some(player_craft_id),
+            ..craft::mind::player::CraftCamera::default()
+        });
+    commands.insert_resource(craft::mind::player::CurrentCraft(player_craft_id));
 
     // spawn player weapon
     let wpn_id = commands
@@ -528,8 +529,9 @@ fn setup_world(
         })
         .insert(Parent(player_craft_id))
         .id();
-    commands.insert_resource(CurrentWeapon(wpn_id));
+    commands.insert_resource(craft::mind::player::CurrentWeapon(wpn_id));
 
+    return;
     for ii in -7..=7 {
         commands
             .spawn()
@@ -600,7 +602,7 @@ fn setup_world(
                         proj_spawn_offset: TVec3::Z * -2.,
                         proj_mass: ColliderMassProps::Density(0.25 / (4. * math::real::consts::PI * 0.5 * 0.5)),
                     },
-                    parent_entt, 
+                    parent_entt,
                     "kinetic_cannon")
                 ).insert_bundle(PbrBundle {
                     mesh: meshes.add(shape::Cube { size: 1. }.into()),
@@ -612,12 +614,9 @@ fn setup_world(
                     material: materials.add(Color::WHITE.into()),
                     ..Default::default()
                 });
-            }).insert(MindDrivenCraft);
+            }).insert(craft::mind::MindDrivenCraft);
     }
 }
-
-#[derive(Component)]
-struct MindDrivenCraft;
 
 fn init_default_routines(
     mut commands: Commands,
@@ -625,11 +624,11 @@ fn init_default_routines(
         &ColliderPositionComponent,
         With<craft::mind::boid::strategies::CircuitCheckpoint>,
     >,
-    _player: Res<CurrentCraft>,
+    _player: Res<craft::mind::player::CurrentCraft>,
     crafts: Query<
         Entity,
         (
-            With<MindDrivenCraft>,
+            With<craft::mind::MindDrivenCraft>,
             Without<craft::mind::boid::BoidMindConfig>,
         ),
     >,
@@ -699,86 +698,9 @@ fn init_default_routines(
     }
 }
 
-fn wpn_input(
-    k_input: Res<Input<KeyCode>>,
-    cur_wpn: Res<CurrentWeapon>,
-    mut activate_wpn_events: EventWriter<craft::arms::ActivateWeaponEvent>,
-) {
-    if k_input.pressed(KeyCode::Space) {
-        activate_wpn_events.send(craft::arms::ActivateWeaponEvent {
-            weapon_id: cur_wpn.0,
-        });
-    }
-}
-
-fn engine_input(
-    k_input: Res<Input<KeyCode>>,
-    cur_craft: Res<CurrentCraft>,
-    mut crafts: Query<(
-        &mut craft::engine::LinearEngineState,
-        &mut craft::engine::AngularEngineState,
-        &craft::engine::EngineConfig,
-    )>,
-) {
-    let mut linear_input = TVec3::ZERO;
-    let mut angular_input = TVec3::ZERO;
-
-    if k_input.pressed(KeyCode::W) {
-        // inverse z dir since cam faces backward
-        linear_input.z -= 1.;
-    }
-    if k_input.pressed(KeyCode::S) {
-        linear_input.z += 1.;
-    }
-    if k_input.pressed(KeyCode::D) {
-        linear_input.x += 1.;
-    }
-    if k_input.pressed(KeyCode::A) {
-        linear_input.x -= 1.;
-    }
-    if k_input.pressed(KeyCode::E) {
-        linear_input.y += 1.;
-    }
-    if k_input.pressed(KeyCode::Q) {
-        linear_input.y -= 1.;
-    }
-
-    if k_input.pressed(KeyCode::Numpad8) {
-        angular_input.x += 1.;
-    }
-    if k_input.pressed(KeyCode::Numpad5) {
-        angular_input.x -= 1.;
-    }
-    if k_input.pressed(KeyCode::Numpad4) {
-        angular_input.y += 1.;
-    }
-    if k_input.pressed(KeyCode::Numpad6) {
-        angular_input.y -= 1.;
-    }
-    if k_input.pressed(KeyCode::Numpad7) {
-        angular_input.z += 1.;
-    }
-    if k_input.pressed(KeyCode::Numpad9) {
-        angular_input.z -= 1.;
-    }
-
-    let (mut lin_state, mut ang_state, craft_config) = crafts
-        .get_mut(cur_craft.0)
-        .expect("unable to find current craft entity");
-
-    lin_state.input = linear_input;
-    //lin_state.input.z *= -1.0;
-    //lin_state.input.x *= -1.0;
-    lin_state.input *= craft_config.linear_v_limit;
-
-    ang_state.input = angular_input;
-    //ang_state.input.z *= -1.0;
-    ang_state.input *= craft_config.angular_v_limit;
-}
-
 fn craft_state_display(
     egui_context: ResMut<EguiContext>,
-    cur_craft: Res<CurrentCraft>,
+    cur_craft: Res<craft::mind::player::CurrentCraft>,
     mut crafts: Query<(
         &Transform,
         &craft::engine::LinearEngineState,
@@ -845,6 +767,7 @@ fn craft_state_display(
             //ui.label(format!("angular pid: {:+03.1?}", ang_pid));
         });
 }
+
 fn tune_engin(
     egui_context: ResMut<EguiContext>,
     mut crafts: Query<(
@@ -963,6 +886,11 @@ fn move_camera_system(
         let cam_rotation = camera_xform.rotation;
         camera_xform.translation += cam_rotation * linear_vel;
         camera_xform.rotation *= rotator;
-        // tracing::info!("resulting xform: {:?}", camera_xform);
+        // tracing::info!("resulting xform: {camera_xform:?}");
     }
+}
+
+#[test]
+fn zmblo() {
+    assert_eq!(Transform::identity(), Transform::identity().inverse());
 }
