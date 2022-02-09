@@ -1416,6 +1416,7 @@ dependencies = [
  "bevy-inspector-egui",
  "bevy_egui",
  "bevy_mod_picking",
+ "bevy_mod_raycast",
  "bevy_polyline",
  "bevy_rapier3d",
  "big-brain",

@@ -3,6 +3,15 @@ use deps::*;
 use bevy::{ecs as bevy_ecs, prelude::*};
 use bevy_inspector_egui::Inspectable;
 
+pub use attack_persue::*;
+mod attack_persue;
+
+pub use run_circuit::*;
+mod run_circuit;
+
+pub use single_routine::*;
+mod single_routine;
+
 /// A generic bundle for craft strategies.
 #[derive(Bundle)]
 pub struct BoidStrategyBundle<P>
@@ -115,10 +124,4 @@ impl BoidStrategy {
     }
 }
 
-pub use attack_persue::*;
-mod attack_persue;
-
-pub use run_circuit::*;
-
 use super::SteeringRoutineComposer;
-mod run_circuit;

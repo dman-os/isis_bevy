@@ -6,7 +6,7 @@ use bevy_rapier3d::prelude::*;
 use crate::craft::mind::{BoidFlock, CraftGroup};
 
 use super::{
-    look_at, steering_behaviours, ActiveRoutine, AngularRoutineOutput, LinAngRoutineBundle,
+    look_to, steering_behaviours, ActiveRoutine, AngularRoutineOutput, LinAngRoutineBundle,
     LinearRoutineOutput, SteeringRoutine,
 };
 
@@ -46,6 +46,6 @@ pub fn fly_with_flock(
             10.0 * steering_behaviours::separation(xform.translation, &flock.craft_positions[..]),
         );
         *lin_out = LinearRoutineOutput(cohesion + allignment + separation);
-        *ang_out = look_at(xform.rotation * allignment);
+        *ang_out = AngularRoutineOutput(look_to(xform.rotation * allignment));
     }
 }

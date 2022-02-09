@@ -29,7 +29,7 @@ pub type AttackPersueBundle = BoidStrategyDuoComponent<AttackPersue, AttackPersu
 
 pub fn attack_persue_butler(
     mut commands: Commands,
-    mut strategies: Query<
+    mut added_strategies: Query<
         (&AttackPersue, &BoidStrategy, &mut AttackPersueState),
         Added<AttackPersue>,
     >,
@@ -41,7 +41,7 @@ pub fn attack_persue_butler(
     )>,
     mut routines: Query<&mut Intercept>,
 ) {
-    for (params, strategy, mut state) in strategies.iter_mut() {
+    for (params, strategy, mut state) in added_strategies.iter_mut() {
         let (routines, wpns, ..) = crafts
             .get(strategy.craft_entt())
             .expect("craft not found for BoidStrategy");
@@ -97,7 +97,7 @@ pub fn attack_persue_butler(
         }
         if let Some(entts) = strategy_index.kind::<AttackPersue>() {
             for strategy in entts {
-                if let Ok((_, _, state)) = strategies.get(*strategy) {
+                if let Ok((_, _, state)) = added_strategies.get(*strategy) {
                     if let Some(entt) = state.intercept_wpn_speed {
                         if let Ok(mut routine) = routines.get_mut(entt) {
                             routine.speed = Some(weapons.avg_projectile_speed)
@@ -158,7 +158,7 @@ pub fn attack_persue(
                         ],
                     },
                     // fire_weapons: true,
-                    fire_weapons: 1. - fwdness < crate::math::real::EPSILON * 100_000.,
+                    fire_weapons: 1. - fwdness < crate::math::real::EPSILON * 10_000.,
                 }
                 // aside
             } else if fwdness < -DIRECTION_DETERMINATION_COS_THRESHOLD {

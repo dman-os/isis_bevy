@@ -84,13 +84,14 @@ pub struct EngineConfig {
     /// TODO: extract this to own component
     pub extents: TVec3,
 
+    /// TODO: extract these into another component
     /// DERIVED ITEMS
 
-    // TODO: make use of me
     /// Angular thruster toruqe, transient auto cacluated value from the
     /// angular_thrustuer_force according to the craft's shape and mass.
     /// In  Newton meters.
     pub thruster_torque: Option<TVec3>,
+
     /// Angular acceleration limit, another transient auto cacluated value. It's cacluated from
     /// the normal acceleration limit (which is in m/ss) and adjusted to the size/shape of the craft.
     /// In rad/s/s.
@@ -231,7 +232,7 @@ pub fn angular_pid_driver(
         &mut AngularDriverPid,
         &RigidBodyMassPropsComponent,
     )>,
-    //time: Time,
+    time: Res<Time>,
 ) {
     for (mut state, config, mut pid, mass_props) in crafts.iter_mut() {
         {
@@ -261,15 +262,18 @@ pub fn angular_pid_driver(
                     .angular_acceleration_limit
                     .expect("transient values weren't derived");
                 pid.0.integrat_max = acceleration_limit.min(artificial_accel_limit);
-                pid.0.integrat_min = -pid.0.integrat_min;
+                pid.0.integrat_min = -pid.0.integrat_max;
 
                 // clamp the actual limit to the artifical limit
                 acceleration_limit =
                     acceleration_limit.clamp(-artificial_accel_limit, artificial_accel_limit);
             }
-            let angular_flame = pid
-                .0
-                .update(state.velocity, angular_input - state.velocity, 1.0);
+            let angular_flame = pid.0.update(
+                state.velocity,
+                angular_input - state.velocity,
+                time.delta_seconds(),
+            );
+            // let angular_flame = angular_input * ;
             let angular_flame = angular_flame.clamp(-acceleration_limit, acceleration_limit);
             state.flame = angular_flame;
         }

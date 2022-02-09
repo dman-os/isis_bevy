@@ -1,6 +1,5 @@
 #[cfg(feature = "dylink")]
-#[allow(unused_imports)]
-#[allow(clippy::single_component_path_imports)]
+#[allow(unused_imports, clippy::single_component_path_imports)]
 use dylink;
 
 use deps::*;
@@ -46,7 +45,6 @@ fn main() -> Result<()> {
         ui.label(format!("{:#?}", cmp.0));
         false
     });
-
     inspect_registry.register_raw::<craft::mind::sensors::CraftWeaponsIndex, _>(|cmp, ui, _ctx| {
         ui.label(format!("{cmp:#?}",));
         false
@@ -75,6 +73,9 @@ fn main() -> Result<()> {
         .add_plugin(bevy_inspector_egui::WorldInspectorPlugin::new())
         .insert_resource(inspect_registry)
         .add_plugin(bevy_polyline::PolylinePlugin)
+        // .add_plugins(bevy_mod_picking::DefaultPickingPlugins)
+        .add_plugin(bevy_mod_picking::PickingPlugin)
+        // .add_plugin(bevy_mod_picking::DebugCursorPickingPlugin)
         // .add_plugin(bevy_prototype_debug_lines::DebugLinesPlugin)
         // .insert_resource(bevy::ecs::schedule::ReportExecutionOrderAmbiguities)
         .add_plugin(GamePlugin);
@@ -105,7 +106,6 @@ impl Plugin for GamePlugin {
             .add_startup_system(setup_world)
             .add_system(craft_state_display)
             .add_system(init_default_routines)
-            //.add_system(tune_ai)
             // .add_startup_system(my_system)
             .insert_resource(ClearColor(Color::BLACK));
     }
@@ -266,7 +266,7 @@ fn setup_world(
     let mut rng = rand::thread_rng();
 
     // setup the floating spheres
-    /* {
+    {
         const SIZE_RANGE: TReal = 100.;
         const MASS_RANGE: TReal = 1000.;
         //const LOCATION_RANGE: [TReal; 3]= [500.; 3];
@@ -313,6 +313,7 @@ fn setup_world(
                     ),
                     ..Default::default()
                 })
+                .insert_bundle(bevy_mod_picking::PickableBundle::default())
                 /*
                 .insert_bundle(RigidBodyBundle {
                     body_type: RigidBodyType::Dynamic.into(),
@@ -343,8 +344,8 @@ fn setup_world(
                 });
         }
     }
-     */
-    let radius = 100.;
+
+    let radius = 10.;
     let pos = TVec3::new(500., 0., 500.);
     let xform = Transform::from_translation(pos);
     let mass = 10_000.;
@@ -394,7 +395,8 @@ fn setup_world(
             )
             .into(),
             ..Default::default()
-        });
+        })
+        .insert_bundle(bevy_mod_picking::PickableBundle::default());
 
     // setup the test circuit
     {
@@ -403,6 +405,7 @@ fn setup_world(
             radius: 10.0,
             ..Default::default()
         }));
+        #[allow(clippy::unnecessary_cast)]
         let points = [
             [1000.0, 0., 1000.0 as TReal].into(),
             //[-1000.0, 0., 1000.0].into(),
@@ -412,6 +415,7 @@ fn setup_world(
         for ii in 0..points.len() {
             commands
                 .spawn()
+                .insert_bundle(bevy_mod_picking::PickableBundle::default())
                 .insert_bundle(PbrBundle {
                     mesh: mesh.clone(),
                     material: material.clone(),
@@ -463,7 +467,6 @@ fn setup_world(
                 .with_children(|parent| {
                     parent.spawn_scene(ball_fighter_model.clone());
                 });
-
             parent.spawn_bundle(craft::attire::AttireBundle {
                 profile: craft::attire::AttireProfile {
                     ..Default::default()
@@ -476,54 +479,87 @@ fn setup_world(
         })
         .id();
     commands
-        .spawn_bundle({
-            let mut cam = PerspectiveCameraBundle {
-                // transform: Transform::from_xyz(0.0, 7., 20.0).looking_at(-TVec3::Z, TVec3::Y),
-                ..Default::default()
-            };
+        .spawn()
+        .insert_bundle({
+            let mut cam = PerspectiveCameraBundle::default();
             cam.perspective_projection.far = 10_000.;
             cam
         })
+        .insert_bundle(bevy_mod_picking::PickingCameraBundle::default())
         .insert(craft::mind::player::CraftCamera {
             // target: Some(player_craft_id),
             ..craft::mind::player::CraftCamera::default()
         });
     commands.insert_resource(craft::mind::player::CurrentCraft(player_craft_id));
+    /* let ball = commands
+    .spawn()
+    .insert_bundle(RigidBodyBundle {
+        position: [0., 0., -70.].into(),
+        body_type: RigidBodyType::Dynamic.into(),
+        ..Default::default()
+    })
+    .insert_bundle(ColliderBundle {
+        shape: ColliderShape::ball(1.).into(),
+        ..Default::default()
+    })
+    .insert(ColliderDebugRender::default())
+    .insert(ColliderPositionSync::Discrete)
+    .id(); */
+    /* commands.spawn().insert(JointBuilderComponent::new(
+        SphericalJoint::new().local_anchor1([0., 0., -10.].into()),
+        player_craft_id,
+        ball,
+    )); */
+    /* commands.spawn().insert(JointBuilderComponent::new(
+        PrismaticJoint::new(nalgebra::Unit::new_normalize((-TVec3::Z).into()))
+            // .motor_position(20., 0.2, 0.1)
+            .motor_velocity(10., 1.),
+        player_craft_id,
+        ball,
+    )); */
 
+    let proj_mesh = meshes.add(
+        shape::Icosphere {
+            radius: 0.5,
+            ..Default::default()
+        }
+        .into(),
+    );
+    let proj_mtr = materials.add(StandardMaterial {
+        base_color: Color::WHITE,
+        emissive: Color::GOLD * 20.,
+        unlit: true,
+        ..Default::default()
+    });
+    let new_kinetic_cannon: &dyn Fn(_) -> _ = &(move |craft_entt| {
+        craft::arms::WeaponBundle::new(
+            craft::arms::ProjectileWeapon {
+                proj_damage: craft::attire::Damage {
+                    value: 100.,
+                    damage_type: craft::attire::DamageType::Kinetic,
+                },
+                proj_mesh: proj_mesh.clone(),
+                proj_mtr: proj_mtr.clone(),
+                proj_shape: ColliderShape::ball(0.5),
+                proj_velocity: TVec3::Z * -750.,
+                proj_lifespan_secs: 3.,
+                proj_spawn_offset: TVec3::Z * -2.,
+                proj_mass: ColliderMassProps::Density(
+                    0.25 / (4. * math::real::consts::PI * 0.5 * 0.5),
+                ),
+            },
+            craft_entt,
+            "kinetic_cannon",
+            craft::arms::WeaponActivationState::new_discrete(5.),
+        )
+    });
     // spawn player weapon
     let wpn_id = commands
         .spawn()
-        .insert(craft::arms::ProjectileWeapon {
-            proj_damage: craft::attire::Damage {
-                value: 100.,
-                damage_type: craft::attire::DamageType::Kinetic,
-            },
-            proj_mesh: meshes.add(
-                shape::Icosphere {
-                    radius: 0.5,
-                    ..Default::default()
-                }
-                .into(),
-            ),
-            proj_mtr: materials.add(StandardMaterial {
-                base_color: Color::WHITE,
-                emissive: Color::GOLD * 20.,
-                unlit: true,
-                ..Default::default()
-            }),
-            proj_shape: ColliderShape::ball(0.5),
-            proj_velocity: TVec3::Z * -750.,
-            proj_lifespan_secs: 3.,
-            proj_spawn_offset: TVec3::Z * -2.,
-            proj_mass: ColliderMassProps::Density(0.25 / (4. * math::real::consts::PI * 0.5 * 0.5)),
-        })
+        .insert_bundle(new_kinetic_cannon(player_craft_id))
         .insert_bundle(PbrBundle {
             mesh: meshes.add(shape::Cube { size: 1. }.into()),
-            transform: {
-                let mut t = Transform::from_translation(TVec3::Y * 0.);
-                t.scale = [1., 1., 4.].into();
-                t
-            },
+            transform: Transform::from_translation(TVec3::Y * 0.).with_scale([1., 1., 4.].into()),
             material: materials.add(Color::WHITE.into()),
             ..Default::default()
         })
@@ -531,13 +567,13 @@ fn setup_world(
         .id();
     commands.insert_resource(craft::mind::player::CurrentWeapon(wpn_id));
 
-    return;
+    // return;
     for ii in -7..=7 {
         commands
             .spawn()
             .insert_bundle(craft::CraftBundle {
                 config: craft::engine::EngineConfig {
-                    // linear_thruster_force: [3.; 3].into(),
+                    // linear_thruster_force: [0.; 3].into(),
                     ..Default::default()
                 },
                 rigid_body: RigidBodyBundle {
@@ -577,43 +613,18 @@ fn setup_world(
                     },
                 });
                 parent
-                .spawn()
-                .insert_bundle(craft::arms::WeaponBundle::new(craft::arms::ProjectileWeapon {
-                        proj_damage: craft::attire::Damage {
-                            value: 100.,
-                            damage_type: craft::attire::DamageType::Kinetic,
+                    .spawn()
+                    .insert_bundle(new_kinetic_cannon(parent_entt))
+                    .insert_bundle(PbrBundle {
+                        mesh: meshes.add(shape::Cube { size: 1. }.into()),
+                        transform: {
+                            let mut t = Transform::from_translation(TVec3::Y * 0.);
+                            t.scale = [1., 1., 4.].into();
+                            t
                         },
-                        proj_mesh: meshes.add(
-                            shape::Icosphere {
-                                radius: 0.5,
-                                ..Default::default()
-                            }
-                            .into(),
-                        ),
-                        proj_mtr: materials.add(StandardMaterial {
-                            base_color: Color::WHITE,
-                            emissive: Color::GOLD * 20.,
-                            unlit: true,
-                            ..Default::default()
-                        }),
-                        proj_shape: ColliderShape::ball(0.5),
-                        proj_velocity: TVec3::Z * -750.,
-                        proj_lifespan_secs: 3.,
-                        proj_spawn_offset: TVec3::Z * -2.,
-                        proj_mass: ColliderMassProps::Density(0.25 / (4. * math::real::consts::PI * 0.5 * 0.5)),
-                    },
-                    parent_entt,
-                    "kinetic_cannon")
-                ).insert_bundle(PbrBundle {
-                    mesh: meshes.add(shape::Cube { size: 1. }.into()),
-                    transform: {
-                        let mut t = Transform::from_translation(TVec3::Y * 0.);
-                        t.scale = [1., 1., 4.].into();
-                        t
-                    },
-                    material: materials.add(Color::WHITE.into()),
-                    ..Default::default()
-                });
+                        material: materials.add(Color::WHITE.into()),
+                        ..Default::default()
+                    });
             }).insert(craft::mind::MindDrivenCraft);
     }
 }
@@ -624,7 +635,7 @@ fn init_default_routines(
         &ColliderPositionComponent,
         With<craft::mind::boid::strategies::CircuitCheckpoint>,
     >,
-    _player: Res<craft::mind::player::CurrentCraft>,
+    player: Res<craft::mind::player::CurrentCraft>,
     crafts: Query<
         Entity,
         (
@@ -679,17 +690,40 @@ fn init_default_routines(
             Default::default(),
         ))
         .id(); */
+        let quarry_rb = player.0.handle();
         let strategy = commands
             .spawn()
             .insert_bundle(craft::mind::boid::strategies::AttackPersueBundle::new(
                 craft::mind::boid::strategies::AttackPersue {
-                    quarry_rb: _player.0.handle(),
+                    quarry_rb,
                     attacking_range: 200.,
                 },
                 craft,
                 Default::default(),
             ))
             .id();
+        /*
+        let strategy =
+            commands
+                .spawn()
+                .insert_bundle(craft::mind::boid::strategies::SingleRoutineBundle::new(
+                    craft::mind::boid::strategies::SingleRoutine::new(Box::new(
+                        move |commands, strategy| {
+                            commands.spawn().insert_bundle(
+                            craft::mind::boid::steering_systems::InterceptRoutineBundle::new(
+                                craft::mind::boid::steering_systems::Intercept {
+                                    quarry_rb,
+                                    speed: None,
+                                },
+                                strategy.craft_entt(),
+                            ),
+                        ).id()
+                        },
+                    )),
+                    craft,
+                    Default::default(),
+                ))
+                .id(); */
         commands
             .entity(craft)
             .insert(craft::mind::flock::CraftGroup(group))
@@ -701,8 +735,9 @@ fn init_default_routines(
 fn craft_state_display(
     egui_context: ResMut<EguiContext>,
     cur_craft: Res<craft::mind::player::CurrentCraft>,
+    craft_cameras: Query<&craft::mind::player::CraftCamera>,
     mut crafts: Query<(
-        &Transform,
+        &GlobalTransform,
         &craft::engine::LinearEngineState,
         &craft::engine::AngularEngineState,
         &mut craft::engine::LinearDriverPid,
@@ -711,6 +746,7 @@ fn craft_state_display(
 ) {
     let (craft_xform, lin_state, ang_state, mut lin_pid, mut ang_pid) =
         crafts.get_mut(cur_craft.0).unwrap();
+    let cam = craft_cameras.single();
     egui::Window::new("Status")
         .collapsible(true)
         .default_pos([1100., 0.])
@@ -723,24 +759,39 @@ fn craft_state_display(
             ui.label(format!("angular input: {:+03.1?}", ang_state.input));
             ui.label(format!("angular flame: {:+03.1?}", ang_state.flame));
 
+            ui.label(format!("cam facing dir: {:+03.1?}", cam.facing_direction));
+            ui.label(format!("craft forward: {:+03.1?}", craft_xform.forward()));
+
             return;
             ui.separator();
             ui.label("linear pid tune");
             {
                 let mut proportional_gain = lin_pid.0.proportional_gain.x;
-                ui.add(egui::Slider::new(&mut proportional_gain, 0.0..=10_000.).text("p gain"));
+                ui.add(
+                    egui::Slider::new(&mut proportional_gain, 0.0..=10_000.)
+                        .clamp_to_range(false)
+                        .text("p gain"),
+                );
                 lin_pid.0.proportional_gain = [proportional_gain; 3].into();
             }
 
             {
                 let mut integral_gain = lin_pid.0.integrat_gain.x;
-                ui.add(egui::Slider::new(&mut integral_gain, 0.0..=1.).text("i gain"));
+                ui.add(
+                    egui::Slider::new(&mut integral_gain, 0.0..=1.)
+                        .clamp_to_range(false)
+                        .text("i gain"),
+                );
                 lin_pid.0.integrat_gain = [integral_gain; 3].into();
             }
 
             {
                 let mut differntial_gain = lin_pid.0.differntial_gain.x;
-                ui.add(egui::Slider::new(&mut differntial_gain, 0.0..=1000.).text("d gain"));
+                ui.add(
+                    egui::Slider::new(&mut differntial_gain, 0.0..=1000.)
+                        .clamp_to_range(false)
+                        .text("d gain"),
+                );
                 lin_pid.0.differntial_gain = [differntial_gain; 3].into();
             }
 
@@ -748,70 +799,36 @@ fn craft_state_display(
             ui.label("angular pid tune");
             {
                 let mut proportional_gain = ang_pid.0.proportional_gain.x;
-                ui.add(egui::Slider::new(&mut proportional_gain, 0.0..=10_000.).text("p gain"));
+                ui.add(
+                    egui::Slider::new(&mut proportional_gain, 0.0..=10_000.)
+                        .clamp_to_range(false)
+                        .text("p gain"),
+                );
                 ang_pid.0.proportional_gain = [proportional_gain; 3].into();
             }
 
             {
                 let mut integral_gain = ang_pid.0.integrat_gain.x;
-                ui.add(egui::Slider::new(&mut integral_gain, 0.0..=1.).text("i gain"));
+                ui.add(
+                    egui::Slider::new(&mut integral_gain, 0.0..=1.)
+                        .clamp_to_range(false)
+                        .text("i gain"),
+                );
                 ang_pid.0.integrat_gain = [integral_gain; 3].into();
             }
 
             {
                 let mut differntial_gain = ang_pid.0.differntial_gain.x;
-                ui.add(egui::Slider::new(&mut differntial_gain, 0.0..=1000.).text("d gain"));
+                ui.add(
+                    egui::Slider::new(&mut differntial_gain, 0.0..=1000.)
+                        .clamp_to_range(false)
+                        .text("d gain"),
+                );
                 ang_pid.0.differntial_gain = [differntial_gain; 3].into();
             }
             //ui.label(format!("lnear pid: {:+03.1?}", lin_pid));
             //ui.label(format!("angular pid: {:+03.1?}", ang_pid));
         });
-}
-
-fn tune_engin(
-    egui_context: ResMut<EguiContext>,
-    mut crafts: Query<(
-        &Transform,
-        &mut craft::engine::LinearEngineState,
-        &mut craft::engine::AngularEngineState,
-        &mut craft::engine::LinearDriverPid,
-        &mut craft::engine::AngularDriverPid,
-    )>,
-) {
-    for (_craft_xform, lin_state, ang_state, mut _lin_pid, mut ang_pid) in crafts.iter_mut() {
-        egui::Window::new("mind tune")
-            .collapsible(true)
-            .show(egui_context.ctx(), |ui| {
-                ui.label(format!("linear vel:    {:+03.1?}", lin_state.velocity));
-                ui.label(format!("linear input:  {:+03.1?}", lin_state.input));
-                ui.label(format!("linear flame:  {:+03.1?}", lin_state.flame));
-                ui.label(format!("angular vel:   {:+03.1?}", ang_state.velocity));
-                ui.label(format!("angular input: {:+03.1?}", ang_state.input));
-                ui.label(format!("angular flame: {:+03.1?}", ang_state.flame));
-
-                ui.separator();
-                ui.label("angular pid tune");
-                {
-                    let mut proportional_gain = ang_pid.0.proportional_gain.x;
-                    ui.add(egui::Slider::new(&mut proportional_gain, 0.0..=10_000.).text("p gain"));
-                    ang_pid.0.proportional_gain = [proportional_gain; 3].into();
-                }
-
-                {
-                    let mut integral_gain = ang_pid.0.integrat_gain.x;
-                    ui.add(egui::Slider::new(&mut integral_gain, 0.0..=1.).text("i gain"));
-                    ang_pid.0.integrat_gain = [integral_gain; 3].into();
-                }
-
-                {
-                    let mut differntial_gain = ang_pid.0.differntial_gain.x;
-                    ui.add(egui::Slider::new(&mut differntial_gain, 0.0..=1000.).text("d gain"));
-                    ang_pid.0.differntial_gain = [differntial_gain; 3].into();
-                }
-                //ui.label(format!("lnear pid: {:+03.1?}", lin_pid));
-                //ui.label(format!("angular pid: {:+03.1?}", ang_pid));
-            });
-    }
 }
 
 #[derive(Debug, Clone, Copy, Component)]

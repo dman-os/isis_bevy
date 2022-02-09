@@ -33,22 +33,18 @@ impl PIDControllerVec3 {
     }
 
     pub fn update(&mut self, state: Vec3, err: Vec3, delta_time: f32) -> Vec3 {
-        // calculate the proportional term
-        let mut drive_v = self.proportional_gain * err;
-
         // cacluate the inegral error
-        self.integrat_err += err * delta_time;
-
         // clamp the integrator state to mitigate windup
-        self.integrat_err = self
-            .integrat_err
-            .clamp(self.integrat_min, self.integrat_max);
+        self.integrat_err =
+            (self.integrat_err + (err * delta_time)).clamp(self.integrat_min, self.integrat_max);
 
-        // caclulate the integral term
-        drive_v += self.integrat_gain * self.integrat_err;
-
-        // caclulate the differntal term
-        drive_v += self.differntial_gain * ((state - self.last_state) * delta_time);
+        let drive_v =
+            // calculate the proportional term
+            self.proportional_gain * err
+            // caclulate the integral term
+            + self.integrat_gain * self.integrat_err
+            // caclulate the differntal term
+            + self.differntial_gain * ((state - self.last_state) * delta_time);
 
         self.last_state = state;
 

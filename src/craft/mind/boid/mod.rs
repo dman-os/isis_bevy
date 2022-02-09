@@ -22,7 +22,7 @@ pub struct BoidMindConfig {
 impl Default for BoidMindConfig {
     fn default() -> Self {
         Self {
-            angular_input_multiplier: 3.,
+            angular_input_multiplier: 10.,
         }
     }
 }
@@ -63,16 +63,24 @@ pub fn craft_boid_strategy_output_mgr(
     )>,
     strategies: Query<&BoidStrategyOutput>,
     mut activate_wpn_events: EventWriter<ActivateWeaponEvent>,
+    weapons: Query<&WeaponActivationState>,
+    time: Res<Time>,
 ) {
-    for (mut composer, mind, weapons) in crafts.iter_mut() {
+    for (mut composer, mind, wpn_index) in crafts.iter_mut() {
         let output = strategies
             .get(mind.strategy)
             .expect("active BoidStrategy not found");
         *composer = output.routine_usage.clone(); // FIXME:
 
         if output.fire_weapons {
-            for wpn in weapons.entt_to_class.keys() {
-                activate_wpn_events.send(ActivateWeaponEvent { weapon_id: *wpn });
+            for wpn in wpn_index.entt_to_class.keys() {
+                if weapons
+                    .get(*wpn)
+                    .expect("Indexed weapon has no WeaponActivationState")
+                    .can_activate(&time)
+                {
+                    activate_wpn_events.send(ActivateWeaponEvent { weapon_id: *wpn });
+                }
             }
         }
     }
@@ -228,7 +236,7 @@ impl SteeringRoutineComposer {
             active_res.ang = ang_res.0;
         } else {
             // defaults to look where you want to go
-            active_res.ang = steering_systems::look_at(active_res.lin).0;
+            active_res.ang = steering_systems::look_to(active_res.lin);
             is_empty = false;
         }
         if is_empty {

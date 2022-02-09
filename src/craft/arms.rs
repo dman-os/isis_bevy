@@ -10,7 +10,7 @@ pub struct ArmsPlugin;
 
 impl Plugin for ArmsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_system(handle_activate_weapon_events)
+        app.add_system(handle_activate_weapon_events_projectile)
             .add_system(cull_old_colliding_projectiles)
             .add_event::<ActivateWeaponEvent>()
             .add_event::<ProjectileIxnEvent>();
@@ -24,16 +24,23 @@ where
 {
     pub param: P,
     pub tag: CraftWeapon,
+    pub activation_state: WeaponActivationState,
 }
 
 impl<P> WeaponBundle<P>
 where
     P: Component,
 {
-    pub fn new(param: P, craft_entt: Entity, class: WeaponClass) -> Self {
+    pub fn new(
+        param: P,
+        craft_entt: Entity,
+        class: WeaponClass,
+        activation_state: WeaponActivationState,
+    ) -> Self {
         Self {
             param,
             tag: CraftWeapon::new(craft_entt, WeaponKind::of::<P>(), class),
+            activation_state,
         }
     }
 }
@@ -80,6 +87,31 @@ pub struct ActivateWeaponEvent {
     pub weapon_id: Entity,
 }
 
+#[derive(Debug, Clone, Component)]
+pub enum WeaponActivationState {
+    Discrete {
+        firing_rate: f64,
+        last_firing_time: f64,
+    },
+}
+
+impl WeaponActivationState {
+    pub fn new_discrete(firing_rate: f64) -> Self {
+        Self::Discrete {
+            firing_rate,
+            last_firing_time: 0.,
+        }
+    }
+    pub fn can_activate(&self, time: &Time) -> bool {
+        match self {
+            WeaponActivationState::Discrete {
+                firing_rate: weapon_firing_rate,
+                last_firing_time,
+            } => (time.seconds_since_startup() - last_firing_time) > (1. / weapon_firing_rate),
+        }
+    }
+}
+
 #[derive(Component)]
 pub struct ProjectileWeapon {
     pub proj_damage: Damage,
@@ -92,7 +124,6 @@ pub struct ProjectileWeapon {
     pub proj_spawn_offset: TVec3,
 }
 
-//pub struct CraftArms(pub Children);
 #[derive(Debug, Clone, Component)]
 pub struct Projectile {
     pub damage: Damage,
@@ -101,22 +132,34 @@ pub struct Projectile {
     pub lifespan_secs: f64,
 }
 
-fn handle_activate_weapon_events(
+fn handle_activate_weapon_events_projectile(
     //crafts: Query<&CraftArms>,
     mut commands: Commands,
-    weapons: Query<(&ProjectileWeapon, &GlobalTransform)>,
+    mut weapons: Query<(
+        &ProjectileWeapon,
+        &mut WeaponActivationState,
+        &GlobalTransform,
+    )>,
     mut fire_events: EventReader<ActivateWeaponEvent>,
     //mut lines: ResMut<bevy_prototype_debug_lines::DebugLines>,
     time: Res<Time>,
 ) {
     for event in fire_events.iter() {
-        match weapons.get(event.weapon_id) {
-            Ok((proj_wpn, xform)) => {
-                //lines.line(
-                //xform.translation,
-                //xform.translation + (xform.rotation * proj_wpn.proj_spawn_offset),
-                //1.,
-                //);
+        match weapons.get_mut(event.weapon_id) {
+            Ok((proj_wpn, mut firing_state, xform)) => {
+                /* tracing::info!(
+                    "\n{:?}\n{:?}",
+                    xform.forward(),
+                    (xform.rotation * proj_wpn.proj_velocity).normalize()
+                ); */
+                if !firing_state.can_activate(&time) {
+                    continue;
+                }
+                match firing_state.as_mut() {
+                    WeaponActivationState::Discrete {
+                        last_firing_time, ..
+                    } => *last_firing_time = time.seconds_since_startup(),
+                }
                 commands
                     .spawn()
                     .insert(Projectile {
@@ -132,6 +175,11 @@ fn handle_activate_weapon_events(
                     })
                     .insert_bundle(RigidBodyBundle {
                         //body_type: RigidBodyType::KinematicVelocityBased,
+                        ccd: RigidBodyCcd {
+                            ccd_enabled: true,
+                            ..Default::default()
+                        }
+                        .into(),
                         position: RigidBodyPosition {
                             position: (xform.translation
                                 + (xform.rotation * proj_wpn.proj_spawn_offset))

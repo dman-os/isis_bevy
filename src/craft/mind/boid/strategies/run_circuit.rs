@@ -29,7 +29,7 @@ pub type RunCircuitBundle = BoidStrategyDuoComponent<RunCircuit, RunCircuitState
 
 pub fn run_circuit_butler(
     mut commands: Commands,
-    mut strategies: Query<
+    mut added_strategies: Query<
         (
             &RunCircuit,
             &BoidStrategy,
@@ -40,7 +40,7 @@ pub fn run_circuit_butler(
     >,
     crafts: Query<&CraftRoutinesIndex>,
 ) {
-    for (params, strategy, mut state, mut out) in strategies.iter_mut() {
+    for (params, strategy, mut state, mut out) in added_strategies.iter_mut() {
         let routines = crafts
             .get(strategy.craft_entt())
             .expect("craft not found for BoidStrategy");

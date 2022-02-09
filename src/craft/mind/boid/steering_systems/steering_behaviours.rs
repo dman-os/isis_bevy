@@ -101,8 +101,10 @@ pub fn avoid_obstacle_seblague(
     const RAY_COUNT: usize = 30;
     static RAY_DIRECTIONS: Lazy<[TVec3; RAY_COUNT]> = Lazy::new(|| {
         let mut directions = [TVec3::ZERO; RAY_COUNT];
+        #[allow(clippy::unnecessary_cast)]
         let golden_ratio = (1.0 + (5.0 as TReal).sqrt()) * 0.5;
         let angle_increment = real::consts::TAU * golden_ratio;
+        #[allow(clippy::needless_range_loop)]
         for ii in 0..RAY_COUNT {
             let t = ii as TReal / RAY_COUNT as TReal;
             let inclination = (1.0 - (2.0 * t)).acos();

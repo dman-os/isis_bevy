@@ -531,7 +531,7 @@ pub struct ProjectileDamageEvent {
 /// Consumes [`ProjectileIxnEvent`]s and damages [`AttireProfile`]s when
 /// the object intersecting has one attached.
 fn handle_projectile_xin_evenns(
-    mut commands: Commands,
+    // mut commands: Commands,
     mut attires: Query<(Entity, &mut AttireProfile, &ColliderParentComponent)>,
     mut proj_ixn_events: EventReader<ProjectileIxnEvent>,
     mut pd_events: EventWriter<ProjectileDamageEvent>,
@@ -543,7 +543,11 @@ fn handle_projectile_xin_evenns(
                     "Craft {:?} destroyed by Projectile damage",
                     parent.handle.entity()
                 );
-                commands.entity(parent.handle.entity()).despawn_recursive();
+                // reset health
+                for member in attire.members.iter_mut() {
+                    member.remaining_integrity = member.factory_integrity;
+                }
+                // commands.entity(parent.handle.entity()).despawn_recursive();
             }
             // generate the event to let others know it was damaged
             pd_events.send(ProjectileDamageEvent {

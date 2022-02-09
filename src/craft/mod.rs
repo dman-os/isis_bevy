@@ -15,7 +15,7 @@ pub struct CraftsPlugin;
 
 impl Plugin for CraftsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_system(engine::sync_craft_state_velocities)
+        app.add_system_to_stage(CoreStage::PreUpdate, engine::sync_craft_state_velocities)
             .add_system(engine::linear_pid_driver)
             .add_system(engine::angular_pid_driver)
             .add_system(engine::apply_flames_simple_accel)
@@ -73,18 +73,18 @@ impl Default for CraftBundle {
             linear_state: Default::default(),
             angular_state: Default::default(),
             linear_pid: engine::LinearDriverPid(crate::utils::PIDControllerVec3::new(
-                TVec3::ONE * 30. * 1.,
+                TVec3::ONE * 30.,
                 TVec3::ZERO,
                 TVec3::ZERO,
                 TVec3::ZERO,
                 TVec3::ZERO,
             )),
             angular_pid: engine::AngularDriverPid(crate::utils::PIDControllerVec3::new(
-                TVec3::ONE * 4000.0 * 1.,
-                TVec3::ZERO,
-                TVec3::ZERO,
-                TVec3::ZERO,
-                TVec3::ZERO,
+                TVec3::ONE * 10_000.0,
+                TVec3::ONE * 0.0,
+                TVec3::ONE,
+                TVec3::ONE,
+                TVec3::ONE * -0.,
             )),
             rigid_body: Self::default_rb_bundle(),
             rigid_body_sync: RigidBodyPositionSync::Discrete,

@@ -97,13 +97,15 @@ pub use seek_target::*;
 pub mod steering_behaviours;
 
 #[inline]
-pub fn look_at(local_dir: TVec3) -> AngularRoutineOutput {
-    AngularRoutineOutput({
-        let fwd = -TVec3::Z;
-        let dir = local_dir;
-        fwd.angle_between(dir) * fwd.cross(dir)
-    })
-    /*AngularRoutineResult({
+pub fn look_to(local_dir: TVec3) -> TVec3 {
+    let fwd = -TVec3::Z;
+    let dir = local_dir;
+    // scaling by the angle proves troublesome
+    // it takes too long to settle, the final inputs being progressively too minute
+    // as we close on the target direction
+    /* fwd.angle_between(dir) * */
+    fwd.cross(dir)
+    /*
         // invert since fwd is -Z
         let dir = -local_dir;
         let (z, x, y) = {
@@ -124,5 +126,5 @@ pub fn look_at(local_dir: TVec3) -> AngularRoutineOutput {
             crate::math::delta_angle_radians(0., y).copysign(y),
             crate::math::delta_angle_radians(0., z).copysign(z),
         )
-    })*/
+    */
 }

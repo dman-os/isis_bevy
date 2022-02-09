@@ -77,7 +77,8 @@ pub type CraftRoutineCrossRefIndex = CrossReferenceIndex<Entity>;
 #[component(storage = "SparseSet")]
 pub struct PreviouslyActiveRoutine;
 
-pub(super) fn craft_routine_index_maintainer(
+#[allow(clippy::type_complexity)]
+pub(super) fn craft_routine_index_butler(
     mut commands: Commands,
     mut routines: QuerySet<(
         // activated
@@ -160,7 +161,7 @@ impl CraftWeaponsIndex {
 /// Used to handle index maintainance for the case of [`CraftWeapon`] entity despawns.
 pub type CraftWeaponCrossRefIndex = CrossReferenceIndex<(Entity, Option<TReal>)>;
 
-pub(super) fn craft_wpn_index_maintainer(
+pub(super) fn craft_wpn_index_butler(
     new_wpns: Query<(Entity, &CraftWeapon), Added<CraftWeapon>>,
     mut indices: Query<&mut CraftWeaponsIndex>,
     removed: RemovedComponents<CraftWeapon>,
@@ -241,7 +242,7 @@ impl CraftStrategyIndex {
 /// Used to handle index maintainance for the case of [`CraftStrategy`] entity despawns.
 pub type CraftStrategyCrossRefIndex = CrossReferenceIndex<Entity>;
 
-pub(super) fn craft_strategy_index_maintainer(
+pub(super) fn craft_strategy_index_butler(
     new: Query<(Entity, &BoidStrategy), Added<BoidStrategy>>,
     mut indices: Query<&mut CraftStrategyIndex>,
     removed: RemovedComponents<BoidStrategy>,
