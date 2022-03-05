@@ -2,11 +2,13 @@ use deps::*;
 
 use bevy::ecs as bevy_ecs;
 use bevy::prelude::*;
+use bevy::reflect as bevy_reflect;
+use bevy_inspector_egui::prelude::*;
 use bevy_rapier3d::prelude::*;
 
 use crate::math::*;
 
-#[derive(Debug, Default, Clone, Component)]
+#[derive(Debug, Default, Clone, Component, Reflect, Inspectable)]
 pub struct LinearEngineState {
     /// Linear velocity in local-space
     /// In m/s.
@@ -21,7 +23,7 @@ pub struct LinearEngineState {
     pub flame: TVec3,
 }
 
-#[derive(Debug, Default, Clone, Component)]
+#[derive(Debug, Default, Clone, Component, Reflect, Inspectable)]
 pub struct AngularEngineState {
     /// Angular velocity in local-space
     /// In rad/s.
@@ -34,7 +36,7 @@ pub struct AngularEngineState {
 }
 
 // TODO: break this up to multiple components
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Component)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Component, Reflect, Inspectable)]
 #[serde(crate = "serde")]
 pub struct EngineConfig {
     ///  Speed to travel at when there is no input i.e. how fast to travel when idle.
@@ -186,9 +188,7 @@ pub fn linear_pid_driver(
             // clamp the input to the limit
             linear_input = linear_input.clamp(-v_limit, v_limit);
 
-            // if forward dampenere is off
             if !config.limit_forward_v {
-                // restore the clamped input on the z
                 linear_input.z = state.input.z;
             }
         }
@@ -200,7 +200,7 @@ pub fn linear_pid_driver(
         // if input wants to go bacwards
         if !move_fwd {
             // only use starfe thrusters force on the z
-            max_force.z = max_force.x;
+            max_force.z = max_force.x.max(max_force.y);
         }
 
         // calculate max acceleration possible using availaible force

@@ -30,13 +30,13 @@ pub fn intercept(
         let (quarry_xform, quarry_vel) = quarries
             .get(params.quarry_rb.entity())
             .expect("quarry rigid body not found for on Intercept routine");
-        // negate it since forward is negative
-        let speed = params.speed.unwrap_or_else(|| -config.linear_v_limit.z);
-        *output = LinearRoutineOutput(super::steering_behaviours::intercept_target(
+        let speed = params.speed.unwrap_or(config.linear_v_limit.z);
+        *output = super::steering_behaviours::intercept_target(
             xform.translation,
             speed,
             quarry_xform.translation,
             quarry_vel.linvel.into(),
-        ));
+        )
+        .into();
     }
 }

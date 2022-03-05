@@ -18,6 +18,12 @@ WORLD TO LOCAL - inverse transformation you idiot!
 
 ### What we want
 
+#### Features
+
+- [ ] Newtonian flight model
+- [ ] Formations
+- [ ] Grapple hooks
+
 #### Prior art
 
 - Mount & Blade
@@ -32,6 +38,8 @@ WORLD TO LOCAL - inverse transformation you idiot!
 
 ### AI
 
+#### Architecture
+
 If we agree that AI needs three abilities:
 
 - Sensors
@@ -39,6 +47,8 @@ If we agree that AI needs three abilities:
 - Actuation
 
 ...we need to design each in an ECS manner.
+
+We'll also need someform of scheduling to distribute work across frames.
 
 - Layers
     - Sensors
@@ -75,23 +85,39 @@ If we agree that AI needs three abilities:
         - CraftArms input
             - Bevy Events
 
-### Minds
+#### Minds
 
 - Master
   - scenario orchestration
   - responsiblities
     - assign goals to groups
-- Group
+- Tribe
   - faction orchestration
   - responsiblities
-    - assign goals to crafts
+    - assign goals to Flocks
+- Flock
+  - responsiblities
+    - assign goals to Boids
     - formations
-- Craft
+- Boid
   - individual orchestration
   - responsiblities
     - engine inputs
     - arms inputs
         - assign targets to turrents 
+
+##### Boid Mind
+
+- Strategies
+  - [ ] Attack Persue
+  - [ ] Follow Waypoints  
+- Steering Behvaiors
+  - [x] Seek
+  - [x] Intercept
+  - [x] Cohesion
+  - [x] Separation
+  - [x] Alignment
+  - [ ] Arrive
 
 #### Behavior trees
 
@@ -119,7 +145,7 @@ According to the author:
 
 ### `ii as TReal / RAY_COUNT as TReal != (ii / RAY_COUNT) as TReal`;
 
-Obviously. This bug might have actually cost me months.
+Obviously.
 
 ### The Overengineering of `ActiveRoutines`
 

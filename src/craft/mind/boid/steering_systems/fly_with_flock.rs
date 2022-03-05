@@ -37,15 +37,11 @@ pub fn fly_with_flock(
             .expect("unable to find craft_group for fly_with_flock routine");
         let (cohesion, allignment, separation) = (
             steering_behaviours::cohesion(xform.translation, flock.member_count, flock.center_sum),
-            steering_behaviours::allignment(
-                vel.linvel.into(),
-                flock.member_count,
-                flock.heading_sum,
-            ),
+            steering_behaviours::allignment(vel.linvel.into(), flock.member_count, flock.vel_sum),
             // NOTE: 10x multiplier
             10.0 * steering_behaviours::separation(xform.translation, &flock.craft_positions[..]),
         );
-        *lin_out = LinearRoutineOutput(cohesion + allignment + separation);
-        *ang_out = AngularRoutineOutput(look_to(xform.rotation * allignment));
+        *lin_out = (cohesion + allignment + separation).into();
+        *ang_out = look_to(xform.rotation * allignment).into();
     }
 }

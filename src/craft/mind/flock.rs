@@ -17,8 +17,8 @@ pub struct CraftGroup(pub Entity);
 #[derive(Debug, Default, Component)]
 pub struct BoidFlock {
     pub craft_positions: Vec<TVec3>,
-    pub heading_sum: TVec3,
-    pub avg_heading: TVec3,
+    pub vel_sum: TVec3,
+    pub avg_vel: TVec3,
     pub center_sum: TVec3,
     pub center: TVec3,
     pub member_count: usize,
@@ -30,11 +30,11 @@ pub fn update_flocks(
 ) {
     for (g_mind, mut flock) in flocks.iter_mut() {
         flock.craft_positions.clear();
-        flock.heading_sum = TVec3::ZERO;
+        flock.vel_sum = TVec3::ZERO;
         flock.center_sum = TVec3::ZERO;
         for craft in g_mind.members.iter() {
             if let Ok((xform, vel)) = crafts.get(*craft) {
-                flock.heading_sum += TVec3::from(vel.linvel);
+                flock.vel_sum += TVec3::from(vel.linvel);
                 flock.center_sum += xform.translation;
                 flock.craft_positions.push(xform.translation);
             } else {
@@ -42,7 +42,7 @@ pub fn update_flocks(
             }
         }
         flock.member_count = g_mind.members.len();
-        flock.avg_heading = flock.heading_sum / g_mind.members.len() as TReal;
+        flock.avg_vel = flock.vel_sum / g_mind.members.len() as TReal;
         flock.center = flock.center_sum / g_mind.members.len() as TReal;
     }
 }

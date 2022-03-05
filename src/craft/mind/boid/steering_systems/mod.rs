@@ -91,10 +91,30 @@ mod intercept;
 pub use intercept::*;
 mod fly_with_flock;
 pub use fly_with_flock::*;
-mod seek_target;
-pub use seek_target::*;
+mod seek;
+pub use seek::*;
+mod arrive;
+pub use arrive::*;
 
 pub mod steering_behaviours;
+
+/*
+#[inline]
+pub fn just_be(
+    target_pos: TVec3,
+    target_facing: TVec3,
+    target_lin_vel: TVec3,
+    target_ang_vel: TVec3,
+    xform: &GlobalTransform,
+    current_lin_vel: TVec3,
+    current_ang_vel: TVec3,
+    max_lin_accel: TVec3,
+    max_ang_accel: TVec3,
+    linear_v_limit: TVec3,
+    angular_v_limit: TVec3,
+) -> (LinearRoutineOutput, AngularRoutineOutput) {
+    todo!()
+} */
 
 #[inline]
 pub fn look_to(local_dir: TVec3) -> TVec3 {

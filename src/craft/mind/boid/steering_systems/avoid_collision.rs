@@ -3,12 +3,13 @@ use deps::*;
 use bevy::{ecs as bevy_ecs, prelude::*};
 use bevy_rapier3d::prelude::*;
 
-use super::LinOnlyRoutineBundle;
-use super::{steering_behaviours, ActiveRoutine, LinearRoutineOutput, SteeringRoutine};
-use crate::craft::attire::*;
-use crate::craft::engine::*;
+use super::{
+    steering_behaviours, ActiveRoutine, LinOnlyRoutineBundle, LinearRoutineOutput, SteeringRoutine,
+};
+use crate::craft::{attire::*, engine::*};
 use crate::math::*;
 
+// TODO: consider separating state and parameters
 #[derive(Debug, Clone, Component, bevy_inspector_egui::Inspectable)]
 pub struct AvoidCollision {
     pub fwd_prediction_secs: f32,
@@ -16,7 +17,7 @@ pub struct AvoidCollision {
     #[inspectable(ignore)]
     pub raycast_exclusion: smallvec::SmallVec<[ColliderHandle; 4]>,
     /// in world space
-    pub last_dodge_direction: TVec3,
+    pub last_dodge_dir: TVec3,
     pub last_dodge_timestamp: f64,
     pub upheld_dodge_seconds: f64,
 }
@@ -26,7 +27,7 @@ impl Default for AvoidCollision {
         Self {
             fwd_prediction_secs: 5.0,
             raycast_exclusion: Default::default(),
-            last_dodge_direction: Default::default(),
+            last_dodge_dir: Default::default(),
             last_dodge_timestamp: Default::default(),
             upheld_dodge_seconds: 1.5,
         }
@@ -59,8 +60,8 @@ pub fn avoid_collision(
     let mut avoid_collision_raycast_ctr = 0usize;
     // Wrap the bevy query so it can be used by the query pipeline.
     let collider_set = QueryPipelineColliderComponentsSet(&collider_query);
-    for (mut avoid_coll, routine, mut result) in routines.iter_mut() {
-        *result = LinearRoutineOutput::default();
+    for (mut avoid_coll, routine, mut lin_out) in routines.iter_mut() {
+        *lin_out = Default::default();
         let (xform, config, vel, craft_colliders, lin_state) = crafts
             .get(routine.craft_entt)
             .expect("craft entt not found for routine");
@@ -72,7 +73,9 @@ pub fn avoid_collision(
         // adjust for the dimensions of the craft
         let widest_dim = config.extents.max_element();
         let toi = toi + widest_dim;
+
         avoid_collision_raycast_ctr += 1;
+
         let cast_shape = Ball::new(0.5 * widest_dim);
         // shape rotation matters not for balls
         let cast_pose = (xform.translation, xform.rotation).into();
@@ -93,7 +96,7 @@ pub fn avoid_collision(
             }),
         ) {
             // use behavior to avoid it
-            *result = LinearRoutineOutput(steering_behaviours::avoid_obstacle_seblague(
+            *lin_out = steering_behaviours::avoid_obstacle_seblague(
                 dir,
                 &mut |cast_dir| {
                     avoid_collision_raycast_ctr += 1;
@@ -115,18 +118,20 @@ pub fn avoid_collision(
                         .is_some()
                 },
                 xform,
-            ));
+            )
+            .into();
+
             // cache avoidance vector
             avoid_coll.last_dodge_timestamp = time.seconds_since_startup();
-            avoid_coll.last_dodge_direction = result.0;
-            tracing::trace!(
+            avoid_coll.last_dodge_dir = lin_out.0;
+            tracing::info!(
                 ?dir,
-                ?result,
+                ?lin_out,
                 ?toi,
                 "collision predicted with {handle:?}\n{:?} meters away\n{:?} seconds away\ncorrecting {:?} degrees away",
                 hit.toi,
                 hit.toi / speed,
-                dir.angle_between(result.0) * (180. / crate::math::real::consts::PI)
+                dir.angle_between(lin_out.0) * (180. / crate::math::real::consts::PI)
             );
         }
         // if recently had avoided collision
@@ -135,7 +140,7 @@ pub fn avoid_collision(
                 < (avoid_coll.last_dodge_timestamp + avoid_coll.upheld_dodge_seconds)
         {
             // stick to it until upheld time expires
-            *result = LinearRoutineOutput(avoid_coll.last_dodge_direction);
+            *lin_out = avoid_coll.last_dodge_dir.into();
         }
     }
     tracing::trace!(avoid_collision_raycast_ctr);

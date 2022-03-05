@@ -28,22 +28,16 @@ pub fn seek(
         let xform = objects
             .get(routine.craft_entt)
             .expect("craft entt not found for routine");
-        match params.target {
+        let pos = match params.target {
             SeekTarget::Object { entt } => match objects.get(entt) {
-                Ok(obj_xform) => {
-                    *output = LinearRoutineOutput(steering_behaviours::seek_position(
-                        xform.translation,
-                        obj_xform.translation,
-                    ))
-                }
+                Ok(obj_xform) => obj_xform.translation,
                 Err(err) => {
                     tracing::error!("error getting SeekTarget Object g_xform: {err:?}");
+                    continue;
                 }
             },
-            SeekTarget::Position { pos } => {
-                *output =
-                    LinearRoutineOutput(steering_behaviours::seek_position(xform.translation, pos))
-            }
-        }
+            SeekTarget::Position { pos } => pos,
+        };
+        *output = steering_behaviours::seek_position(xform.translation, pos).into();
     }
 }

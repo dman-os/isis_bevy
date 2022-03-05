@@ -2,3 +2,11 @@
 assets/fonts/test_font.ttf
 
 .vscode
+.gitignore
+assets/models/ball_fighter_2.bin
+assets/textures/ball_fighter_albedo_texture.png
+assets/textures/MetalPlates007_2K_Metalness-MetalPlates007_2K_Roughness.png
+assets/models/ball_fighter_2.gltf
+assets/textures/MetalPlates007_2K_Color.jpg
+assets/textures/MetalPlates007_2K_NormalGL.jpg
+assets/textures/crosshair_simple_64.png

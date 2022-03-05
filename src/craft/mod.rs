@@ -2,6 +2,7 @@ use deps::*;
 
 use crate::math::*;
 use bevy::{ecs as bevy_ecs, prelude::*};
+use bevy_inspector_egui::RegisterInspectable;
 use bevy_rapier3d::prelude::*;
 
 use self::mind::sensors::*;
@@ -21,7 +22,10 @@ impl Plugin for CraftsPlugin {
             .add_system(engine::apply_flames_simple_accel)
             .add_plugin(attire::AttirePlugin)
             .add_plugin(mind::MindPlugin)
-            .add_plugin(arms::ArmsPlugin);
+            .add_plugin(arms::ArmsPlugin)
+            .register_inspectable::<engine::LinearEngineState>()
+            .register_inspectable::<engine::AngularEngineState>()
+            .register_inspectable::<engine::EngineConfig>();
     }
 }
 

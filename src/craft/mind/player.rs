@@ -201,6 +201,7 @@ pub fn cam_input(
         // pos offset is in the target's basis
         + (target_xform.rotation * cam.position_offset)
         + ((new_rot * TVec3::Z) * cam.distance);
+    // FIXME: this lerp makes very little sense
     let new_pos = glob_xform
         .translation
         .lerp(new_pos, cam.rotation_speed * 4. * time.delta_seconds());

@@ -366,10 +366,22 @@ pub(super) fn routine_composer(
 #[component(storage = "SparseSet")]
 pub struct LinearRoutineOutput(pub TVec3);
 
+impl From<TVec3> for LinearRoutineOutput {
+    fn from(v: TVec3) -> Self {
+        Self(v)
+    }
+}
+
 /// Output of angular steering routines which is usually angular velocity desired next frame in local space.
 #[derive(Debug, Clone, Copy, Default, Inspectable, Component)]
 #[component(storage = "SparseSet")]
 pub struct AngularRoutineOutput(pub TVec3);
+
+impl From<TVec3> for AngularRoutineOutput {
+    fn from(v: TVec3) -> Self {
+        Self(v)
+    }
+}
 
 /// Synchronizes [`ActiveRoutineResult`] to the engine inputs.
 ///
@@ -385,7 +397,7 @@ pub fn mind_update_engine_input(
     crafts
         .iter_mut()
         .for_each(|(routine_res, mut lin_state, mut ang_state, config)| {
-            lin_state.input = routine_res.lin * config.linear_v_limit;
+            lin_state.input = routine_res.lin * config.linear_v_limit.abs();
             ang_state.input = routine_res.ang;
         });
 }

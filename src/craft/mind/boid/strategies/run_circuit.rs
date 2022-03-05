@@ -56,17 +56,31 @@ pub fn run_circuit_butler(
                     ))
                     .id()
             });
+        /* let seek = commands
+        .spawn()
+        .insert_bundle(SeekRoutineBundle::new(
+            Seek {
+                target: SeekTarget::Position {
+                    pos: params.initial_location,
+                },
+            },
+            strategy.craft_entt(),
+        ))
+        .id(); */
         let seek = commands
             .spawn()
-            .insert_bundle(SeekRoutineBundle::new(
-                Seek {
-                    target: SeekTarget::Position {
+            .insert_bundle(ArriveRoutineBundle::new(
+                Arrive {
+                    target: ArriveTarget::Position {
                         pos: params.initial_location,
                     },
+                    arrival_tolerance: 5.,
+                    deceleration_radius: None,
                 },
                 strategy.craft_entt(),
             ))
             .id();
+
         commands
             .entity(strategy.craft_entt())
             .push_children(&[avoid_collision, seek]);
@@ -86,7 +100,8 @@ pub fn run_circuit(
     checkpoints: Query<(Entity, &CircuitCheckpoint, &GlobalTransform)>,
     narrow_phase: Res<NarrowPhase>,
     parents: Query<&ColliderParentComponent>,
-    mut seek_routines: Query<&mut Seek>,
+    // mut seek_routines: Query<&mut Seek>,
+    mut seek_routines: Query<&mut Arrive>,
     crafts: Query<&CraftStrategyIndex>,
 ) {
     for (checkpt_entt, checkpoint, checkopoint_xform) in checkpoints.iter() {
@@ -115,10 +130,12 @@ pub fn run_circuit(
                             .get_mut(state.seek_routine.unwrap())
                             .expect("Seek routine not found for RunCircuitState");
 
-                        if let SeekTarget::Position { pos: prev_pos } = seek_params.target {
+                        // if let SeekTarget::Position { pos: prev_pos } = seek_params.target {
+                        if let ArriveTarget::Position { pos: prev_pos } = seek_params.target {
                             if prev_pos.distance_squared(checkopoint_xform.translation) < 1. {
                                 tracing::info!("craft arrived at checkpoint {prev_pos:?}",);
-                                seek_params.target = SeekTarget::Position {
+                                // seek_params.target = SeekTarget::Position {
+                                seek_params.target = ArriveTarget::Position {
                                     pos: checkpoint.next_point_location,
                                 }
                             }

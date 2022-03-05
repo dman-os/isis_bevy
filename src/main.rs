@@ -265,138 +265,144 @@ fn setup_world(
 ) {
     let mut rng = rand::thread_rng();
 
-    // setup the floating spheres
-    {
-        const SIZE_RANGE: TReal = 100.;
-        const MASS_RANGE: TReal = 1000.;
-        //const LOCATION_RANGE: [TReal; 3]= [500.; 3];
-        const LOCATION_RANGE: [TReal; 3] = [500., 100.0, 500.0];
-        for _i in 0..100 {
-            //for _ in (0..1).into_iter() {
-            let size = rng.gen::<TReal>() * SIZE_RANGE;
-            let radius = size * 0.5;
-            let mass = rng.gen::<TReal>() * MASS_RANGE;
-            let pos = {
-                let pos: TVec3 = rng.gen::<[TReal; 3]>().into();
-                let pos = pos * TVec3::from(LOCATION_RANGE);
-                [
-                    pos.x * if rng.gen_bool(0.5) { 1. } else { -1. },
-                    pos.y * if rng.gen_bool(0.5) { 1. } else { -1. },
-                    pos.z * if rng.gen_bool(0.5) { 1. } else { -1. },
-                ]
-                .into()
-            };
-            let mut xform = Transform::from_translation(pos);
-            xform.rotate(TQuat::from_euler(
-                EulerRot::YXZ,
-                rng.gen::<TReal>() * 360.0,
-                rng.gen::<TReal>() * 360.0,
-                rng.gen::<TReal>() * 360.0,
-            ));
+    // setup the random floating spheres
+    /*     {
+           const SIZE_RANGE: TReal = 100.;
+           const MASS_RANGE: TReal = 1000.;
+           //const LOCATION_RANGE: [TReal; 3]= [500.; 3];
+           const LOCATION_RANGE: [TReal; 3] = [500., 100.0, 500.0];
+           for _i in 0..100 {
+               //for _ in (0..1).into_iter() {
+               let size = rng.gen::<TReal>() * SIZE_RANGE;
+               let radius = size * 0.5;
+               let mass = rng.gen::<TReal>() * MASS_RANGE;
+               let pos = {
+                   let pos: TVec3 = rng.gen::<[TReal; 3]>().into();
+                   let pos = pos * TVec3::from(LOCATION_RANGE);
+                   [
+                       pos.x * if rng.gen_bool(0.5) { 1. } else { -1. },
+                       pos.y * if rng.gen_bool(0.5) { 1. } else { -1. },
+                       pos.z * if rng.gen_bool(0.5) { 1. } else { -1. },
+                   ]
+                   .into()
+               };
+               let mut xform = Transform::from_translation(pos);
+               xform.rotate(TQuat::from_euler(
+                   EulerRot::YXZ,
+                   rng.gen::<TReal>() * 360.0,
+                   rng.gen::<TReal>() * 360.0,
+                   rng.gen::<TReal>() * 360.0,
+               ));
 
-            commands
-                .spawn()
-                .insert_bundle(PbrBundle {
-                    mesh: meshes.add(Mesh::from(shape::Icosphere {
-                        radius,
-                        ..Default::default()
-                    })),
-                    transform: xform,
-                    material: materials.add(
-                        Color::rgba(
-                            rng.gen::<TReal>(),
-                            rng.gen::<TReal>(),
-                            rng.gen::<TReal>(),
-                            1.,
-                        )
-                        .into(),
-                    ),
+               commands
+                   .spawn()
+                    .insert(Name::new(format!("ball {_i}")))
+                   .insert_bundle(PbrBundle {
+                       mesh: meshes.add(Mesh::from(shape::Icosphere {
+                           radius,
+                           ..Default::default()
+                       })),
+                       transform: xform,
+                       material: materials.add(
+                           Color::rgba(
+                               rng.gen::<TReal>(),
+                               rng.gen::<TReal>(),
+                               rng.gen::<TReal>(),
+                               1.,
+                           )
+                           .into(),
+                       ),
+                       ..Default::default()
+                   })
+                   .insert_bundle(bevy_mod_picking::PickableBundle::default())
+                   /*
+                   .insert_bundle(RigidBodyBundle {
+                       body_type: RigidBodyType::Dynamic.into(),
+                       activation: RigidBodyActivation::inactive().into(),
+                       position: RigidBodyPositionComponent(pos.into()),
+                       ..Default::default()
+                   })
+                   .insert(RigidBodyPositionSync::Discrete)
+                   // */
+                   .insert(ColliderPositionSync::Discrete)
+                   .insert_bundle(ColliderBundle {
+                       material: ColliderMaterial {
+                           ..Default::default()
+                       }
+                       .into(),
+                       position: ColliderPositionComponent(pos.into()),
+                       flags: ColliderFlags {
+                           collision_groups: *craft::attire::OBSTACLE_COLLIDER_IGROUP,
+                           ..Default::default()
+                       }
+                       .into(),
+                       shape: ColliderShape::ball(radius).into(),
+                       mass_properties: ColliderMassProps::Density(
+                           mass / (4. * math::real::consts::PI * radius * radius),
+                       )
+                       .into(),
+                       ..Default::default()
+                   });
+           }
+       }
+    */
+
+    // spawn the single floating sphere
+    {
+        let radius = 10.;
+        let pos = TVec3::new(500., 0., 500.);
+        let xform = Transform::from_translation(pos);
+        let mass = 10_000.;
+        commands
+            .spawn()
+            .insert(Name::new("single_ball"))
+            .insert_bundle(PbrBundle {
+                mesh: meshes.add(Mesh::from(shape::Icosphere {
+                    radius,
                     ..Default::default()
-                })
-                .insert_bundle(bevy_mod_picking::PickableBundle::default())
-                /*
-                .insert_bundle(RigidBodyBundle {
-                    body_type: RigidBodyType::Dynamic.into(),
-                    activation: RigidBodyActivation::inactive().into(),
-                    position: RigidBodyPositionComponent(pos.into()),
-                    ..Default::default()
-                })
-                .insert(RigidBodyPositionSync::Discrete)
-                // */
-                .insert(ColliderPositionSync::Discrete)
-                .insert_bundle(ColliderBundle {
-                    material: ColliderMaterial {
-                        ..Default::default()
-                    }
-                    .into(),
-                    position: ColliderPositionComponent(pos.into()),
-                    flags: ColliderFlags {
-                        collision_groups: *craft::attire::OBSTACLE_COLLIDER_IGROUP,
-                        ..Default::default()
-                    }
-                    .into(),
-                    shape: ColliderShape::ball(radius).into(),
-                    mass_properties: ColliderMassProps::Density(
-                        mass / (4. * math::real::consts::PI * radius * radius),
+                })),
+                transform: xform,
+                material: materials.add(
+                    Color::rgba(
+                        rng.gen::<TReal>(),
+                        rng.gen::<TReal>(),
+                        rng.gen::<TReal>(),
+                        1.,
                     )
                     .into(),
-                    ..Default::default()
-                });
-        }
-    }
-
-    let radius = 10.;
-    let pos = TVec3::new(500., 0., 500.);
-    let xform = Transform::from_translation(pos);
-    let mass = 10_000.;
-    commands
-        .spawn()
-        .insert_bundle(PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Icosphere {
-                radius,
+                ),
                 ..Default::default()
-            })),
-            transform: xform,
-            material: materials.add(
-                Color::rgba(
-                    rng.gen::<TReal>(),
-                    rng.gen::<TReal>(),
-                    rng.gen::<TReal>(),
-                    1.,
+            })
+            /*
+            .insert_bundle(RigidBodyBundle {
+                body_type: RigidBodyType::Dynamic.into(),
+                activation: RigidBodyActivation::inactive().into(),
+                position: RigidBodyPositionComponent(pos.into()),
+                ..Default::default()
+            })
+            .insert(RigidBodyPositionSync::Discrete)
+            // */
+            .insert(ColliderPositionSync::Discrete)
+            .insert_bundle(ColliderBundle {
+                material: ColliderMaterial {
+                    ..Default::default()
+                }
+                .into(),
+                position: ColliderPositionComponent(pos.into()),
+                flags: ColliderFlags {
+                    collision_groups: *craft::attire::OBSTACLE_COLLIDER_IGROUP,
+                    ..Default::default()
+                }
+                .into(),
+                shape: ColliderShape::ball(radius).into(),
+                mass_properties: ColliderMassProps::Density(
+                    mass / (4. * math::real::consts::PI * radius * radius),
                 )
                 .into(),
-            ),
-            ..Default::default()
-        })
-        /*
-        .insert_bundle(RigidBodyBundle {
-            body_type: RigidBodyType::Dynamic.into(),
-            activation: RigidBodyActivation::inactive().into(),
-            position: RigidBodyPositionComponent(pos.into()),
-            ..Default::default()
-        })
-        .insert(RigidBodyPositionSync::Discrete)
-        // */
-        .insert(ColliderPositionSync::Discrete)
-        .insert_bundle(ColliderBundle {
-            material: ColliderMaterial {
                 ..Default::default()
-            }
-            .into(),
-            position: ColliderPositionComponent(pos.into()),
-            flags: ColliderFlags {
-                collision_groups: *craft::attire::OBSTACLE_COLLIDER_IGROUP,
-                ..Default::default()
-            }
-            .into(),
-            shape: ColliderShape::ball(radius).into(),
-            mass_properties: ColliderMassProps::Density(
-                mass / (4. * math::real::consts::PI * radius * radius),
-            )
-            .into(),
-            ..Default::default()
-        })
-        .insert_bundle(bevy_mod_picking::PickableBundle::default());
+            })
+            .insert_bundle(bevy_mod_picking::PickableBundle::default());
+    }
 
     // setup the test circuit
     {
@@ -415,6 +421,7 @@ fn setup_world(
         for ii in 0..points.len() {
             commands
                 .spawn()
+                .insert(Name::new(format!("checkpoint {ii}")))
                 .insert_bundle(bevy_mod_picking::PickableBundle::default())
                 .insert_bundle(PbrBundle {
                     mesh: mesh.clone(),
@@ -440,84 +447,6 @@ fn setup_world(
     }
 
     let ball_fighter_model = asset_server.load("models/ball_fighter.gltf#Scene0");
-
-    // Spawn the craft
-    let player_craft_id = commands
-        .spawn_bundle(craft::CraftBundle {
-            collider: craft::attire::CollisionDamageEnabledColliderBundle {
-                collider: ColliderBundle {
-                    shape: ColliderShape::ball(4.).into(),
-                    mass_properties: ColliderMassProps::Density(
-                        15_000. / (4. * math::real::consts::PI * 4. * 4.),
-                    )
-                    .into(),
-                    ..craft::attire::CollisionDamageEnabledColliderBundle::default_collider_bundle()
-                },
-                ..Default::default()
-            },
-            ..Default::default()
-        })
-        .with_children(|parent| {
-            // the model
-            parent
-                .spawn_bundle((
-                    Transform::from_rotation(Quat::from_rotation_y(math::real::consts::PI)),
-                    GlobalTransform::default(),
-                ))
-                .with_children(|parent| {
-                    parent.spawn_scene(ball_fighter_model.clone());
-                });
-            parent.spawn_bundle(craft::attire::AttireBundle {
-                profile: craft::attire::AttireProfile {
-                    ..Default::default()
-                },
-                collider: ColliderBundle {
-                    shape: ColliderShape::ball(4.).into(),
-                    ..craft::attire::AttireBundle::default_collider_bundle()
-                },
-            });
-        })
-        .id();
-    commands
-        .spawn()
-        .insert_bundle({
-            let mut cam = PerspectiveCameraBundle::default();
-            cam.perspective_projection.far = 10_000.;
-            cam
-        })
-        .insert_bundle(bevy_mod_picking::PickingCameraBundle::default())
-        .insert(craft::mind::player::CraftCamera {
-            // target: Some(player_craft_id),
-            ..craft::mind::player::CraftCamera::default()
-        });
-    commands.insert_resource(craft::mind::player::CurrentCraft(player_craft_id));
-    /* let ball = commands
-    .spawn()
-    .insert_bundle(RigidBodyBundle {
-        position: [0., 0., -70.].into(),
-        body_type: RigidBodyType::Dynamic.into(),
-        ..Default::default()
-    })
-    .insert_bundle(ColliderBundle {
-        shape: ColliderShape::ball(1.).into(),
-        ..Default::default()
-    })
-    .insert(ColliderDebugRender::default())
-    .insert(ColliderPositionSync::Discrete)
-    .id(); */
-    /* commands.spawn().insert(JointBuilderComponent::new(
-        SphericalJoint::new().local_anchor1([0., 0., -10.].into()),
-        player_craft_id,
-        ball,
-    )); */
-    /* commands.spawn().insert(JointBuilderComponent::new(
-        PrismaticJoint::new(nalgebra::Unit::new_normalize((-TVec3::Z).into()))
-            // .motor_position(20., 0.2, 0.1)
-            .motor_velocity(10., 1.),
-        player_craft_id,
-        ball,
-    )); */
-
     let proj_mesh = meshes.add(
         shape::Icosphere {
             radius: 0.5,
@@ -553,24 +482,116 @@ fn setup_world(
             craft::arms::WeaponActivationState::new_discrete(5.),
         )
     });
-    // spawn player weapon
-    let wpn_id = commands
-        .spawn()
-        .insert_bundle(new_kinetic_cannon(player_craft_id))
-        .insert_bundle(PbrBundle {
-            mesh: meshes.add(shape::Cube { size: 1. }.into()),
-            transform: Transform::from_translation(TVec3::Y * 0.).with_scale([1., 1., 4.].into()),
-            material: materials.add(Color::WHITE.into()),
-            ..Default::default()
-        })
-        .insert(Parent(player_craft_id))
-        .id();
-    commands.insert_resource(craft::mind::player::CurrentWeapon(wpn_id));
 
-    // return;
-    for ii in -7..=7 {
+    // spawn the player craft
+    {
+        let player_craft_id = commands
+            .spawn()
+            .insert(Name::new("player"))
+            .insert_bundle(craft::CraftBundle {
+                collider: craft::attire::CollisionDamageEnabledColliderBundle {
+                    collider: ColliderBundle {
+                        shape: ColliderShape::ball(4.).into(),
+                        mass_properties: ColliderMassProps::Density(
+                            15_000. / (4. * math::real::consts::PI * 4. * 4.),
+                        )
+                        .into(),
+                        ..craft::attire::CollisionDamageEnabledColliderBundle::default_collider_bundle()
+                    },
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+            .with_children(|parent| {
+                // the model
+                parent
+                    .spawn()
+                    .insert(Name::new("model"))
+                    .insert_bundle((
+                        Transform::from_rotation(Quat::from_rotation_y(math::real::consts::PI)),
+                        GlobalTransform::default(),
+                    ))
+                    .with_children(|parent| {
+                        parent.spawn_scene(ball_fighter_model.clone());
+                    });
+                parent
+                    .spawn()
+                    .insert(Name::new("attire"))
+                    .insert_bundle(craft::attire::AttireBundle {
+                    profile: craft::attire::AttireProfile {
+                        ..Default::default()
+                    },
+                    collider: ColliderBundle {
+                        shape: ColliderShape::ball(4.).into(),
+                        ..craft::attire::AttireBundle::default_collider_bundle()
+                    },
+                });
+            })
+            .id();
         commands
             .spawn()
+            .insert_bundle({
+                let mut cam = PerspectiveCameraBundle::default();
+                cam.perspective_projection.far = 10_000.;
+                cam
+            })
+            .insert_bundle(bevy_mod_picking::PickingCameraBundle::default())
+            .insert(craft::mind::player::CraftCamera {
+                // target: Some(player_craft_id),
+                ..craft::mind::player::CraftCamera::default()
+            });
+        commands.insert_resource(craft::mind::player::CurrentCraft(player_craft_id));
+        /* let ball = commands
+        .spawn()
+        .insert_bundle(RigidBodyBundle {
+            position: [0., 0., -70.].into(),
+            body_type: RigidBodyType::Dynamic.into(),
+            ..Default::default()
+        })
+        .insert_bundle(ColliderBundle {
+            shape: ColliderShape::ball(1.).into(),
+            ..Default::default()
+        })
+        .insert(ColliderDebugRender::default())
+        .insert(ColliderPositionSync::Discrete)
+        .id(); */
+        /* commands.spawn().insert(JointBuilderComponent::new(
+            SphericalJoint::new().local_anchor1([0., 0., -10.].into()),
+            player_craft_id,
+            ball,
+        )); */
+        /* commands.spawn().insert(JointBuilderComponent::new(
+            PrismaticJoint::new(nalgebra::Unit::new_normalize((-TVec3::Z).into()))
+                // .motor_position(20., 0.2, 0.1)
+                .motor_velocity(10., 1.),
+            player_craft_id,
+            ball,
+        )); */
+
+        // spawn player weapon
+        let wpn_id = commands
+            .spawn()
+            .insert(Name::new("kinetic_cannon"))
+            .insert_bundle(new_kinetic_cannon(player_craft_id))
+            .insert_bundle(PbrBundle {
+                mesh: meshes.add(shape::Cube { size: 1. }.into()),
+                transform: Transform::from_translation(TVec3::Y * 0.)
+                    .with_scale([1., 1., 4.].into()),
+                material: materials.add(Color::WHITE.into()),
+                ..Default::default()
+            })
+            .insert(Parent(player_craft_id))
+            .id();
+        commands.insert_resource(craft::mind::player::CurrentWeapon(wpn_id));
+    }
+    // return;
+
+    // spawn the ai craft
+    // for ii in -7..=7 {
+    for ii in 0..1 {
+        commands
+            .spawn()
+            .insert(Name::new(format!("ai {ii}")))
             .insert_bundle(craft::CraftBundle {
                 config: craft::engine::EngineConfig {
                     // linear_thruster_force: [0.; 3].into(),
@@ -595,7 +616,9 @@ fn setup_world(
             .with_children(|parent| {
                 let parent_entt = parent.parent_entity();
                 parent
-                    .spawn_bundle((
+                    .spawn()
+                    .insert(Name::new("model"))
+                    .insert_bundle((
                         Transform::from_rotation(Quat::from_rotation_y(math::real::consts::PI)),
                         GlobalTransform::default(),
                     ))
@@ -603,17 +626,21 @@ fn setup_world(
                         parent.spawn_scene(ball_fighter_model.clone());
                     });
 
-                parent.spawn_bundle(craft::attire::AttireBundle {
-                    profile: craft::attire::AttireProfile {
-                        ..Default::default()
-                    },
-                    collider: ColliderBundle {
-                        shape: ColliderShape::ball(4.).into(),
-                        ..craft::attire::AttireBundle::default_collider_bundle()
-                    },
-                });
                 parent
                     .spawn()
+                    .insert(Name::new("attire"))
+                    .insert_bundle(craft::attire::AttireBundle {
+                        profile: craft::attire::AttireProfile {
+                            ..Default::default()
+                        },
+                        collider: ColliderBundle {
+                            shape: ColliderShape::ball(4.).into(),
+                            ..craft::attire::AttireBundle::default_collider_bundle()
+                        },
+                    });
+                parent
+                    .spawn()
+                    .insert(Name::new("kinetic_cannon"))
                     .insert_bundle(new_kinetic_cannon(parent_entt))
                     .insert_bundle(PbrBundle {
                         mesh: meshes.add(shape::Cube { size: 1. }.into()),
@@ -631,11 +658,11 @@ fn setup_world(
 
 fn init_default_routines(
     mut commands: Commands,
-    _checkpoints: Query<
+    checkpoints: Query<
         &ColliderPositionComponent,
         With<craft::mind::boid::strategies::CircuitCheckpoint>,
     >,
-    player: Res<craft::mind::player::CurrentCraft>,
+    // player: Res<craft::mind::player::CurrentCraft>,
     crafts: Query<
         Entity,
         (
@@ -651,7 +678,7 @@ fn init_default_routines(
         return;
     }
 
-    // let checkpoint1_pos = _checkpoints.iter().next().unwrap().translation.into();
+    let checkpoint1_pos = checkpoints.iter().next().unwrap().translation.into();
 
     let group = commands
         .spawn_bundle((
@@ -680,17 +707,17 @@ fn init_default_routines(
         )
         .id();*/
 
-        /* let strategy = commands
-        .spawn()
-        .insert_bundle(craft::mind::boid::strategies::RunCircuitBundle::new(
-            craft::mind::boid::strategies::RunCircuit {
-                initial_location: checkpoint1_pos,
-            },
-            craft,
-            Default::default(),
-        ))
-        .id(); */
-        let quarry_rb = player.0.handle();
+        let strategy = commands
+            .spawn()
+            .insert_bundle(craft::mind::boid::strategies::RunCircuitBundle::new(
+                craft::mind::boid::strategies::RunCircuit {
+                    initial_location: checkpoint1_pos,
+                },
+                craft,
+                Default::default(),
+            ))
+            .id();
+        /* let quarry_rb = player.0.handle();
         let strategy = commands
             .spawn()
             .insert_bundle(craft::mind::boid::strategies::AttackPersueBundle::new(
@@ -701,29 +728,31 @@ fn init_default_routines(
                 craft,
                 Default::default(),
             ))
-            .id();
-        /*
-        let strategy =
-            commands
-                .spawn()
-                .insert_bundle(craft::mind::boid::strategies::SingleRoutineBundle::new(
-                    craft::mind::boid::strategies::SingleRoutine::new(Box::new(
-                        move |commands, strategy| {
-                            commands.spawn().insert_bundle(
-                            craft::mind::boid::steering_systems::InterceptRoutineBundle::new(
-                                craft::mind::boid::steering_systems::Intercept {
-                                    quarry_rb,
-                                    speed: None,
+            .id(); */
+
+        /* let strategy =
+        commands
+            .spawn()
+            .insert_bundle(craft::mind::boid::strategies::SingleRoutineBundle::new(
+                craft::mind::boid::strategies::SingleRoutine::new(Box::new(
+                    move |commands, strategy| {
+                        commands.spawn().insert_bundle(
+                        craft::mind::boid::steering_systems::ArriveRoutineBundle::new(
+                            craft::mind::boid::steering_systems::Arrive {
+                                target: craft::mind::boid::steering_systems::ArriveTarget::Position{
+                                    pos: checkpoint1_pos
                                 },
-                                strategy.craft_entt(),
-                            ),
-                        ).id()
-                        },
-                    )),
-                    craft,
-                    Default::default(),
-                ))
-                .id(); */
+                                arrival_tolerance: 5.
+                            },
+                            strategy.craft_entt(),
+                        ),
+                    ).id()
+                    },
+                )),
+                craft,
+                Default::default(),
+            ))
+            .id(); */
         commands
             .entity(craft)
             .insert(craft::mind::flock::CraftGroup(group))

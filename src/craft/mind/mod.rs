@@ -72,6 +72,7 @@ impl Plugin for MindPlugin {
                     .with_system(steering_systems::intercept)
                     .with_system(steering_systems::fly_with_flock)
                     .with_system(steering_systems::avoid_collision)
+                    .with_system(steering_systems::arrive)
                     .with_system(steering_systems::seek),
             )
             .add_system(
