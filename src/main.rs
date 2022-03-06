@@ -1,4 +1,3 @@
-use craft::mind::flock;
 #[cfg(feature = "dylink")]
 #[allow(unused_imports, clippy::single_component_path_imports)]
 use dylink;
@@ -445,7 +444,7 @@ fn setup_world(
                     ..Default::default()
                 })
                 .insert(ColliderPositionSync::Discrete)
-                .insert(craft::mind::boid::strategies::CircuitCheckpoint {
+                .insert(craft::mind::boid::strategy::CircuitCheckpoint {
                     next_point_location: points[(ii + 1) % points.len()],
                 });
         }
@@ -590,10 +589,7 @@ fn setup_world(
         commands.insert_resource(craft::mind::player::CurrentWeapon(wpn_id));
     }
     // return;
-    use craft::mind::{
-        flock::{strategy::*, *},
-        *,
-    };
+    use craft::mind::flock::{strategy::*, *};
     let mut members = smallvec::smallvec![];
     // spawn the ai craft
     for ii in -7..=7 {
@@ -782,6 +778,7 @@ fn init_default_routines(
     }
 } */
 
+#[allow(unreachable_code)]
 fn craft_state_display(
     egui_context: ResMut<EguiContext>,
     cur_craft: Res<craft::mind::player::CurrentCraft>,

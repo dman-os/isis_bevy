@@ -6,7 +6,7 @@ use bevy_rapier3d::prelude::*;
 use super::{BoidStrategy, BoidStrategyBundleExtra, BoidStrategyOutput};
 use crate::{
     craft::mind::{
-        boid::{steering_systems::*, SteeringRoutineComposer},
+        boid::{steering::*, SteeringRoutineComposer},
         sensors::*,
     },
     math::*,

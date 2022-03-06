@@ -43,9 +43,9 @@ impl Plugin for MindPlugin {
                 CoreStage::PreUpdate,
                 SystemSet::new()
                     .label(BoidStrategyButler)
-                    .with_system(boid::strategies::attack_persue_butler)
-                    .with_system(boid::strategies::run_circuit_butler)
-                    .with_system(boid::strategies::single_routine_butler),
+                    .with_system(boid::strategy::attack_persue_butler)
+                    .with_system(boid::strategy::run_circuit_butler)
+                    .with_system(boid::strategy::single_routine_butler),
             )
             .add_system_set_to_stage(
                 // FIXME: we need command flushing between flock strategy butlers and boid strategy butlers
@@ -57,8 +57,8 @@ impl Plugin for MindPlugin {
             .add_system_set(
                 SystemSet::new()
                     .label(BoidStrategy)
-                    .with_system(boid::strategies::attack_persue)
-                    .with_system(boid::strategies::run_circuit),
+                    .with_system(boid::strategy::attack_persue)
+                    .with_system(boid::strategy::run_circuit),
             )
             .add_system_set(
                 SystemSet::new()
@@ -81,11 +81,11 @@ impl Plugin for MindPlugin {
             .add_system_set(
                 SystemSet::new()
                     .label(SteeringSystems)
-                    .with_system(steering_systems::intercept)
-                    .with_system(steering_systems::fly_with_flock)
-                    .with_system(steering_systems::avoid_collision)
-                    .with_system(steering_systems::arrive)
-                    .with_system(steering_systems::seek),
+                    .with_system(steering::intercept)
+                    .with_system(steering::fly_with_flock)
+                    .with_system(steering::avoid_collision)
+                    .with_system(steering::arrive)
+                    .with_system(steering::seek),
             )
             .add_system(
                 routine_composer
@@ -104,7 +104,7 @@ impl Plugin for MindPlugin {
             .register_inspectable::<BoidSteeringSystemOutput>()
             .register_inspectable::<LinearRoutineOutput>()
             .register_inspectable::<AngularRoutineOutput>()
-            .register_inspectable::<steering_systems::AvoidCollision>();
+            .register_inspectable::<steering::AvoidCollision>();
     }
 }
 /* #[derive(Debug, Clone, Component)]

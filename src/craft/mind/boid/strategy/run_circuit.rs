@@ -7,7 +7,7 @@ use super::{
     super::SteeringRoutineComposer, BoidStrategy, BoidStrategyBundleExtra, BoidStrategyOutput,
 };
 use crate::{
-    craft::mind::{boid::steering_systems::*, sensors::*},
+    craft::mind::{boid::steering::*, sensors::*},
     math::*,
 };
 

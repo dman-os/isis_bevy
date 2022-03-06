@@ -8,11 +8,11 @@ use crate::{
     math::*,
 };
 
-use steering_systems::*;
-use strategies::*;
+use steering::*;
+use strategy::*;
 
-pub mod steering_systems;
-pub mod strategies;
+pub mod steering;
+pub mod strategy;
 
 #[derive(Debug, Clone, Inspectable, Component)]
 pub struct BoidMindConfig {
@@ -229,7 +229,7 @@ impl SteeringRoutineComposer {
             active_res.ang = ang_res.0;
         } else {
             // defaults to look where you want to go
-            active_res.ang = steering_systems::look_to(active_res.lin);
+            active_res.ang = steering::look_to(active_res.lin);
             is_empty = false;
         }
         if is_empty {
@@ -251,7 +251,7 @@ pub(super) fn routine_composer(
     )>,
     routines: Query<
         (Option<&LinearRoutineOutput>, Option<&AngularRoutineOutput>),
-        With<steering_systems::SteeringRoutine>,
+        With<steering::SteeringRoutine>,
     >,
     // routines: Query<&LinearRoutineResult, With<steering_systems::Intercept>>,
     //egui_context: ResMut<bevy_egui::EguiContext>,

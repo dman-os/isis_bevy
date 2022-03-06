@@ -349,7 +349,7 @@ pub fn engine_input(
             // look_at_input = look_at_input * look_at_input.recip();
             // ang_state.input += 1. * (180. / crate::math::real::consts::PI) * look_at_input;
             ang_state.input += 10.
-                * crate::craft::mind::boid::steering_systems::look_to(
+                * crate::craft::mind::boid::steering::look_to(
                     xform.rotation.inverse() * c.facing_direction,
                 );
         }

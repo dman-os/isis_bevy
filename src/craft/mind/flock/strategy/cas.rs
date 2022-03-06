@@ -48,12 +48,12 @@ pub fn cas_butler(
             let strategy_entt = commands
                 .spawn()
                 .insert(Name::new("boid_strategy"))
-                .insert_bundle(strategies::SingleRoutineBundle::new(
-                    strategies::SingleRoutine::new(Box::new(move |commands, _| {
+                .insert_bundle(strategy::SingleRoutineBundle::new(
+                    strategy::SingleRoutine::new(Box::new(move |commands, _| {
                         commands
                             .spawn()
-                            .insert_bundle(steering_systems::FlyWithFlockRoutineBundle::new(
-                                steering_systems::FlyWithFlock { strategy_entt },
+                            .insert_bundle(steering::FlyWithFlockRoutineBundle::new(
+                                steering::FlyWithFlock { strategy_entt },
                                 craft_entt,
                             ))
                             .id()
@@ -85,12 +85,12 @@ pub fn cas_butler(
                 let strategy_entt = commands
                     .spawn()
                     .insert(Name::new("boid_strategy"))
-                    .insert_bundle(strategies::SingleRoutineBundle::new(
-                        strategies::SingleRoutine::new(Box::new(move |commands, _| {
+                    .insert_bundle(strategy::SingleRoutineBundle::new(
+                        strategy::SingleRoutine::new(Box::new(move |commands, _| {
                             commands
                                 .spawn()
-                                .insert_bundle(steering_systems::FlyWithFlockRoutineBundle::new(
-                                    steering_systems::FlyWithFlock { strategy_entt },
+                                .insert_bundle(steering::FlyWithFlockRoutineBundle::new(
+                                    steering::FlyWithFlock { strategy_entt },
                                     craft_entt,
                                 ))
                                 .id()

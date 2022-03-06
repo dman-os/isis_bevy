@@ -9,7 +9,7 @@ use bevy::{
 use crate::{
     craft::{
         arms::*,
-        mind::boid::{steering_systems::*, strategies::*},
+        mind::boid::{steering::*, strategy::*},
     },
     math::*,
 };
