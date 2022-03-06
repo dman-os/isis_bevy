@@ -82,11 +82,14 @@ pub(super) fn craft_routine_index_butler(
     mut commands: Commands,
     mut routines: QuerySet<(
         // activated
-        QueryState<(Entity, &SteeringRoutine), Added<ActiveRoutine>>,
+        QueryState<(Entity, &SteeringRoutine), Added<ActiveSteeringRoutine>>,
         // deactivated
         QueryState<
             (Entity, &SteeringRoutine),
-            (Without<ActiveRoutine>, With<PreviouslyActiveRoutine>),
+            (
+                Without<ActiveSteeringRoutine>,
+                With<PreviouslyActiveRoutine>,
+            ),
         >,
     )>,
     mut indices: Query<&mut CraftRoutinesIndex>,

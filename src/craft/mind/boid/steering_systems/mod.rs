@@ -6,7 +6,7 @@ use super::{AngularRoutineOutput, LinearRoutineOutput};
 use crate::math::*;
 
 #[derive(Debug, Component)]
-pub struct ActiveRoutine;
+pub struct ActiveSteeringRoutine;
 
 pub type RoutineKind = std::any::TypeId;
 

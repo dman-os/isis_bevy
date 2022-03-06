@@ -1,7 +1,7 @@
 use deps::*;
 
 use super::LinOnlyRoutineBundle;
-use super::{steering_behaviours, ActiveRoutine, LinearRoutineOutput, SteeringRoutine};
+use super::{steering_behaviours, ActiveSteeringRoutine, LinearRoutineOutput, SteeringRoutine};
 use crate::math::*;
 use bevy::{ecs as bevy_ecs, prelude::*};
 
@@ -21,7 +21,10 @@ pub struct Seek {
 pub type SeekRoutineBundle = LinOnlyRoutineBundle<Seek>;
 
 pub fn seek(
-    mut routines: Query<(&Seek, &SteeringRoutine, &mut LinearRoutineOutput), With<ActiveRoutine>>,
+    mut routines: Query<
+        (&Seek, &SteeringRoutine, &mut LinearRoutineOutput),
+        With<ActiveSteeringRoutine>,
+    >,
     objects: Query<&GlobalTransform>,
 ) {
     for (params, routine, mut output) in routines.iter_mut() {

@@ -27,7 +27,7 @@ impl Default for BoidMindConfig {
     }
 }
 
-#[derive(Bundle)]
+#[derive(Bundle, Default)]
 pub struct BoidMindBundle {
     pub config: BoidMindConfig,
     // smarts layer coordination
@@ -37,20 +37,9 @@ pub struct BoidMindBundle {
     pub routine_output: BoidSteeringSystemOutput,
 }
 
-impl BoidMindBundle {
-    pub fn new(strategy: Entity) -> Self {
-        Self {
-            routine_output: Default::default(),
-            config: Default::default(),
-            routine_composer: Default::default(),
-            active_strategy: ActiveCraftStrategy { strategy },
-        }
-    }
-}
-
-#[derive(Debug, Clone, Component)]
+#[derive(Debug, Default, Clone, Component)]
 pub struct ActiveCraftStrategy {
-    pub strategy: Entity,
+    pub strategy: Option<Entity>,
 }
 
 /// This system assigns the [`SteeringRoutineComposer`] emitted by the strategy to the craft
@@ -67,8 +56,12 @@ pub fn craft_boid_strategy_output_mgr(
     time: Res<Time>,
 ) {
     for (mut composer, mind, wpn_index) in crafts.iter_mut() {
+        let strategy = match mind.strategy {
+            Some(s) => s,
+            None => continue,
+        };
         let output = strategies
-            .get(mind.strategy)
+            .get(strategy)
             .expect("active BoidStrategy not found");
         *composer = output.routine_usage.clone(); // FIXME:
 
@@ -109,12 +102,12 @@ pub(super) fn active_routine_tagger(
                 cache.remove(routine);
             } else {
                 // deactivate routine
-                commands.entity(*routine).remove::<ActiveRoutine>();
+                commands.entity(*routine).remove::<ActiveSteeringRoutine>();
             }
         }
         // for remaining composed routines not in indices
         for entt in cache.drain() {
-            commands.entity(entt).insert(ActiveRoutine);
+            commands.entity(entt).insert(ActiveSteeringRoutine);
         }
     }
 }
@@ -160,18 +153,18 @@ impl BoidSteeringSystemOutput {
    }
 */
 #[derive(Debug, Clone, Copy)]
-pub struct ActiveRoutineWeight {
+pub struct SteeringRoutineWeight {
     lin: TReal,
     ang: TReal,
 }
 
-impl Default for ActiveRoutineWeight {
+impl Default for SteeringRoutineWeight {
     fn default() -> Self {
         Self { lin: 1., ang: 1. }
     }
 }
 
-impl std::ops::Mul<BoidSteeringSystemOutput> for ActiveRoutineWeight {
+impl std::ops::Mul<BoidSteeringSystemOutput> for SteeringRoutineWeight {
     type Output = BoidSteeringSystemOutput;
 
     fn mul(self, rhs: BoidSteeringSystemOutput) -> Self::Output {
@@ -191,7 +184,7 @@ pub enum SteeringRoutineComposer {
     },
     // Linear sum of the routine outputs
     WeightSummed {
-        routines: smallvec::SmallVec<[(ActiveRoutineWeight, Entity); 2]>,
+        routines: smallvec::SmallVec<[(SteeringRoutineWeight, Entity); 2]>,
     },
     /// The first routine that returns a non zero value will be used.
     PriorityOverride {

@@ -1,9 +1,8 @@
 use deps::*;
 
 use bevy::{ecs as bevy_ecs, prelude::*};
-use bevy_rapier3d::prelude::*;
 
-use super::{ActiveRoutine, LinOnlyRoutineBundle, LinearRoutineOutput, SteeringRoutine};
+use super::{ActiveSteeringRoutine, LinOnlyRoutineBundle, LinearRoutineOutput, SteeringRoutine};
 use crate::{craft::engine::*, math::*};
 
 #[derive(Debug, Clone, Copy, Component)]
@@ -24,7 +23,10 @@ pub struct Arrive {
 pub type ArriveRoutineBundle = LinOnlyRoutineBundle<Arrive>;
 
 pub fn arrive(
-    mut routines: Query<(&Arrive, &SteeringRoutine, &mut LinearRoutineOutput), With<ActiveRoutine>>,
+    mut routines: Query<
+        (&Arrive, &SteeringRoutine, &mut LinearRoutineOutput),
+        With<ActiveSteeringRoutine>,
+    >,
     crafts: Query<(&GlobalTransform, &EngineConfig)>, // crafts
     objects: Query<&GlobalTransform>,                 // quarries
 ) {

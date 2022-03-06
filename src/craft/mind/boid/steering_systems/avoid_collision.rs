@@ -4,7 +4,8 @@ use bevy::{ecs as bevy_ecs, prelude::*};
 use bevy_rapier3d::prelude::*;
 
 use super::{
-    steering_behaviours, ActiveRoutine, LinOnlyRoutineBundle, LinearRoutineOutput, SteeringRoutine,
+    steering_behaviours, ActiveSteeringRoutine, LinOnlyRoutineBundle, LinearRoutineOutput,
+    SteeringRoutine,
 };
 use crate::craft::{attire::*, engine::*};
 use crate::math::*;
@@ -44,7 +45,7 @@ pub fn avoid_collision(
             &SteeringRoutine,
             &mut LinearRoutineOutput,
         ),
-        With<ActiveRoutine>,
+        With<ActiveSteeringRoutine>,
     >,
     crafts: Query<(
         &GlobalTransform,

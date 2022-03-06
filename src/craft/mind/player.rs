@@ -73,7 +73,7 @@ pub fn cam_input(
         .reduce(|m1, m2| m1 + m2)
         .unwrap_or_default();
 
-    let mouse_wheel = mouse_wheel_events
+    let _mouse_wheel = mouse_wheel_events
         .iter()
         .map(|m| m.y)
         .reduce(|m1, m2| m1 + m2)
@@ -96,7 +96,7 @@ pub fn cam_input(
 
     // update cross frame tracking data
     cam.secs_since_manual_rot += time.delta_seconds();
-    cam.distance += mouse_wheel;
+    // cam.distance += mouse_wheel;
     if toggle_free_look {
         cam.auto_align = !cam.auto_align;
     }
@@ -133,20 +133,19 @@ pub fn cam_input(
     } */
 
     // if there was mouse motion
-    if mouse_motion.length_squared() > 0. {
+    if mouse_motion.length_squared() > f32::EPSILON {
         cam.secs_since_manual_rot = 0.;
 
         let mouse_motion = mouse_motion * cam.mouse_sensetivity * time.delta_seconds();
         cam.facing_direction = {
-            let mut new_dir = TQuat::from_axis_angle(target_xform.local_x(), mouse_motion.y)
-                * (TQuat::from_axis_angle(target_xform.local_y(), mouse_motion.x)
-                    * cam.facing_direction);
+            let mut new_dir = TQuat::from_axis_angle(xform.local_x(), mouse_motion.y)
+                * (TQuat::from_axis_angle(xform.local_y(), mouse_motion.x) * cam.facing_direction);
 
             // clamp manual rotations to the pole
 
             // if the new direction's pointing to the unit y after
             // being offseted and rotated by the target's transform
-            let mut temp = new_dir + cam.facing_offset_radians;
+            let mut temp = (target_xform.rotation.inverse() * new_dir) + cam.facing_offset_radians;
             temp.y = new_dir.y.abs() + cam.facing_offset_radians.y.abs();
             if 1. - (target_xform.rotation * temp).y < 0.05 {
                 // retain the old y

@@ -3,7 +3,7 @@ use deps::*;
 use bevy::{ecs as bevy_ecs, prelude::*};
 use bevy_rapier3d::prelude::*;
 
-use super::{ActiveRoutine, LinOnlyRoutineBundle, LinearRoutineOutput, SteeringRoutine};
+use super::{ActiveSteeringRoutine, LinOnlyRoutineBundle, LinearRoutineOutput, SteeringRoutine};
 use crate::{craft::engine::*, math::*};
 
 #[derive(Debug, Clone, Copy, Component)]
@@ -18,7 +18,7 @@ pub type InterceptRoutineBundle = LinOnlyRoutineBundle<Intercept>;
 pub fn intercept(
     mut routines: Query<
         (&Intercept, &SteeringRoutine, &mut LinearRoutineOutput),
-        With<ActiveRoutine>,
+        With<ActiveSteeringRoutine>,
     >,
     crafts: Query<(&GlobalTransform, &EngineConfig)>, // crafts
     quarries: Query<(&GlobalTransform, &RigidBodyVelocityComponent)>, // quarries

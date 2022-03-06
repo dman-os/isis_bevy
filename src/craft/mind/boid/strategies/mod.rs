@@ -36,9 +36,9 @@ where
     }
 }
 
-/// A generic bundle for craft strategies.
+/// A variant of [`BoidStrategyBundle`] with two parameter components.
 #[derive(Bundle)]
-pub struct BoidStrategyDuoComponent<P, P2>
+pub struct BoidStrategyBundleExtra<P, P2>
 where
     P: Component,
     P2: Component,
@@ -49,7 +49,7 @@ where
     pub tag: BoidStrategy,
 }
 
-impl<P, P2> BoidStrategyDuoComponent<P, P2>
+impl<P, P2> BoidStrategyBundleExtra<P, P2>
 where
     P: Component,
     P2: Component,
@@ -64,9 +64,9 @@ where
     }
 }
 
-/// A generic bundle for craft strategies.
+/// A variant of [`BoidStrategyDuoComponent`] where the second component is also a bundle.
 #[derive(Bundle)]
-pub struct BoidStrategyDuoBundle<P, B>
+pub struct BoidStrategyBundleJumbo<P, B>
 where
     P: Component,
     B: Bundle,
@@ -78,7 +78,7 @@ where
     pub tag: BoidStrategy,
 }
 
-impl<P, B> BoidStrategyDuoBundle<P, B>
+impl<P, B> BoidStrategyBundleJumbo<P, B>
 where
     P: Component,
     B: Bundle,
@@ -96,7 +96,7 @@ where
 #[derive(Debug, Clone, Default, Inspectable, Component)]
 pub struct BoidStrategyOutput {
     #[inspectable(ignore)]
-    pub routine_usage: SteeringRoutineComposer,
+    pub routine_usage: super::SteeringRoutineComposer,
     pub fire_weapons: bool,
 }
 
@@ -123,5 +123,3 @@ impl BoidStrategy {
         self.kind
     }
 }
-
-use super::SteeringRoutineComposer;

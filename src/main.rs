@@ -1,3 +1,4 @@
+use craft::mind::flock;
 #[cfg(feature = "dylink")]
 #[allow(unused_imports, clippy::single_component_path_imports)]
 use dylink;
@@ -53,6 +54,10 @@ fn main() -> Result<()> {
         ui.label(format!("{cmp:#?}",));
         false
     });
+    inspect_registry.register_raw::<craft::mind::flock::FlockMembers, _>(|cmp, ui, _ctx| {
+        ui.label(format!("{cmp:#?}",));
+        false
+    });
     let mut app = App::new();
     app.add_plugins(DefaultPlugins)
         .insert_resource(WindowDescriptor {
@@ -105,7 +110,7 @@ impl Plugin for GamePlugin {
             .add_startup_system(setup_environment)
             .add_startup_system(setup_world)
             .add_system(craft_state_display)
-            .add_system(init_default_routines)
+            // .add_system(init_default_routines)
             // .add_startup_system(my_system)
             .insert_resource(ClearColor(Color::BLACK));
     }
@@ -585,11 +590,15 @@ fn setup_world(
         commands.insert_resource(craft::mind::player::CurrentWeapon(wpn_id));
     }
     // return;
-
+    use craft::mind::{
+        flock::{strategy::*, *},
+        *,
+    };
+    let mut members = smallvec::smallvec![];
     // spawn the ai craft
-    // for ii in -7..=7 {
-    for ii in 0..1 {
-        commands
+    for ii in -7..=7 {
+        // for ii in 0..1 {
+        members.push(commands
             .spawn()
             .insert(Name::new(format!("ai {ii}")))
             .insert_bundle(craft::CraftBundle {
@@ -652,10 +661,22 @@ fn setup_world(
                         material: materials.add(Color::WHITE.into()),
                         ..Default::default()
                     });
-            }).insert(craft::mind::MindDrivenCraft);
+            })
+            .insert_bundle(craft::mind::boid::BoidMindBundle::default()).id());
     }
-}
 
+    let flock_entt = commands.spawn().insert(Name::new("flock")).id();
+    let flock_strategy = commands
+        .spawn()
+        .insert_bundle(CASBundle::new(CAS {}, flock_entt, Default::default()))
+        .insert(Parent(flock_entt))
+        .id();
+    commands.entity(flock_entt).insert_bundle(FlockMindBundle {
+        members: FlockMembers(members),
+        ..FlockMindBundle::new(flock_strategy)
+    });
+}
+/*
 fn init_default_routines(
     mut commands: Commands,
     checkpoints: Query<
@@ -680,16 +701,16 @@ fn init_default_routines(
 
     let checkpoint1_pos = checkpoints.iter().next().unwrap().translation.into();
 
-    let group = commands
-        .spawn_bundle((
-            craft::mind::flock::FlockMind {
-                // add all new crafts into a new group
-                members,
-                ..Default::default()
-            },
-            craft::mind::flock::BoidFlock::default(),
-        ))
-        .id();
+    /* let group = commands
+    .spawn_bundle((
+        craft::mind::flock::FlockMind {
+            // add all new crafts into a new group
+            members,
+            ..Default::default()
+        },
+        craft::mind::flock::BoidFlock::default(),
+    ))
+    .id(); */
     for craft in crafts.iter() {
         /*let active_routine = commands
         .spawn_bundle(craft::mind::steering_systems::InterceptRoutineBundle::new(
@@ -755,11 +776,11 @@ fn init_default_routines(
             .id(); */
         commands
             .entity(craft)
-            .insert(craft::mind::flock::CraftGroup(group))
+            .insert(craft::mind::flock::CraftFlock(group))
             .insert_bundle(craft::mind::boid::BoidMindBundle::new(strategy))
             .push_children(&[strategy]);
     }
-}
+} */
 
 fn craft_state_display(
     egui_context: ResMut<EguiContext>,

@@ -3,7 +3,9 @@ use deps::*;
 use bevy::{ecs as bevy_ecs, prelude::*};
 use bevy_rapier3d::prelude::*;
 
-use super::{BoidStrategy, BoidStrategyDuoComponent, BoidStrategyOutput, SteeringRoutineComposer};
+use super::{
+    super::SteeringRoutineComposer, BoidStrategy, BoidStrategyBundleExtra, BoidStrategyOutput,
+};
 use crate::{
     craft::mind::{boid::steering_systems::*, sensors::*},
     math::*,
@@ -25,7 +27,7 @@ pub struct RunCircuitState {
     pub avoid_collision_routine: Option<Entity>,
 }
 
-pub type RunCircuitBundle = BoidStrategyDuoComponent<RunCircuit, RunCircuitState>;
+pub type RunCircuitBundle = BoidStrategyBundleExtra<RunCircuit, RunCircuitState>;
 
 pub fn run_circuit_butler(
     mut commands: Commands,

@@ -8,7 +8,6 @@ use sensors::*;
 pub mod boid;
 use boid::*;
 pub mod flock;
-use flock::*;
 pub mod player;
 use player::*;
 
@@ -21,6 +20,8 @@ pub enum CraftMindSystems {
     RoutineComposer,
     BoidStrategyButler,
     BoidStrategy,
+    FlockStrategyButler,
+    FlockStrategy,
     ActiveRoutineTagger,
 }
 
@@ -42,16 +43,27 @@ impl Plugin for MindPlugin {
                 CoreStage::PreUpdate,
                 SystemSet::new()
                     .label(BoidStrategyButler)
-                    .with_system(strategies::attack_persue_butler)
-                    .with_system(strategies::run_circuit_butler)
-                    .with_system(strategies::single_routine_butler),
+                    .with_system(boid::strategies::attack_persue_butler)
+                    .with_system(boid::strategies::run_circuit_butler)
+                    .with_system(boid::strategies::single_routine_butler),
+            )
+            .add_system_set_to_stage(
+                // FIXME: we need command flushing between flock strategy butlers and boid strategy butlers
+                CoreStage::PreUpdate,
+                SystemSet::new()
+                    .label(FlockStrategyButler)
+                    .with_system(flock::strategy::cas_butler),
             )
             .add_system_set(
                 SystemSet::new()
                     .label(BoidStrategy)
-                    .with_system(strategies::attack_persue)
-                    .with_system(strategies::single_routine)
-                    .with_system(strategies::run_circuit),
+                    .with_system(boid::strategies::attack_persue)
+                    .with_system(boid::strategies::run_circuit),
+            )
+            .add_system_set(
+                SystemSet::new()
+                    .label(FlockStrategy)
+                    .with_system(flock::strategy::cas),
             )
             .add_system(
                 craft_boid_strategy_output_mgr
@@ -86,8 +98,8 @@ impl Plugin for MindPlugin {
             .add_system(wpn_input)
             .add_startup_system(setup_markers)
             .add_system(update_ui_markers)
-            .add_system(update_flocks)
             .register_inspectable::<CraftCamera>()
+            .register_inspectable::<flock::strategy::CASState>()
             .register_inspectable::<BoidMindConfig>()
             .register_inspectable::<BoidSteeringSystemOutput>()
             .register_inspectable::<LinearRoutineOutput>()
@@ -105,7 +117,3 @@ pub enum ScanPresence {
 /*
 use master_mind::*;
 mod master_mind {} */
-
-#[derive(Component)]
-#[component(storage = "SparseSet")]
-pub struct MindDrivenCraft;

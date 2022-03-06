@@ -2,7 +2,7 @@ use deps::*;
 
 use bevy::{ecs as bevy_ecs, prelude::*};
 
-use super::{BoidStrategy, BoidStrategyDuoComponent, BoidStrategyOutput};
+use super::{BoidStrategy, BoidStrategyBundleExtra, BoidStrategyOutput};
 use crate::craft::mind::boid::SteeringRoutineComposer;
 
 pub type RoutineSpawner =
@@ -26,16 +26,21 @@ pub struct SingleRoutineState {
     pub routine: Option<Entity>,
 }
 
-pub type SingleRoutineBundle = BoidStrategyDuoComponent<SingleRoutine, SingleRoutineState>;
+pub type SingleRoutineBundle = BoidStrategyBundleExtra<SingleRoutine, SingleRoutineState>;
 
 pub fn single_routine_butler(
     mut commands: Commands,
     mut added_strategies: Query<
-        (&mut SingleRoutine, &BoidStrategy, &mut SingleRoutineState),
+        (
+            &mut SingleRoutine,
+            &BoidStrategy,
+            &mut SingleRoutineState,
+            &mut BoidStrategyOutput,
+        ),
         Added<SingleRoutine>,
     >,
 ) {
-    for (mut params, strategy, mut state) in added_strategies.iter_mut() {
+    for (mut params, strategy, mut state, mut out) in added_strategies.iter_mut() {
         let spawner = params.routine_spawner.take().unwrap();
         let routine = spawner(&mut commands, strategy);
 
@@ -43,21 +48,8 @@ pub fn single_routine_butler(
             .entity(strategy.craft_entt())
             .push_children(&[routine]);
         state.routine = Some(routine);
-    }
-}
-
-// TODO: active routine filtering
-pub fn single_routine(
-    mut strategies: Query<
-        (&SingleRoutineState, &mut BoidStrategyOutput),
-        Changed<SingleRoutineState>,
-    >,
-) {
-    for (state, mut out) in strategies.iter_mut() {
         *out = BoidStrategyOutput {
-            routine_usage: SteeringRoutineComposer::Single {
-                entt: state.routine.unwrap(),
-            },
+            routine_usage: SteeringRoutineComposer::Single { entt: routine },
             fire_weapons: false,
         };
     }

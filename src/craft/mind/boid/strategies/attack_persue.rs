@@ -3,7 +3,7 @@ use deps::*;
 use bevy::{ecs as bevy_ecs, prelude::*};
 use bevy_rapier3d::prelude::*;
 
-use super::{BoidStrategy, BoidStrategyDuoComponent, BoidStrategyOutput};
+use super::{BoidStrategy, BoidStrategyBundleExtra, BoidStrategyOutput};
 use crate::{
     craft::mind::{
         boid::{steering_systems::*, SteeringRoutineComposer},
@@ -25,7 +25,7 @@ pub struct AttackPersueState {
     pub avoid_collision: Option<Entity>,
 }
 
-pub type AttackPersueBundle = BoidStrategyDuoComponent<AttackPersue, AttackPersueState>;
+pub type AttackPersueBundle = BoidStrategyBundleExtra<AttackPersue, AttackPersueState>;
 
 pub fn attack_persue_butler(
     mut commands: Commands,
