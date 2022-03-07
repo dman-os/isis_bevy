@@ -3,33 +3,76 @@ use deps::*;
 use bevy::{ecs as bevy_ecs, prelude::*};
 use educe::Educe;
 
+use crate::math::*;
+
 pub mod strategy;
 use strategy::*;
+pub mod formation;
 
 #[derive(Debug, Default, Component, Educe)]
 #[educe(Deref, DerefMut)]
 pub struct FlockMembers(pub smallvec::SmallVec<[Entity; 8]>);
 
-#[derive(Bundle)]
+#[derive(Bundle, Default)]
 pub struct FlockMindBundle {
     pub members: FlockMembers,
     // pub events: FlockChangeEvents,
     // smarts layer coordination
     pub active_strategy: CurrentFlockStrategy,
+    pub directive: FlockMindDirective,
 }
 
-impl FlockMindBundle {
-    pub fn new(strategy: Entity) -> Self {
-        Self {
-            members: Default::default(),
-            // events: Default::default(),
-            active_strategy: CurrentFlockStrategy { strategy },
+#[derive(Debug, Clone, Component, Educe)]
+#[educe(Default)]
+pub enum FlockMindDirective {
+    #[educe(Default)]
+    None,
+    HoldPosition {
+        pos: TVec3,
+        formation: Entity,
+    },
+    JoinFomation {
+        formation: Entity,
+    },
+}
+
+pub fn flock_mind(
+    mut commands: Commands,
+    mut minds: Query<
+        (Entity, &FlockMindDirective, &mut CurrentFlockStrategy),
+        Changed<FlockMindDirective>,
+    >,
+) {
+    for (flock_entt, directive, mut cur_stg) in minds.iter_mut() {
+        if let Some(cur_stg) = cur_stg.strategy.take() {
+            commands.entity(cur_stg).despawn_recursive();
+        }
+        cur_stg.strategy = match directive {
+            FlockMindDirective::None => None,
+            FlockMindDirective::HoldPosition { pos, formation } => {
+                let pos = *pos;
+                let formation = *formation;
+
+                Some(
+                    commands
+                        .spawn()
+                        .insert_bundle(strategy::hold::Bundle::new(
+                            strategy::hold::Hold { pos, formation },
+                            flock_entt,
+                            Default::default(),
+                        ))
+                        .id(),
+                )
+            }
+            FlockMindDirective::JoinFomation { .. } => {
+                todo!()
+            }
         }
     }
 }
-
+/*
 #[derive(Debug, Clone, Copy, Component)]
-pub struct CraftFlock(pub Entity);
+pub struct CraftFlock(pub Entity); */
 /*
 #[derive(Debug, Default, Component)]
 pub struct FlockChangeEvents {
@@ -44,119 +87,3 @@ pub enum FlockChange {
 pub fn flock_change_event_emitter(
     mut flocks: Query<&mut FlockChangeEvents>
 ) */
-
-/* use formation::*;
-pub mod formation {
-    use deps::*;
-
-    use bevy::{ecs as bevy_ecs, prelude::*, utils::*};
-
-    use super::*;
-    use crate::mind::*;
-    use crate::math::*;
-
-    #[derive(Debug, Clone, Component)]
-    pub struct ActiveFlockFormation {
-        pub formation: Entity,
-    }
-
-    /// A generic bundle for flock strategies.
-    #[derive(Bundle)]
-    pub struct FlockFormationBundle<P>
-    where
-        P: Component,
-    {
-        pub param: P,
-        pub tag: FlockFormation,
-    }
-
-    impl<P> FlockFormationBundle<P>
-    where
-        P: Component,
-    {
-        pub fn new(param: P, flock_entt: Entity) -> Self {
-            Self {
-                param,
-                tag: FlockFormation::new(flock_entt, FlockFormationKind::of::<P>()),
-            }
-        }
-    }
-
-    /// A variant of [`FlockFormationBundle`] with two parameter components.
-    #[derive(Bundle)]
-    pub struct FlockFormationBundleExtra<P, P2>
-    where
-        P: Component,
-        P2: Component,
-    {
-        pub param: P,
-        pub extra: P2,
-        pub tag: FlockFormation,
-    }
-
-    impl<P, P2> FlockFormationBundleExtra<P, P2>
-    where
-        P: Component,
-        P2: Component,
-    {
-        pub fn new(param: P, flock_entt: Entity, extra: P2) -> Self {
-            Self {
-                param,
-                extra,
-                tag: FlockFormation::new(flock_entt, FlockFormationKind::of::<P>()),
-            }
-        }
-    }
-
-    /// A variant of [`FlockFormationBundleExtra`] where the second component is also a bundle.
-    #[derive(Bundle)]
-    pub struct FlockFormationBundleJumbo<P, B>
-    where
-        P: Component,
-        B: Bundle,
-    {
-        pub param: P,
-        #[bundle]
-        pub extra: B,
-        pub tag: FlockFormation,
-    }
-
-    impl<P, B> FlockFormationBundleJumbo<P, B>
-    where
-        P: Component,
-        B: Bundle,
-    {
-        pub fn new(param: P, flock_entt: Entity, extra: B) -> Self {
-            Self {
-                param,
-                extra,
-                tag: FlockFormation::new(flock_entt, FlockFormationKind::of::<P>()),
-            }
-        }
-    }
-
-    pub type FlockFormationKind = std::any::TypeId;
-
-    #[derive(Debug, Clone, Copy, Component)]
-    pub struct FlockFormation {
-        pub flock_entt: Entity,
-        pub kind: FlockFormationKind,
-    }
-
-    impl FlockFormation {
-        pub fn new(flock_entt: Entity, kind: FlockFormationKind) -> Self {
-            Self { flock_entt, kind }
-        }
-
-        /// Get a reference to the flock formation's flock entt.
-        pub fn flock_entt(&self) -> &Entity {
-            &self.flock_entt
-        }
-
-        /// Get a reference to the flock formation's kind.
-        pub fn kind(&self) -> FlockFormationKind {
-            self.kind
-        }
-    }
-
-} */

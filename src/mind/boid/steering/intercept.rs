@@ -13,9 +13,9 @@ pub struct Intercept {
     pub speed: Option<TReal>,
 }
 
-pub type InterceptRoutineBundle = LinOnlyRoutineBundle<Intercept>;
+pub type Bundle = LinOnlyRoutineBundle<Intercept>;
 
-pub fn intercept(
+pub fn update(
     mut routines: Query<
         (&Intercept, &SteeringRoutine, &mut LinearRoutineOutput),
         With<ActiveSteeringRoutine>,
@@ -23,14 +23,14 @@ pub fn intercept(
     crafts: Query<(&GlobalTransform, &EngineConfig)>, // crafts
     quarries: Query<(&GlobalTransform, &RigidBodyVelocityComponent)>, // quarries
 ) {
-    for (params, routine, mut output) in routines.iter_mut() {
+    for (param, routine, mut output) in routines.iter_mut() {
         let (xform, config) = crafts
             .get(routine.craft_entt)
             .expect("craft entt not found for routine");
         let (quarry_xform, quarry_vel) = quarries
-            .get(params.quarry_rb.entity())
+            .get(param.quarry_rb.entity())
             .expect("quarry rigid body not found for on Intercept routine");
-        let speed = params.speed.unwrap_or(config.linear_v_limit.z);
+        let speed = param.speed.unwrap_or(config.linear_v_limit.z);
         *output = super::steering_behaviours::intercept_target(
             xform.translation,
             speed,

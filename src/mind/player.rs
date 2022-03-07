@@ -1,16 +1,66 @@
 use deps::*;
 
-use crate::{
-    craft::{arms::*, engine::*},
-    math::*,
-    mind::*,
-};
+use crate::{craft::arms::*, math::*, mind::*};
 
 use bevy::{ecs as bevy_ecs, reflect as bevy_reflect};
 use bevy_inspector_egui::Inspectable;
 
+#[derive(Debug, Default, Reflect, Inspectable)]
+pub struct PlayerMindConfig {
+    auto_steer: bool,
+}
+
+pub fn player_mind(
+    mut commands: Commands,
+    cur_craft: Res<CurrentCraft>,
+    config: ResMut<PlayerMindConfig>,
+    mut crafts: Query<(&mut boid::steering::SteeringRoutineComposer,)>,
+) {
+    if config.is_changed() {
+        if config.auto_steer {
+            todo!()
+        } else {
+            let craft_entt = cur_craft.0;
+            let (mut composer,) = crafts
+                .get_mut(craft_entt)
+                .expect("player's CurrentCraft not found");
+
+            *composer = boid::steering::SteeringRoutineComposer::Single {
+                entt: commands
+                    .spawn()
+                    .insert_bundle(boid::steering::player::Bundle::new(
+                        boid::steering::player::Player,
+                        craft_entt,
+                    ))
+                    .id(),
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PlayerBoidInput {
+    /// In world space.
+    engine_lin: TVec3,
+    /// In world space.
+    engine_ang: TVec3,
+}
+
+impl PlayerBoidInput {
+    /// Get a reference to the player boid input's engine ang.
+    pub fn engine_ang(&self) -> Vec3 {
+        self.engine_ang
+    }
+
+    /// Get a reference to the player boid input's engine lin.
+    pub fn engine_lin(&self) -> Vec3 {
+        self.engine_lin
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct CurrentCraft(pub Entity);
+
 #[derive(Debug, Clone, Copy)]
 pub struct CurrentWeapon(pub Entity);
 
@@ -43,7 +93,7 @@ impl Default for CraftCamera {
             // facing_offset_radians: [0., 0., 0.].into(),
             facing_offset_radians: [-15. * (real::consts::PI / 180.), 0., 0.].into(),
             position_offset: TVec3::Y,
-            distance: 22.,
+            distance: 44.,
             rotation_speed: 5.,
             auto_align: true,
             align_delay: 1.5,
@@ -246,14 +296,10 @@ pub fn wpn_input(
 }
 
 pub fn engine_input(
+    mut player_input: ResMut<PlayerBoidInput>,
     k_input: Res<Input<KeyCode>>,
     cur_craft: Res<CurrentCraft>,
-    mut crafts: Query<(
-        &GlobalTransform,
-        &mut LinearEngineState,
-        &mut AngularEngineState,
-        &EngineConfig,
-    )>,
+    crafts: Query<(&GlobalTransform,)>,
     cameras: Query<&CraftCamera>,
     // mut pid: Local<RotToVelPid>,
 ) {
@@ -298,61 +344,25 @@ pub fn engine_input(
     if k_input.pressed(KeyCode::Numpad9) {
         angular_input.z -= 1.;
     }
+    if k_input.pressed(KeyCode::LShift) {
+        angular_input *= 10.;
+    } else {
+        angular_input *= 0.1;
+    }
 
-    let (xform, mut lin_state, mut ang_state, craft_config) = crafts
-        .get_mut(cur_craft.0)
+    let (xform,) = crafts
+        .get(cur_craft.0)
         .expect("unable to find current craft entity");
-
-    lin_state.input = linear_input;
-    //lin_state.input.z *= -1.0;
-    //lin_state.input.x *= -1.0;
-    lin_state.input *= craft_config.linear_v_limit;
-
-    ang_state.input = angular_input;
-    //ang_state.input.z *= -1.0;
-    ang_state.input *= craft_config.angular_v_limit;
+    player_input.engine_lin = xform.rotation * linear_input;
+    player_input.engine_ang = angular_input;
 
     if let Some(c) = cameras
         .iter()
         .find(|c| c.target.is_none() || c.target.unwrap() == cur_craft.0)
     {
         if !c.auto_align {
-            /* let current_rot = xform.rotation.to_euler(EulerRot::XYZ).into();
-            let wanted_rot: TVec3 = TQuat::looking_to(c.facing_direction, xform.up())
-                .to_euler(EulerRot::XYZ)
-                .into();
-            let drive = pid.0.update(
-                current_rot,
-                TVec3::new(
-                    crate::math::delta_angle_radians(current_rot.x, wanted_rot.x),
-                    crate::math::delta_angle_radians(current_rot.y, wanted_rot.y),
-                    crate::math::delta_angle_radians(current_rot.z, wanted_rot.z),
-                ),
-                1.,
-            );
-            ang_state.input += drive; */
-
-            // look_at_input *= 1. * (180. / crate::math::real::consts::PI);
-
-            /* fn fun(x: TReal) -> TReal {
-                const THRESHOLD: TReal = 0.01;
-                if (x.abs() - 0.) < TReal::EPSILON || x.abs() > THRESHOLD {
-                    x
-                } else {
-                    THRESHOLD * x.signum()
-                    // (x * x.recip()).abs() * x.signum()
-                }
-            } */
-            /*
-            look_at_input.x = fun(look_at_input.x);
-            look_at_input.y = fun(look_at_input.y);
-            look_at_input.z = fun(look_at_input.z); */
-            // look_at_input = look_at_input * look_at_input.recip();
-            // ang_state.input += 1. * (180. / crate::math::real::consts::PI) * look_at_input;
-            ang_state.input += 10.
-                * crate::mind::boid::steering::look_to(
-                    xform.rotation.inverse() * c.facing_direction,
-                );
+            player_input.engine_ang +=
+                boid::steering::look_to(xform.rotation.inverse() * c.facing_direction);
         }
     }
 }
@@ -663,7 +673,10 @@ pub fn wpn_raycaster_butler(
         (With<RayCastSource<WpnFwdRaycaster>>, With<CrosshairEntt>),
     >,
     crafts: Query<
-        (&CraftWeaponsIndex, ChangeTrackers<CraftWeaponsIndex>),
+        (
+            &sensors::CraftWeaponsIndex,
+            ChangeTrackers<sensors::CraftWeaponsIndex>,
+        ),
         (With<Transform>, With<GlobalTransform>),
     >,
     asset_server: Res<AssetServer>,

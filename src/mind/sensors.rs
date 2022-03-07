@@ -173,7 +173,7 @@ pub(super) fn craft_wpn_index_butler(
         // add them to the per craft
         let mut index = indices
             .get_mut(wpn.craft_entt())
-            .expect("CraftWeaponsIndex not foud craft");
+            .expect("CraftWeaponsIndex not found on craft");
         index.insert(entt, wpn.kind(), wpn.class());
 
         let speed = if wpn.kind() == WeaponKind::of::<ProjectileWeapon>() {

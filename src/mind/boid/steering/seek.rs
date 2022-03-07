@@ -6,7 +6,7 @@ use crate::math::*;
 use bevy::{ecs as bevy_ecs, prelude::*};
 
 #[derive(Debug, Clone, Component)]
-pub enum SeekTarget {
+pub enum Target {
     /// must have a global xform
     Object { entt: Entity },
     /// assumed to be in world basis
@@ -15,31 +15,31 @@ pub enum SeekTarget {
 
 #[derive(Debug, Clone, Component)]
 pub struct Seek {
-    pub target: SeekTarget,
+    pub target: Target,
 }
 
-pub type SeekRoutineBundle = LinOnlyRoutineBundle<Seek>;
+pub type Bundle = LinOnlyRoutineBundle<Seek>;
 
-pub fn seek(
+pub fn update(
     mut routines: Query<
         (&Seek, &SteeringRoutine, &mut LinearRoutineOutput),
         With<ActiveSteeringRoutine>,
     >,
     objects: Query<&GlobalTransform>,
 ) {
-    for (params, routine, mut output) in routines.iter_mut() {
+    for (param, routine, mut output) in routines.iter_mut() {
         let xform = objects
             .get(routine.craft_entt)
             .expect("craft entt not found for routine");
-        let pos = match params.target {
-            SeekTarget::Object { entt } => match objects.get(entt) {
+        let pos = match param.target {
+            Target::Object { entt } => match objects.get(entt) {
                 Ok(obj_xform) => obj_xform.translation,
                 Err(err) => {
                     tracing::error!("error getting SeekTarget Object g_xform: {err:?}");
                     continue;
                 }
             },
-            SeekTarget::Position { pos } => pos,
+            Target::Position { pos } => pos,
         };
         *output = steering_behaviours::seek_position(xform.translation, pos).into();
     }

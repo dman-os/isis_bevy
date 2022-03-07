@@ -2,15 +2,13 @@ use deps::*;
 
 use bevy::{ecs as bevy_ecs, prelude::*};
 
-pub use cas::*;
-mod cas;
+pub mod cas;
+pub mod hold;
+pub mod single_formation;
 
-pub use formation::*;
-mod formation;
-
-#[derive(Debug, Clone, Component)]
+#[derive(Debug, Clone, Default, Component)]
 pub struct CurrentFlockStrategy {
-    pub strategy: Entity,
+    pub strategy: Option<Entity>,
 }
 
 #[derive(Debug, Component)]
@@ -25,6 +23,7 @@ where
 {
     pub param: P,
     pub tag: FlockStrategy,
+    pub parent: Parent,
 }
 
 impl<P> FlockStrategyBundle<P>
@@ -35,6 +34,7 @@ where
         Self {
             param,
             tag: FlockStrategy::new(flock_entt, FlockStrategyKind::of::<P>()),
+            parent: Parent(flock_entt),
         }
     }
 }
@@ -49,6 +49,7 @@ where
     pub param: P,
     pub extra: P2,
     pub tag: FlockStrategy,
+    pub parent: Parent,
 }
 
 impl<P, P2> FlockStrategyBundleExtra<P, P2>
@@ -61,6 +62,7 @@ where
             param,
             extra,
             tag: FlockStrategy::new(flock_entt, FlockStrategyKind::of::<P>()),
+            parent: Parent(flock_entt),
         }
     }
 }
@@ -76,6 +78,7 @@ where
     #[bundle]
     pub extra: B,
     pub tag: FlockStrategy,
+    pub parent: Parent,
 }
 
 impl<P, B> FlockStrategyBundleJumbo<P, B>
@@ -88,6 +91,7 @@ where
             param,
             extra,
             tag: FlockStrategy::new(flock_entt, FlockStrategyKind::of::<P>()),
+            parent: Parent(flock_entt),
         }
     }
 }

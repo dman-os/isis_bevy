@@ -8,8 +8,8 @@ use super::{
     BoidStrategyOutput,
 };
 use crate::{
-    mind::{boid::steering::*, sensors::*},
     math::*,
+    mind::{boid::steering::*, sensors::*},
 };
 
 #[derive(Debug, Clone, Component)]
@@ -28,9 +28,9 @@ pub struct RunCircuitState {
     pub avoid_collision_routine: Option<Entity>,
 }
 
-pub type RunCircuitBundle = BoidStrategyBundleExtra<RunCircuit, RunCircuitState>;
+pub type Bundle = BoidStrategyBundleExtra<RunCircuit, RunCircuitState>;
 
-pub fn run_circuit_butler(
+pub fn butler(
     mut commands: Commands,
     mut added_strategies: Query<
         (
@@ -44,28 +44,28 @@ pub fn run_circuit_butler(
     >,
     crafts: Query<&CraftRoutinesIndex>,
 ) {
-    for (entt, params, strategy, mut state, mut out) in added_strategies.iter_mut() {
+    for (entt, param, strategy, mut state, mut out) in added_strategies.iter_mut() {
         let routines = crafts
             .get(strategy.craft_entt())
             .expect("craft not found for BoidStrategy");
         let avoid_collision = routines
-            .kind::<AvoidCollision>()
+            .kind::<avoid_collision::AvoidCollision>()
             .map(|v| v[0])
             .unwrap_or_else(|| {
                 commands
                     .spawn()
-                    .insert_bundle(AvoidCollisionRoutineBundle::new(
-                        AvoidCollision::default(),
+                    .insert_bundle(avoid_collision::Bundle::new(
+                        avoid_collision::AvoidCollision::default(),
                         strategy.craft_entt(),
                     ))
                     .id()
             });
         let arrive = commands
             .spawn()
-            .insert_bundle(ArriveRoutineBundle::new(
-                Arrive {
-                    target: ArriveTarget::Position {
-                        pos: params.initial_location,
+            .insert_bundle(arrive::Bundle::new(
+                arrive::Arrive {
+                    target: arrive::Target::Position {
+                        pos: param.initial_location,
                     },
                     arrival_tolerance: 5.,
                     deceleration_radius: None,
@@ -74,9 +74,6 @@ pub fn run_circuit_butler(
             ))
             .id();
 
-        commands
-            .entity(strategy.craft_entt())
-            .push_children(&[avoid_collision, arrive]);
         state.arrive_routine = Some(arrive);
         state.avoid_collision_routine = Some(avoid_collision);
         *out = BoidStrategyOutput {
@@ -90,12 +87,12 @@ pub fn run_circuit_butler(
     }
 }
 
-pub fn run_circuit(
+pub fn update(
     strategies: Query<&RunCircuitState, With<ActiveBoidStrategy>>,
     checkpoints: Query<(Entity, &CircuitCheckpoint, &GlobalTransform)>,
     narrow_phase: Res<NarrowPhase>,
     parents: Query<&ColliderParentComponent>,
-    mut arrive_routines: Query<&mut Arrive>,
+    mut arrive_routines: Query<&mut arrive::Arrive>,
     crafts: Query<&CraftStrategyIndex>,
 ) {
     for (checkpt_entt, checkpoint, checkopoint_xform) in checkpoints.iter() {
@@ -120,14 +117,14 @@ pub fn run_circuit(
                         let state = strategies
                             .get(*entt)
                             .expect("RunCircuitState not found for indexed strategy");
-                        let mut arrive_params = arrive_routines
+                        let mut arrive_param = arrive_routines
                             .get_mut(state.arrive_routine.unwrap())
                             .expect("Arrive routine not found for RunCircuitState");
 
-                        if let ArriveTarget::Position { pos: prev_pos } = arrive_params.target {
+                        if let arrive::Target::Position { pos: prev_pos } = arrive_param.target {
                             if prev_pos.distance_squared(checkopoint_xform.translation) < 1. {
                                 tracing::info!("craft arrived at checkpoint {prev_pos:?}",);
-                                arrive_params.target = ArriveTarget::Position {
+                                arrive_param.target = arrive::Target::Position {
                                     pos: checkpoint.next_point_location,
                                 }
                             }

@@ -3,13 +3,10 @@ use deps::*;
 use bevy::{ecs as bevy_ecs, prelude::*};
 use bevy_inspector_egui::RegisterInspectable;
 
-pub mod sensors;
-use sensors::*;
 pub mod boid;
-use boid::*;
 pub mod flock;
 pub mod player;
-use player::*;
+pub mod sensors;
 
 pub struct MindPlugin;
 
@@ -28,87 +25,95 @@ pub enum CraftMindSystems {
 impl Plugin for MindPlugin {
     fn build(&self, app: &mut App) {
         use CraftMindSystems::*;
-        app.add_system_to_stage(CoreStage::PostUpdate, wpn_raycaster_butler)
-            .init_resource::<CraftWeaponCrossRefIndex>()
+        app.add_system_to_stage(CoreStage::PostUpdate, player::wpn_raycaster_butler)
+            .init_resource::<sensors::CraftWeaponCrossRefIndex>()
             .add_system_to_stage(
                 CoreStage::PreUpdate,
-                craft_wpn_index_butler.before(BoidStrategyButler),
+                sensors::craft_wpn_index_butler.before(BoidStrategyButler),
             )
-            .init_resource::<CraftStrategyCrossRefIndex>()
+            .init_resource::<sensors::CraftStrategyCrossRefIndex>()
             .add_system_to_stage(
                 CoreStage::PreUpdate,
-                craft_strategy_index_butler.before(BoidStrategyButler),
+                sensors::craft_strategy_index_butler.before(BoidStrategyButler),
             )
             .add_system_set_to_stage(
                 // FIXME: we need command flushing between flock strategy butlers and boid strategy butlers
                 CoreStage::PreUpdate,
                 SystemSet::new()
                     .label(FlockStrategyButler)
-                    .with_system(flock::strategy::formation_butler)
-                    .with_system(flock::strategy::cas_butler),
+                    .with_system(flock::strategy::hold::butler)
+                    .with_system(flock::strategy::cas::butler),
             )
             .add_system_set_to_stage(
                 CoreStage::PreUpdate,
                 SystemSet::new()
                     .label(BoidStrategyButler)
-                    .with_system(boid::strategy::attack_persue_butler)
-                    .with_system(boid::strategy::run_circuit_butler)
-                    .with_system(boid::strategy::form_butler)
-                    .with_system(boid::strategy::single_routine_butler),
+                    .with_system(boid::strategy::attack_persue::butler)
+                    .with_system(boid::strategy::run_circuit::butler)
+                    .with_system(boid::strategy::form::butler)
+                    .with_system(boid::strategy::custom::butler),
             )
+            .add_system_to_stage(CoreStage::PreUpdate, flock::formation::butler)
             .add_system_set(
                 SystemSet::new()
                     .label(BoidStrategy)
-                    .with_system(boid::strategy::attack_persue)
-                    .with_system(boid::strategy::form)
-                    .with_system(boid::strategy::run_circuit),
+                    .with_system(boid::strategy::attack_persue::update)
+                    .with_system(boid::strategy::form::update)
+                    .with_system(boid::strategy::run_circuit::update),
             )
             .add_system_set(
                 SystemSet::new()
                     .label(FlockStrategy)
-                    .with_system(flock::strategy::cas)
-                    .with_system(flock::strategy::formation),
+                    .with_system(flock::strategy::cas::update),
             )
             .add_system(
-                craft_boid_strategy_output_mgr
+                boid::strategy::craft_boid_strategy_output_mgr
                     .label(CraftBoidStrategyOutputMgr)
                     .after(BoidStrategy),
             )
             .add_system(
-                active_routine_tagger
+                boid::steering::active_routine_tagger
                     .label(ActiveRoutineTagger)
                     .after(CraftBoidStrategyOutputMgr)
                     .before(SteeringSystems),
             )
-            .init_resource::<CraftRoutineCrossRefIndex>()
-            .add_system(craft_routine_index_butler.after(ActiveRoutineTagger))
+            .init_resource::<sensors::CraftRoutineCrossRefIndex>()
+            .add_system(sensors::craft_routine_index_butler.after(ActiveRoutineTagger))
+            .add_system(sensors::craft_routine_index_butler)
+            .add_system(flock::formation::update)
             .add_system_set(
                 SystemSet::new()
                     .label(SteeringSystems)
-                    .with_system(steering::intercept)
-                    .with_system(steering::fly_with_flock)
-                    .with_system(steering::avoid_collision)
-                    .with_system(steering::arrive)
-                    .with_system(steering::seek),
+                    .with_system(boid::steering::intercept::update)
+                    .with_system(boid::steering::fly_with_flock::update)
+                    .with_system(boid::steering::avoid_collision::update)
+                    .with_system(boid::steering::arrive::update)
+                    .with_system(boid::steering::player::update)
+                    .with_system(boid::steering::seek::update),
             )
             .add_system(
-                routine_composer
+                boid::steering::routine_composer
                     .label(RoutineComposer)
                     .after(SteeringSystems),
             )
-            .add_system(mind_update_engine_input.after(RoutineComposer))
-            .add_system(cam_input)
-            .add_system(engine_input)
-            .add_system(wpn_input)
-            .add_startup_system(setup_markers)
-            .add_system(update_ui_markers)
-            .register_inspectable::<CraftCamera>()
-            .register_inspectable::<flock::strategy::CASState>()
-            .register_inspectable::<BoidMindConfig>()
-            .register_inspectable::<BoidSteeringSystemOutput>()
-            .register_inspectable::<LinearRoutineOutput>()
-            .register_inspectable::<AngularRoutineOutput>()
-            .register_inspectable::<steering::AvoidCollision>();
+            .add_system(boid::steering::mind_update_engine_input.after(RoutineComposer))
+            .add_system(player::cam_input)
+            .add_system(player::engine_input)
+            .add_system(player::wpn_input)
+            .add_startup_system(player::setup_markers)
+            .add_system(player::update_ui_markers)
+            .add_system_to_stage(CoreStage::PreUpdate, boid::boid_mind)
+            .add_system_to_stage(CoreStage::PreUpdate, flock::flock_mind)
+            .insert_resource(player::PlayerMindConfig::default())
+            .insert_resource(player::PlayerBoidInput::default())
+            .add_system_to_stage(CoreStage::PreUpdate, player::player_mind)
+            .register_inspectable::<player::CraftCamera>()
+            .register_inspectable::<flock::strategy::cas::CASState>()
+            .register_inspectable::<boid::BoidMindConfig>()
+            .register_inspectable::<boid::steering::BoidSteeringSystemOutput>()
+            .register_inspectable::<boid::steering::LinearRoutineOutput>()
+            .register_inspectable::<boid::steering::AngularRoutineOutput>()
+            .register_inspectable::<boid::steering::avoid_collision::AvoidCollision>();
     }
 }
 /* #[derive(Debug, Clone, Component)]
@@ -119,5 +124,5 @@ pub enum ScanPresence {
  */
 
 /*
-use master_mind::*;
-mod master_mind {} */
+use master::*;
+mod master {} */

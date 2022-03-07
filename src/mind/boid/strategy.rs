@@ -3,17 +3,13 @@ use deps::*;
 use bevy::{ecs as bevy_ecs, prelude::*};
 use bevy_inspector_egui::Inspectable;
 
-pub use attack_persue::*;
-mod attack_persue;
+use crate::craft::*;
+use crate::mind::*;
 
-pub use run_circuit::*;
-mod run_circuit;
-
-pub use single_routine::*;
-mod single_routine;
-
-pub use form::*;
-mod form;
+pub mod attack_persue;
+pub mod custom;
+pub mod form;
+pub mod run_circuit;
 
 #[derive(Debug, Component)]
 #[component(storage = "SparseSet")]
@@ -29,6 +25,7 @@ where
     pub output: BoidStrategyOutput,
     pub tag: BoidStrategy,
     pub name: Name,
+    pub parent: Parent,
 }
 
 impl<P> BoidStrategyBundle<P>
@@ -43,6 +40,7 @@ where
             output: Default::default(),
             tag: BoidStrategy::new(craft_entt, BoidStrategyKind::of::<P>()),
             name: Self::DEFAULT_NAME.into(),
+            parent: Parent(craft_entt),
         }
     }
 }
@@ -59,6 +57,7 @@ where
     pub output: BoidStrategyOutput,
     pub tag: BoidStrategy,
     pub name: Name,
+    pub parent: Parent,
 }
 
 impl<P, P2> BoidStrategyBundleExtra<P, P2>
@@ -73,6 +72,7 @@ where
             extra,
             tag: BoidStrategy::new(craft_entt, BoidStrategyKind::of::<P>()),
             name: BoidStrategyBundle::<P>::DEFAULT_NAME.into(),
+            parent: Parent(craft_entt),
         }
     }
 }
@@ -90,6 +90,7 @@ where
     pub output: BoidStrategyOutput,
     pub tag: BoidStrategy,
     pub name: Name,
+    pub parent: Parent,
 }
 
 impl<P, B> BoidStrategyBundleJumbo<P, B>
@@ -104,6 +105,7 @@ where
             extra,
             tag: BoidStrategy::new(craft_entt, BoidStrategyKind::of::<P>()),
             name: BoidStrategyBundle::<P>::DEFAULT_NAME.into(),
+            parent: Parent(craft_entt),
         }
     }
 }
@@ -136,5 +138,48 @@ impl BoidStrategy {
     /// Get a reference to the craft strategy's kind.
     pub fn kind(&self) -> BoidStrategyKind {
         self.kind
+    }
+}
+
+#[derive(Debug, Default, Clone, Component)]
+pub struct CurrentBoidStrategy {
+    pub strategy: Option<Entity>,
+}
+
+/// This system assigns the [`SteeringRoutineComposer`] emitted by the strategy to the craft
+/// and fires weapon.
+/// TODO: use change tracking to avoid work
+pub fn craft_boid_strategy_output_mgr(
+    mut crafts: Query<(
+        &mut boid::steering::SteeringRoutineComposer,
+        &CurrentBoidStrategy,
+        &sensors::CraftWeaponsIndex,
+    )>,
+    strategies: Query<&BoidStrategyOutput>,
+    mut activate_wpn_events: EventWriter<arms::ActivateWeaponEvent>,
+    weapons: Query<&arms::WeaponActivationState>,
+    time: Res<Time>,
+) {
+    for (mut composer, mind, wpn_index) in crafts.iter_mut() {
+        let strategy = match mind.strategy {
+            Some(s) => s,
+            None => continue,
+        };
+        let output = strategies
+            .get(strategy)
+            .expect("active BoidStrategy not found");
+        *composer = output.routine_usage.clone(); // FIXME:
+
+        if output.fire_weapons {
+            for wpn in wpn_index.entt_to_class.keys() {
+                if weapons
+                    .get(*wpn)
+                    .expect("Indexed weapon has no WeaponActivationState")
+                    .can_activate(&time)
+                {
+                    activate_wpn_events.send(arms::ActivateWeaponEvent { weapon_id: *wpn });
+                }
+            }
+        }
     }
 }

@@ -35,9 +35,9 @@ impl Default for AvoidCollision {
     }
 }
 
-pub type AvoidCollisionRoutineBundle = LinOnlyRoutineBundle<AvoidCollision>;
+pub type Bundle = LinOnlyRoutineBundle<AvoidCollision>;
 
-pub fn avoid_collision(
+pub fn update(
     // NOTE: this steering system is stateful.
     mut routines: Query<
         (

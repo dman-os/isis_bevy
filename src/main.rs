@@ -98,6 +98,7 @@ pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugin(craft::CraftsPlugin)
+            .add_plugin(mind::MindPlugin)
             .add_startup_system(setup_fps_display)
             .add_system(text_update_system)
             .add_system(move_camera_system)
@@ -445,7 +446,7 @@ fn setup_world(
                     ..Default::default()
                 })
                 .insert(ColliderPositionSync::Discrete)
-                .insert(mind::boid::strategy::CircuitCheckpoint {
+                .insert(mind::boid::strategy::run_circuit::CircuitCheckpoint {
                     next_point_location: points[(ii + 1) % points.len()],
                 });
         }
@@ -488,6 +489,7 @@ fn setup_world(
         )
     });
 
+    use mind::*;
     // spawn the player craft
     {
         let player_craft_id = commands
@@ -505,6 +507,8 @@ fn setup_world(
                     },
                     ..Default::default()
                 },
+                ..Default::default()
+            }).insert_bundle(boid::BoidMindBundle{
                 ..Default::default()
             })
             .with_children(|parent| {
@@ -588,8 +592,6 @@ fn setup_world(
             .id();
         commands.insert_resource(mind::player::CurrentWeapon(wpn_id));
     }
-    // return;
-    use mind::flock::{strategy::*, *};
     let mut members = smallvec::smallvec![];
     // spawn the ai craft
     for ii in -7..=7 {
@@ -657,138 +659,36 @@ fn setup_world(
                         ..Default::default()
                     });
             })
-            .insert_bundle(mind::boid::BoidMindBundle::default()).id());
+            .insert_bundle(boid::BoidMindBundle{
+                ..Default::default()
+            }).id());
     }
 
     let flock_entt = commands.spawn().insert(Name::new("flock")).id();
-    let flock_strategy = commands
+    let formation = commands
         .spawn()
-        // .insert_bundle(CASBundle::new(CAS {}, flock_entt, Default::default()))
-        .insert_bundle(FormationBundle::new(
-            Formation {
-                pattern: FormationPattern::Sphere {
-                    radius: 100.,
-                    center: FormationPivot::Anchor {
-                        xform: GlobalTransform::identity(),
-                    },
+        .insert_bundle(flock::formation::FlockFormationBundle::new(
+            flock::formation::FormationPattern::Sphere {
+                center: flock::formation::FormationPivot::Anchor {
+                    xform: Transform::from_translation([0., 0., -300.].into()),
                 },
-                slotting_strategy: SlottingStrategy::Simple,
+                radius: 150.,
             },
+            flock::formation::SlottingStrategy::Simple,
             flock_entt,
-            Default::default(),
         ))
-        .insert(Parent(flock_entt))
         .id();
-    commands.entity(flock_entt).insert_bundle(FlockMindBundle {
-        members: FlockMembers(members),
-        ..FlockMindBundle::new(flock_strategy)
-    });
-}
-/*
-fn init_default_routines(
-    mut commands: Commands,
-    checkpoints: Query<
-        &ColliderPositionComponent,
-        With<mind::boid::strategies::CircuitCheckpoint>,
-    >,
-    // player: Res<mind::player::CurrentCraft>,
-    crafts: Query<
-        Entity,
-        (
-            With<mind::MindDrivenCraft>,
-            Without<mind::boid::BoidMindConfig>,
-        ),
-    >,
-) {
-    //return;
-    let members: smallvec::SmallVec<[Entity; 8]> = crafts.iter().collect();
-    if members.is_empty() {
-        // bail if there are no new crafts
-        return;
-    }
-
-    let checkpoint1_pos = checkpoints.iter().next().unwrap().translation.into();
-
-    /* let group = commands
-    .spawn_bundle((
-        mind::flock::FlockMind {
-            // add all new crafts into a new group
-            members,
-            ..Default::default()
-        },
-        mind::flock::BoidFlock::default(),
-    ))
-    .id(); */
-    for craft in crafts.iter() {
-        /*let active_routine = commands
-        .spawn_bundle(mind::steering_systems::InterceptRoutineBundle::new(
-            mind::steering_systems::Intercept {
-                craft_entt: craft,
-                quarry_rb: player.0.handle(),
+    commands
+        .entity(flock_entt)
+        .insert_bundle(flock::FlockMindBundle {
+            members: flock::FlockMembers(members),
+            directive: flock::FlockMindDirective::HoldPosition {
+                pos: [0., 0., -300.].into(),
+                formation,
             },
-        ))
-        .id();*/
-        /*let active_routine = commands
-        .spawn_bundle(
-            mind::steering_systems::FlyWithFlockRoutineBundle::new(
-                mind::steering_systems::FlyWithFlock { craft_entt: craft },
-            ),
-        )
-        .id();*/
-
-        let strategy = commands
-            .spawn()
-            .insert_bundle(mind::boid::strategies::RunCircuitBundle::new(
-                mind::boid::strategies::RunCircuit {
-                    initial_location: checkpoint1_pos,
-                },
-                craft,
-                Default::default(),
-            ))
-            .id();
-        /* let quarry_rb = player.0.handle();
-        let strategy = commands
-            .spawn()
-            .insert_bundle(mind::boid::strategies::AttackPersueBundle::new(
-                mind::boid::strategies::AttackPersue {
-                    quarry_rb,
-                    attacking_range: 200.,
-                },
-                craft,
-                Default::default(),
-            ))
-            .id(); */
-
-        /* let strategy =
-        commands
-            .spawn()
-            .insert_bundle(mind::boid::strategies::SingleRoutineBundle::new(
-                mind::boid::strategies::SingleRoutine::new(Box::new(
-                    move |commands, strategy| {
-                        commands.spawn().insert_bundle(
-                        mind::boid::steering_systems::ArriveRoutineBundle::new(
-                            mind::boid::steering_systems::Arrive {
-                                target: mind::boid::steering_systems::ArriveTarget::Position{
-                                    pos: checkpoint1_pos
-                                },
-                                arrival_tolerance: 5.
-                            },
-                            strategy.craft_entt(),
-                        ),
-                    ).id()
-                    },
-                )),
-                craft,
-                Default::default(),
-            ))
-            .id(); */
-        commands
-            .entity(craft)
-            .insert(mind::flock::CraftFlock(group))
-            .insert_bundle(mind::boid::BoidMindBundle::new(strategy))
-            .push_children(&[strategy]);
-    }
-} */
+            ..Default::default()
+        });
+}
 
 #[allow(unreachable_code)]
 fn craft_state_display(

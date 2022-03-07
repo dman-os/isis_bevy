@@ -5,11 +5,11 @@ use bevy_rapier3d::prelude::*;
 
 use super::{ActiveBoidStrategy, BoidStrategy, BoidStrategyBundleExtra, BoidStrategyOutput};
 use crate::{
+    math::*,
     mind::{
         boid::{steering::*, SteeringRoutineComposer},
         sensors::*,
     },
-    math::*,
 };
 
 #[derive(Debug, Clone, Component)]
@@ -25,9 +25,9 @@ pub struct AttackPersueState {
     pub avoid_collision: Option<Entity>,
 }
 
-pub type AttackPersueBundle = BoidStrategyBundleExtra<AttackPersue, AttackPersueState>;
+pub type Bundle = BoidStrategyBundleExtra<AttackPersue, AttackPersueState>;
 
-pub fn attack_persue_butler(
+pub fn butler(
     mut commands: Commands,
     mut added_strategies: Query<
         (Entity, &AttackPersue, &BoidStrategy, &mut AttackPersueState),
@@ -39,57 +39,54 @@ pub fn attack_persue_butler(
         &CraftStrategyIndex,
         Changed<CraftWeaponsIndex>,
     )>,
-    mut routines: Query<&mut Intercept>,
+    mut routines: Query<&mut intercept::Intercept>,
 ) {
-    for (entt, params, strategy, mut state) in added_strategies.iter_mut() {
+    for (entt, param, strategy, mut state) in added_strategies.iter_mut() {
         let (routines, wpns, ..) = crafts
             .get(strategy.craft_entt())
             .expect("craft not found for BoidStrategy");
-        let avoid_collision = routines
-            .kind::<AvoidCollision>()
-            .map(|v| v[0])
-            .unwrap_or_else(|| {
-                commands
-                    .spawn()
-                    .insert_bundle(AvoidCollisionRoutineBundle::new(
-                        AvoidCollision::default(),
-                        strategy.craft_entt(),
-                    ))
-                    .id()
-            });
-        let intercept = commands
-            .spawn()
-            .insert_bundle(InterceptRoutineBundle::new(
-                Intercept {
-                    quarry_rb: params.quarry_rb,
-                    speed: None,
-                },
-                strategy.craft_entt(),
-            ))
-            .id();
-
-        let intercept_wpn_speed = commands
-            .spawn()
-            .insert_bundle(InterceptRoutineBundle::new(
-                Intercept {
-                    quarry_rb: params.quarry_rb,
-                    speed: if wpns.avg_projectile_speed > 0. {
-                        Some(wpns.avg_projectile_speed)
-                    } else {
-                        None
+        state.intercept_routine = Some(
+            commands
+                .spawn()
+                .insert_bundle(intercept::Bundle::new(
+                    intercept::Intercept {
+                        quarry_rb: param.quarry_rb,
+                        speed: None,
                     },
-                },
-                strategy.craft_entt(),
-            ))
-            .id();
-        commands.entity(strategy.craft_entt()).push_children(&[
-            avoid_collision,
-            intercept,
-            intercept_wpn_speed,
-        ]);
-        state.intercept_routine = Some(intercept);
-        state.intercept_wpn_speed = Some(intercept_wpn_speed);
-        state.avoid_collision = Some(avoid_collision);
+                    strategy.craft_entt(),
+                ))
+                .id(),
+        );
+        state.intercept_wpn_speed = Some(
+            commands
+                .spawn()
+                .insert_bundle(intercept::Bundle::new(
+                    intercept::Intercept {
+                        quarry_rb: param.quarry_rb,
+                        speed: if wpns.avg_projectile_speed > 0. {
+                            Some(wpns.avg_projectile_speed)
+                        } else {
+                            None
+                        },
+                    },
+                    strategy.craft_entt(),
+                ))
+                .id(),
+        );
+        state.avoid_collision = Some(
+            routines
+                .kind::<avoid_collision::AvoidCollision>()
+                .map(|v| v[0])
+                .unwrap_or_else(|| {
+                    commands
+                        .spawn()
+                        .insert_bundle(avoid_collision::Bundle::new(
+                            avoid_collision::AvoidCollision::default(),
+                            strategy.craft_entt(),
+                        ))
+                        .id()
+                }),
+        );
 
         commands.entity(entt).insert(ActiveBoidStrategy);
     }
@@ -111,7 +108,8 @@ pub fn attack_persue_butler(
     }
 }
 
-pub fn attack_persue(
+#[allow(clippy::if_same_then_else)]
+pub fn update(
     mut strategies: Query<
         (
             &AttackPersue,
@@ -123,19 +121,20 @@ pub fn attack_persue(
     >,
     crafts: Query<&GlobalTransform>, // crafts
 ) {
-    for (params, strategy, state, mut out) in strategies.iter_mut() {
+    for (param, strategy, state, mut out) in strategies.iter_mut() {
         let xform = crafts
             .get(strategy.craft_entt())
             .expect("craft xform not found for CraftStrategy craft_entt");
         let quarry_xform = crafts
-            .get(params.quarry_rb.entity())
+            .get(param.quarry_rb.entity())
             .expect("quarry_xform not found for on AttackPersue strategy");
 
         let target_distance_squared =
             (quarry_xform.translation - xform.translation).length_squared();
         let target_direction = (quarry_xform.translation - xform.translation).normalize();
         // if beyond range
-        *out = if target_distance_squared > (params.attacking_range * params.attacking_range) {
+
+        *out = if target_distance_squared > (param.attacking_range * param.attacking_range) {
             // intercept
             BoidStrategyOutput {
                 routine_usage: SteeringRoutineComposer::Single {

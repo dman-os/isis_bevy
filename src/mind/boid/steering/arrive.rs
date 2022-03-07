@@ -6,7 +6,7 @@ use super::{ActiveSteeringRoutine, LinOnlyRoutineBundle, LinearRoutineOutput, St
 use crate::{craft::engine::*, math::*};
 
 #[derive(Debug, Clone, Component)]
-pub enum ArriveTarget {
+pub enum Target {
     /// must have a global xform
     Object { entt: Entity, offset: TVec3 },
     /// assumed to be in world basis
@@ -15,14 +15,14 @@ pub enum ArriveTarget {
 
 #[derive(Debug, Clone, Component)]
 pub struct Arrive {
-    pub target: ArriveTarget,
+    pub target: Target,
     pub arrival_tolerance: TReal,
     pub deceleration_radius: Option<TReal>,
 }
 
-pub type ArriveRoutineBundle = LinOnlyRoutineBundle<Arrive>;
+pub type Bundle = LinOnlyRoutineBundle<Arrive>;
 
-pub fn arrive(
+pub fn update(
     mut routines: Query<
         (&Arrive, &SteeringRoutine, &mut LinearRoutineOutput),
         With<ActiveSteeringRoutine>,
@@ -30,22 +30,22 @@ pub fn arrive(
     crafts: Query<(&GlobalTransform, &EngineConfig)>, // crafts
     objects: Query<&GlobalTransform>,                 // quarries
 ) {
-    for (params, routine, mut output) in routines.iter_mut() {
+    for (param, routine, mut output) in routines.iter_mut() {
         let (xform, config) = crafts
             .get(routine.craft_entt)
             .expect("craft entt not found for routine");
-        let pos = match params.target {
-            ArriveTarget::Object { entt, offset } => match objects.get(entt) {
+        let pos = match param.target {
+            Target::Object { entt, offset } => match objects.get(entt) {
                 Ok(obj_xform) => obj_xform.translation + offset,
                 Err(err) => {
                     tracing::error!("error getting SeekTarget Object g_xform: {err:?}");
                     continue;
                 }
             },
-            ArriveTarget::Position { pos } => pos,
+            Target::Position { pos } => pos,
         };
 
-        let deceleration_radius = params.deceleration_radius.unwrap_or_else(|| {
+        let deceleration_radius = param.deceleration_radius.unwrap_or_else(|| {
             // calclulate the radius from the max speed and avail accel
             let max_accel = {
                 let max_accel = config.acceleration_limit * config.acceleration_limit_multiplier;
@@ -67,7 +67,7 @@ pub fn arrive(
             xform.translation,
             pos,
             // assume we're always using teh least avail accel
-            params.arrival_tolerance,
+            param.arrival_tolerance,
             deceleration_radius,
         )
         .into();

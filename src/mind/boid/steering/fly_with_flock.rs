@@ -3,7 +3,7 @@ use deps::*;
 use bevy::{ecs as bevy_ecs, prelude::*};
 use bevy_rapier3d::prelude::*;
 
-use crate::mind::flock::strategy::CASState;
+use crate::mind::flock::strategy::cas::*;
 
 use super::{
     look_to, steering_behaviours, ActiveSteeringRoutine, AngularRoutineOutput, LinAngRoutineBundle,
@@ -12,12 +12,12 @@ use super::{
 
 #[derive(Debug, Clone, Component)]
 pub struct FlyWithFlock {
-    pub strategy_entt: Entity,
+    pub flock_strategy_entt: Entity,
 }
 
-pub type FlyWithFlockRoutineBundle = LinAngRoutineBundle<FlyWithFlock>;
+pub type Bundle = LinAngRoutineBundle<FlyWithFlock>;
 
-pub fn fly_with_flock(
+pub fn update(
     mut routines: Query<
         (
             &FlyWithFlock,
@@ -30,12 +30,12 @@ pub fn fly_with_flock(
     strategies: Query<&CASState>,
     crafts: Query<(&GlobalTransform, &RigidBodyVelocityComponent)>, // crafts
 ) {
-    for (params, routine, mut lin_out, mut ang_out) in routines.iter_mut() {
+    for (param, routine, mut lin_out, mut ang_out) in routines.iter_mut() {
         let (xform, vel) = crafts
             .get(routine.craft_entt)
             .expect("craft entt not found for routine");
         let cas = strategies
-            .get(params.strategy_entt)
+            .get(param.flock_strategy_entt)
             .expect("unable to find craft_group for fly_with_flock routine");
         let (cohesion, allignment, separation) = (
             steering_behaviours::cohesion(xform.translation, cas.member_count, cas.center_sum),
