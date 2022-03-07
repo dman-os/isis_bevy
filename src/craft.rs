@@ -53,9 +53,11 @@ pub struct CraftBundle {
     pub routine_index: CraftRoutinesIndex,
     pub wpn_index: CraftWeaponsIndex,
     pub strategy_index: CraftStrategyIndex,
+    pub name: Name,
 }
 
 impl CraftBundle {
+    pub const DEFAULT_NAME: &'static str = "craft";
     pub fn default_rb_bundle() -> RigidBodyBundle {
         RigidBodyBundle {
             ccd: RigidBodyCcd {
@@ -97,6 +99,7 @@ impl Default for CraftBundle {
             routine_index: Default::default(),
             wpn_index: Default::default(),
             strategy_index: Default::default(),
+            name: Self::DEFAULT_NAME.into(),
         }
     }
 }

@@ -5,10 +5,17 @@ use bevy::{ecs as bevy_ecs, prelude::*};
 pub use cas::*;
 mod cas;
 
+pub use formation::*;
+mod formation;
+
 #[derive(Debug, Clone, Component)]
-pub struct ActiveFlockStrategy {
+pub struct CurrentFlockStrategy {
     pub strategy: Entity,
 }
+
+#[derive(Debug, Component)]
+#[component(storage = "SparseSet")]
+pub struct ActiveFlockStrategy;
 
 /// A generic bundle for flock strategies.
 #[derive(Bundle)]

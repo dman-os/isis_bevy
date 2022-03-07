@@ -5,7 +5,7 @@ use bevy::{ecs as bevy_ecs, prelude::*};
 use super::{ActiveSteeringRoutine, LinOnlyRoutineBundle, LinearRoutineOutput, SteeringRoutine};
 use crate::{craft::engine::*, math::*};
 
-#[derive(Debug, Clone, Copy, Component)]
+#[derive(Debug, Clone, Component)]
 pub enum ArriveTarget {
     /// must have a global xform
     Object { entt: Entity, offset: TVec3 },
@@ -13,7 +13,7 @@ pub enum ArriveTarget {
     Position { pos: TVec3 },
 }
 
-#[derive(Debug, Clone, Copy, Component)]
+#[derive(Debug, Clone, Component)]
 pub struct Arrive {
     pub target: ArriveTarget,
     pub arrival_tolerance: TReal,

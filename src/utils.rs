@@ -2,6 +2,8 @@ use deps::*;
 
 use bevy::{ecs as bevy_ecs, prelude::*};
 
+use crate::math::*;
+
 #[derive(Debug, Component)]
 pub struct PIDControllerVec3 {
     last_state: Vec3,
@@ -50,4 +52,26 @@ impl PIDControllerVec3 {
 
         drive_v
     }
+}
+
+pub fn points_on_sphere(point_count: usize) -> Vec<TVec3> {
+    let mut directions = Vec::with_capacity(point_count);
+    #[allow(clippy::unnecessary_cast)]
+    let golden_ratio = (1.0 + (5.0 as TReal).sqrt()) * 0.5;
+    let angle_increment = real::consts::TAU * golden_ratio;
+    #[allow(clippy::needless_range_loop)]
+    for ii in 0..point_count {
+        let t = ii as TReal / point_count as TReal;
+        let inclination = (1.0 - (2.0 * t)).acos();
+        let azimuth = angle_increment * (ii as TReal);
+        directions.push(
+            TVec3::new(
+                inclination.sin() * azimuth.cos(),
+                inclination.sin() * azimuth.sin(),
+                inclination.cos(),
+            )
+            .normalize(),
+        );
+    }
+    directions
 }

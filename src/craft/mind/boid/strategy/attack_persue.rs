@@ -3,7 +3,7 @@ use deps::*;
 use bevy::{ecs as bevy_ecs, prelude::*};
 use bevy_rapier3d::prelude::*;
 
-use super::{BoidStrategy, BoidStrategyBundleExtra, BoidStrategyOutput};
+use super::{ActiveBoidStrategy, BoidStrategy, BoidStrategyBundleExtra, BoidStrategyOutput};
 use crate::{
     craft::mind::{
         boid::{steering::*, SteeringRoutineComposer},
@@ -30,7 +30,7 @@ pub type AttackPersueBundle = BoidStrategyBundleExtra<AttackPersue, AttackPersue
 pub fn attack_persue_butler(
     mut commands: Commands,
     mut added_strategies: Query<
-        (&AttackPersue, &BoidStrategy, &mut AttackPersueState),
+        (Entity, &AttackPersue, &BoidStrategy, &mut AttackPersueState),
         Added<AttackPersue>,
     >,
     crafts: Query<(
@@ -41,7 +41,7 @@ pub fn attack_persue_butler(
     )>,
     mut routines: Query<&mut Intercept>,
 ) {
-    for (params, strategy, mut state) in added_strategies.iter_mut() {
+    for (entt, params, strategy, mut state) in added_strategies.iter_mut() {
         let (routines, wpns, ..) = crafts
             .get(strategy.craft_entt())
             .expect("craft not found for BoidStrategy");
@@ -90,6 +90,8 @@ pub fn attack_persue_butler(
         state.intercept_routine = Some(intercept);
         state.intercept_wpn_speed = Some(intercept_wpn_speed);
         state.avoid_collision = Some(avoid_collision);
+
+        commands.entity(entt).insert(ActiveBoidStrategy);
     }
     for (_, weapons, strategy_index, changed) in crafts.iter() {
         if !changed {
@@ -97,7 +99,7 @@ pub fn attack_persue_butler(
         }
         if let Some(entts) = strategy_index.kind::<AttackPersue>() {
             for strategy in entts {
-                if let Ok((_, _, state)) = added_strategies.get(*strategy) {
+                if let Ok((_, _, _, state)) = added_strategies.get(*strategy) {
                     if let Some(entt) = state.intercept_wpn_speed {
                         if let Ok(mut routine) = routines.get_mut(entt) {
                             routine.speed = Some(weapons.avg_projectile_speed)
@@ -117,8 +119,7 @@ pub fn attack_persue(
             &AttackPersueState,
             &mut BoidStrategyOutput,
         ),
-        // With<ActiveRoutine>,
-        // TODO: active routine filtering
+        With<ActiveBoidStrategy>,
     >,
     crafts: Query<&GlobalTransform>, // crafts
 ) {

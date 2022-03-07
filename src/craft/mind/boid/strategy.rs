@@ -12,6 +12,13 @@ mod run_circuit;
 pub use single_routine::*;
 mod single_routine;
 
+pub use form::*;
+mod form;
+
+#[derive(Debug, Component)]
+#[component(storage = "SparseSet")]
+pub struct ActiveBoidStrategy;
+
 /// A generic bundle for craft strategies.
 #[derive(Bundle)]
 pub struct BoidStrategyBundle<P>
@@ -21,17 +28,21 @@ where
     pub param: P,
     pub output: BoidStrategyOutput,
     pub tag: BoidStrategy,
+    pub name: Name,
 }
 
 impl<P> BoidStrategyBundle<P>
 where
     P: Component,
 {
+    // pub const DEFAULT_NAME: &'static str = std::any::type_name::<P>();
+    pub const DEFAULT_NAME: &'static str = "boid_strategy";
     pub fn new(param: P, craft_entt: Entity) -> Self {
         Self {
             param,
             output: Default::default(),
             tag: BoidStrategy::new(craft_entt, BoidStrategyKind::of::<P>()),
+            name: Self::DEFAULT_NAME.into(),
         }
     }
 }
@@ -47,6 +58,7 @@ where
     pub extra: P2,
     pub output: BoidStrategyOutput,
     pub tag: BoidStrategy,
+    pub name: Name,
 }
 
 impl<P, P2> BoidStrategyBundleExtra<P, P2>
@@ -60,6 +72,7 @@ where
             output: Default::default(),
             extra,
             tag: BoidStrategy::new(craft_entt, BoidStrategyKind::of::<P>()),
+            name: BoidStrategyBundle::<P>::DEFAULT_NAME.into(),
         }
     }
 }
@@ -76,6 +89,7 @@ where
     pub extra: B,
     pub output: BoidStrategyOutput,
     pub tag: BoidStrategy,
+    pub name: Name,
 }
 
 impl<P, B> BoidStrategyBundleJumbo<P, B>
@@ -89,6 +103,7 @@ where
             output: Default::default(),
             extra,
             tag: BoidStrategy::new(craft_entt, BoidStrategyKind::of::<P>()),
+            name: BoidStrategyBundle::<P>::DEFAULT_NAME.into(),
         }
     }
 }

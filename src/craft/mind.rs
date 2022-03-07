@@ -40,30 +40,34 @@ impl Plugin for MindPlugin {
                 craft_strategy_index_butler.before(BoidStrategyButler),
             )
             .add_system_set_to_stage(
+                // FIXME: we need command flushing between flock strategy butlers and boid strategy butlers
+                CoreStage::PreUpdate,
+                SystemSet::new()
+                    .label(FlockStrategyButler)
+                    .with_system(flock::strategy::formation_butler)
+                    .with_system(flock::strategy::cas_butler),
+            )
+            .add_system_set_to_stage(
                 CoreStage::PreUpdate,
                 SystemSet::new()
                     .label(BoidStrategyButler)
                     .with_system(boid::strategy::attack_persue_butler)
                     .with_system(boid::strategy::run_circuit_butler)
+                    .with_system(boid::strategy::form_butler)
                     .with_system(boid::strategy::single_routine_butler),
-            )
-            .add_system_set_to_stage(
-                // FIXME: we need command flushing between flock strategy butlers and boid strategy butlers
-                CoreStage::PreUpdate,
-                SystemSet::new()
-                    .label(FlockStrategyButler)
-                    .with_system(flock::strategy::cas_butler),
             )
             .add_system_set(
                 SystemSet::new()
                     .label(BoidStrategy)
                     .with_system(boid::strategy::attack_persue)
+                    .with_system(boid::strategy::form)
                     .with_system(boid::strategy::run_circuit),
             )
             .add_system_set(
                 SystemSet::new()
                     .label(FlockStrategy)
-                    .with_system(flock::strategy::cas),
+                    .with_system(flock::strategy::cas)
+                    .with_system(flock::strategy::formation),
             )
             .add_system(
                 craft_boid_strategy_output_mgr

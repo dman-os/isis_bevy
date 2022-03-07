@@ -520,15 +520,15 @@ fn setup_world(
                     });
                 parent
                     .spawn()
-                    .insert(Name::new("attire"))
                     .insert_bundle(craft::attire::AttireBundle {
-                    profile: craft::attire::AttireProfile {
+                        profile: craft::attire::AttireProfile {
+                            ..Default::default()
+                        },
+                        collider: ColliderBundle {
+                            shape: ColliderShape::ball(4.).into(),
+                            ..craft::attire::AttireBundle::default_collider_bundle()
+                        },
                         ..Default::default()
-                    },
-                    collider: ColliderBundle {
-                        shape: ColliderShape::ball(4.).into(),
-                        ..craft::attire::AttireBundle::default_collider_bundle()
-                    },
                 });
             })
             .id();
@@ -575,7 +575,6 @@ fn setup_world(
         // spawn player weapon
         let wpn_id = commands
             .spawn()
-            .insert(Name::new("kinetic_cannon"))
             .insert_bundle(new_kinetic_cannon(player_craft_id))
             .insert_bundle(PbrBundle {
                 mesh: meshes.add(shape::Cube { size: 1. }.into()),
@@ -596,8 +595,8 @@ fn setup_world(
         // for ii in 0..1 {
         members.push(commands
             .spawn()
-            .insert(Name::new(format!("ai {ii}")))
             .insert_bundle(craft::CraftBundle {
+                name: Name::new(format!("ai {ii}")),
                 config: craft::engine::EngineConfig {
                     // linear_thruster_force: [0.; 3].into(),
                     ..Default::default()
@@ -633,7 +632,6 @@ fn setup_world(
 
                 parent
                     .spawn()
-                    .insert(Name::new("attire"))
                     .insert_bundle(craft::attire::AttireBundle {
                         profile: craft::attire::AttireProfile {
                             ..Default::default()
@@ -642,10 +640,10 @@ fn setup_world(
                             shape: ColliderShape::ball(4.).into(),
                             ..craft::attire::AttireBundle::default_collider_bundle()
                         },
+                        ..Default::default()
                     });
                 parent
                     .spawn()
-                    .insert(Name::new("kinetic_cannon"))
                     .insert_bundle(new_kinetic_cannon(parent_entt))
                     .insert_bundle(PbrBundle {
                         mesh: meshes.add(shape::Cube { size: 1. }.into()),
@@ -664,7 +662,20 @@ fn setup_world(
     let flock_entt = commands.spawn().insert(Name::new("flock")).id();
     let flock_strategy = commands
         .spawn()
-        .insert_bundle(CASBundle::new(CAS {}, flock_entt, Default::default()))
+        // .insert_bundle(CASBundle::new(CAS {}, flock_entt, Default::default()))
+        .insert_bundle(FormationBundle::new(
+            Formation {
+                pattern: FormationPattern::Sphere {
+                    radius: 100.,
+                    center: FormationPivot::Anchor {
+                        xform: GlobalTransform::identity(),
+                    },
+                },
+                slotting_strategy: SlottingStrategy::Simple,
+            },
+            flock_entt,
+            Default::default(),
+        ))
         .insert(Parent(flock_entt))
         .id();
     commands.entity(flock_entt).insert_bundle(FlockMindBundle {
@@ -881,7 +892,7 @@ fn craft_state_display(
 #[derive(Debug, Clone, Copy, Component)]
 pub struct GameCamera;
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct CameraMovementSettings {
     linear_speed: TReal,
     angular_speed: TReal,

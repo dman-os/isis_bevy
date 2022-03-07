@@ -24,6 +24,7 @@ where
 {
     pub param: P,
     pub tag: CraftWeapon,
+    pub name: Name,
     pub activation_state: WeaponActivationState,
 }
 
@@ -31,6 +32,7 @@ impl<P> WeaponBundle<P>
 where
     P: Component,
 {
+    pub const DEFAULT_NAME: &'static str = "weapon";
     pub fn new(
         param: P,
         craft_entt: Entity,
@@ -41,6 +43,8 @@ where
             param,
             tag: CraftWeapon::new(craft_entt, WeaponKind::of::<P>(), class),
             activation_state,
+            // name: Self::DEFAULT_NAME.into(),
+            name: class.into(),
         }
     }
 }

@@ -187,12 +187,14 @@ pub static SENSOR_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
 
 #[derive(Bundle)]
 pub struct AttireBundle {
+    pub name: Name,
     pub profile: AttireProfile,
     #[bundle]
     pub collider: ColliderBundle,
 }
 
 impl AttireBundle {
+    pub const DEFAULT_NAME: &'static str = "attire";
     pub fn default_collider_bundle() -> ColliderBundle {
         ColliderBundle {
             collider_type: ColliderType::Sensor.into(),
@@ -212,6 +214,7 @@ impl Default for AttireBundle {
         Self {
             profile: AttireProfile::default(),
             collider: Self::default_collider_bundle(),
+            name: Self::DEFAULT_NAME.into(),
         }
     }
 }

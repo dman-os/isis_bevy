@@ -2,7 +2,7 @@ use deps::*;
 
 use bevy::{ecs as bevy_ecs, prelude::*};
 
-use super::{BoidStrategy, BoidStrategyBundleExtra, BoidStrategyOutput};
+use super::{ActiveBoidStrategy, BoidStrategy, BoidStrategyBundleExtra, BoidStrategyOutput};
 use crate::craft::mind::boid::SteeringRoutineComposer;
 
 pub type RoutineSpawner =
@@ -32,6 +32,7 @@ pub fn single_routine_butler(
     mut commands: Commands,
     mut added_strategies: Query<
         (
+            Entity,
             &mut SingleRoutine,
             &BoidStrategy,
             &mut SingleRoutineState,
@@ -40,7 +41,7 @@ pub fn single_routine_butler(
         Added<SingleRoutine>,
     >,
 ) {
-    for (mut params, strategy, mut state, mut out) in added_strategies.iter_mut() {
+    for (entt, mut params, strategy, mut state, mut out) in added_strategies.iter_mut() {
         let spawner = params.routine_spawner.take().unwrap();
         let routine = spawner(&mut commands, strategy);
 
@@ -52,5 +53,7 @@ pub fn single_routine_butler(
             routine_usage: SteeringRoutineComposer::Single { entt: routine },
             fire_weapons: false,
         };
+
+        commands.entity(entt).insert(ActiveBoidStrategy);
     }
 }

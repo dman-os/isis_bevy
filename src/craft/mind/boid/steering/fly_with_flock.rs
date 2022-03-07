@@ -10,7 +10,7 @@ use super::{
     LinearRoutineOutput, SteeringRoutine,
 };
 
-#[derive(Debug, Clone, Copy, Component)]
+#[derive(Debug, Clone, Component)]
 pub struct FlyWithFlock {
     pub strategy_entt: Entity,
 }

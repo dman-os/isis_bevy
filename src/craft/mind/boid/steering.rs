@@ -44,17 +44,20 @@ where
     pub param: P,
     pub output: LinearRoutineOutput,
     pub tag: SteeringRoutine,
+    pub name: Name,
 }
 
 impl<P> LinOnlyRoutineBundle<P>
 where
     P: Component,
 {
+    pub const DEFAULT_NAME: &'static str = "linear_steering_routine";
     pub fn new(param: P, craft_entt: Entity) -> Self {
         Self {
             param,
             output: Default::default(),
             tag: SteeringRoutine::new(craft_entt, RoutineKind::of::<P>()),
+            name: Self::DEFAULT_NAME.into(),
         }
     }
 }
@@ -69,18 +72,21 @@ where
     pub lin_res: LinearRoutineOutput,
     pub ang_res: AngularRoutineOutput,
     pub tag: SteeringRoutine,
+    pub name: Name,
 }
 
 impl<P> LinAngRoutineBundle<P>
 where
     P: Component,
 {
+    pub const DEFAULT_NAME: &'static str = "linear_angular_steering_routine";
     pub fn new(param: P, craft_entt: Entity) -> Self {
         Self {
             param,
             lin_res: LinearRoutineOutput::default(),
             ang_res: AngularRoutineOutput::default(),
             tag: SteeringRoutine::new(craft_entt, RoutineKind::of::<P>()),
+            name: Self::DEFAULT_NAME.into(),
         }
     }
 }

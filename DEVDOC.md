@@ -12,6 +12,8 @@ WORLD TO LOCAL - inverse transformation you idiot!
  - [ ] big brain
  - [ ] bevy remote dev tools
 
+- Consider using arc and weak references to improve performance
+
 - How are we treating unused steering routines?
 
 ## design doc
@@ -117,11 +119,37 @@ We'll also need someform of scheduling to distribute work across frames.
   - [x] Cohesion
   - [x] Separation
   - [x] Alignment
-  - [ ] Arrive
+  - [x] Arrive
 
 #### Behavior trees
 
 Basic BehaviorTrees that are used for micro deciesion making for sequencing actions. As outlined by [Bobby Anguelov](https://takinginitiative.files.wordpress.com/2020/01/behaviortrees_breaking-the-cycle-of-misuse.pdf), small trees who only affect decisions related to the specfic task, we can avoid complex, hard to extend trees everyone complains about. How will this work out in practice, we'll see I suppose.
+
+#### Formations
+
+Concerns include:
+
+- Varied mechanisms to wait till units are formed.
+- Phantom leaders or some mechanism to prevent motion from depending on leaders too much.
+- Formations of formations
+- Formation lifecycles:
+  - Destryoing formation when constraints fail
+  - Formation evolution as crafts join/leave
+
+* <https://github.com/libgdx/gdx-ai/wiki/Formation-Motion>
+* <https://www.gamasutra.com/view/feature/3314/coordinated_unit_movement.php?print=1>
+* <https://sander.landofsand.com/publications/CIG08Heijden.pdf>
+
+
+Pieces:
+- Pivots
+  - Pivot motion
+    - Copy a leader boid
+  - Multi pivot formation
+- Slots
+  - Assignment strategy
+    - Hard roles
+
 
 ## devlog
 
@@ -171,3 +199,21 @@ Composablitiy. I see now that this is driven by a want for composability. I have
 ---
 
 I'm 110% sure I over-engineerined every inch of this. Hope it's usable. Also, watch out for everything decomposed to small components/systems.
+
+### Figuring out how to structure the AI
+
+So far, I know that we'll have Boids, i.e. units or single crafts, and the Master, the entity responsible for orchestrating the whole game session for all agents. But there are multitudes of organizational needs beyond the master. To start, we'll have factions in the traditional RTS sense. But then, it starts to get blurry. We'll need some form grouping method to allow the following functions:
+
+- Formations
+- Assign common objectives (not necessarily in formation)
+
+These and more I can't think of right now. Also, there should be a fleshed out way to assign objectives without the need for unit groups.
+
+How about we model this along the axis of independence?
+
+- Master: orchestrate gameplay to be fun
+- Tribe: orchestrate a single faction
+- Flock: A unit or group of units that can recieve orders
+  - Must support single boid operations
+  - Find a better name
+- Boid: a single craft 

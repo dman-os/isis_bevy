@@ -5,7 +5,7 @@ use super::{steering_behaviours, ActiveSteeringRoutine, LinearRoutineOutput, Ste
 use crate::math::*;
 use bevy::{ecs as bevy_ecs, prelude::*};
 
-#[derive(Debug, Clone, Copy, Component)]
+#[derive(Debug, Clone, Component)]
 pub enum SeekTarget {
     /// must have a global xform
     Object { entt: Entity },
@@ -13,7 +13,7 @@ pub enum SeekTarget {
     Position { pos: TVec3 },
 }
 
-#[derive(Debug, Clone, Copy, Component)]
+#[derive(Debug, Clone, Component)]
 pub struct Seek {
     pub target: SeekTarget,
 }

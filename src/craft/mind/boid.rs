@@ -31,14 +31,14 @@ impl Default for BoidMindConfig {
 pub struct BoidMindBundle {
     pub config: BoidMindConfig,
     // smarts layer coordination
-    pub active_strategy: ActiveCraftStrategy,
+    pub active_strategy: CurrentBoidStrategy,
     pub routine_composer: SteeringRoutineComposer,
     // actuation layer separation
     pub routine_output: BoidSteeringSystemOutput,
 }
 
 #[derive(Debug, Default, Clone, Component)]
-pub struct ActiveCraftStrategy {
+pub struct CurrentBoidStrategy {
     pub strategy: Option<Entity>,
 }
 
@@ -47,7 +47,7 @@ pub struct ActiveCraftStrategy {
 pub fn craft_boid_strategy_output_mgr(
     mut crafts: Query<(
         &mut SteeringRoutineComposer,
-        &ActiveCraftStrategy,
+        &CurrentBoidStrategy,
         &CraftWeaponsIndex,
     )>,
     strategies: Query<&BoidStrategyOutput>,

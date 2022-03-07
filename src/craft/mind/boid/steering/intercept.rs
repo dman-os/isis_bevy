@@ -6,7 +6,7 @@ use bevy_rapier3d::prelude::*;
 use super::{ActiveSteeringRoutine, LinOnlyRoutineBundle, LinearRoutineOutput, SteeringRoutine};
 use crate::{craft::engine::*, math::*};
 
-#[derive(Debug, Clone, Copy, Component)]
+#[derive(Debug, Clone, Component)]
 pub struct Intercept {
     pub quarry_rb: RigidBodyHandle,
     /// Will use the craft engine's config if None.
