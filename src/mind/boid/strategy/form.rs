@@ -8,7 +8,7 @@ use super::{
     super::SteeringRoutineComposer, ActiveBoidStrategy, BoidStrategy, BoidStrategyBundleExtra,
     BoidStrategyOutput,
 };
-use crate::craft::mind::{boid::steering::*, flock::strategy::*, sensors::*};
+use crate::mind::{boid::steering::*, flock::strategy::*, sensors::*};
 
 #[derive(Debug, Clone, Component)]
 pub struct Form {

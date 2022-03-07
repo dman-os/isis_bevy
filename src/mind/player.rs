@@ -1,8 +1,9 @@
 use deps::*;
 
 use crate::{
-    craft::{arms::*, engine::*, mind::*},
+    craft::{arms::*, engine::*},
     math::*,
+    mind::*,
 };
 
 use bevy::{ecs as bevy_ecs, reflect as bevy_reflect};
@@ -349,7 +350,7 @@ pub fn engine_input(
             // look_at_input = look_at_input * look_at_input.recip();
             // ang_state.input += 1. * (180. / crate::math::real::consts::PI) * look_at_input;
             ang_state.input += 10.
-                * crate::craft::mind::boid::steering::look_to(
+                * crate::mind::boid::steering::look_to(
                     xform.rotation.inverse() * c.facing_direction,
                 );
         }

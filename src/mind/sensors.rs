@@ -7,11 +7,9 @@ use bevy::{
 };
 
 use crate::{
-    craft::{
-        arms::*,
-        mind::boid::{steering::*, strategy::*},
-    },
+    craft::arms::*,
     math::*,
+    mind::boid::{steering::*, strategy::*},
 };
 
 /// Used to store entity data for [`RemovedComponents`] usage.

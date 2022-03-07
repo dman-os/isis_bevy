@@ -21,6 +21,7 @@ use math::{TReal, TVec3, *};
 
 pub mod craft;
 pub mod math;
+pub mod mind;
 pub mod utils;
 
 #[bevy_main]
@@ -45,15 +46,15 @@ fn main() -> Result<()> {
         ui.label(format!("{:#?}", cmp.0));
         false
     });
-    inspect_registry.register_raw::<craft::mind::sensors::CraftWeaponsIndex, _>(|cmp, ui, _ctx| {
+    inspect_registry.register_raw::<mind::sensors::CraftWeaponsIndex, _>(|cmp, ui, _ctx| {
         ui.label(format!("{cmp:#?}",));
         false
     });
-    inspect_registry.register_raw::<craft::mind::player::CraftCamera, _>(|cmp, ui, _ctx| {
+    inspect_registry.register_raw::<mind::player::CraftCamera, _>(|cmp, ui, _ctx| {
         ui.label(format!("{cmp:#?}",));
         false
     });
-    inspect_registry.register_raw::<craft::mind::flock::FlockMembers, _>(|cmp, ui, _ctx| {
+    inspect_registry.register_raw::<mind::flock::FlockMembers, _>(|cmp, ui, _ctx| {
         ui.label(format!("{cmp:#?}",));
         false
     });
@@ -444,7 +445,7 @@ fn setup_world(
                     ..Default::default()
                 })
                 .insert(ColliderPositionSync::Discrete)
-                .insert(craft::mind::boid::strategy::CircuitCheckpoint {
+                .insert(mind::boid::strategy::CircuitCheckpoint {
                     next_point_location: points[(ii + 1) % points.len()],
                 });
         }
@@ -540,11 +541,11 @@ fn setup_world(
                 cam
             })
             .insert_bundle(bevy_mod_picking::PickingCameraBundle::default())
-            .insert(craft::mind::player::CraftCamera {
+            .insert(mind::player::CraftCamera {
                 // target: Some(player_craft_id),
-                ..craft::mind::player::CraftCamera::default()
+                ..mind::player::CraftCamera::default()
             });
-        commands.insert_resource(craft::mind::player::CurrentCraft(player_craft_id));
+        commands.insert_resource(mind::player::CurrentCraft(player_craft_id));
         /* let ball = commands
         .spawn()
         .insert_bundle(RigidBodyBundle {
@@ -585,10 +586,10 @@ fn setup_world(
             })
             .insert(Parent(player_craft_id))
             .id();
-        commands.insert_resource(craft::mind::player::CurrentWeapon(wpn_id));
+        commands.insert_resource(mind::player::CurrentWeapon(wpn_id));
     }
     // return;
-    use craft::mind::flock::{strategy::*, *};
+    use mind::flock::{strategy::*, *};
     let mut members = smallvec::smallvec![];
     // spawn the ai craft
     for ii in -7..=7 {
@@ -656,7 +657,7 @@ fn setup_world(
                         ..Default::default()
                     });
             })
-            .insert_bundle(craft::mind::boid::BoidMindBundle::default()).id());
+            .insert_bundle(mind::boid::BoidMindBundle::default()).id());
     }
 
     let flock_entt = commands.spawn().insert(Name::new("flock")).id();
@@ -688,14 +689,14 @@ fn init_default_routines(
     mut commands: Commands,
     checkpoints: Query<
         &ColliderPositionComponent,
-        With<craft::mind::boid::strategies::CircuitCheckpoint>,
+        With<mind::boid::strategies::CircuitCheckpoint>,
     >,
-    // player: Res<craft::mind::player::CurrentCraft>,
+    // player: Res<mind::player::CurrentCraft>,
     crafts: Query<
         Entity,
         (
-            With<craft::mind::MindDrivenCraft>,
-            Without<craft::mind::boid::BoidMindConfig>,
+            With<mind::MindDrivenCraft>,
+            Without<mind::boid::BoidMindConfig>,
         ),
     >,
 ) {
@@ -710,18 +711,18 @@ fn init_default_routines(
 
     /* let group = commands
     .spawn_bundle((
-        craft::mind::flock::FlockMind {
+        mind::flock::FlockMind {
             // add all new crafts into a new group
             members,
             ..Default::default()
         },
-        craft::mind::flock::BoidFlock::default(),
+        mind::flock::BoidFlock::default(),
     ))
     .id(); */
     for craft in crafts.iter() {
         /*let active_routine = commands
-        .spawn_bundle(craft::mind::steering_systems::InterceptRoutineBundle::new(
-            craft::mind::steering_systems::Intercept {
+        .spawn_bundle(mind::steering_systems::InterceptRoutineBundle::new(
+            mind::steering_systems::Intercept {
                 craft_entt: craft,
                 quarry_rb: player.0.handle(),
             },
@@ -729,16 +730,16 @@ fn init_default_routines(
         .id();*/
         /*let active_routine = commands
         .spawn_bundle(
-            craft::mind::steering_systems::FlyWithFlockRoutineBundle::new(
-                craft::mind::steering_systems::FlyWithFlock { craft_entt: craft },
+            mind::steering_systems::FlyWithFlockRoutineBundle::new(
+                mind::steering_systems::FlyWithFlock { craft_entt: craft },
             ),
         )
         .id();*/
 
         let strategy = commands
             .spawn()
-            .insert_bundle(craft::mind::boid::strategies::RunCircuitBundle::new(
-                craft::mind::boid::strategies::RunCircuit {
+            .insert_bundle(mind::boid::strategies::RunCircuitBundle::new(
+                mind::boid::strategies::RunCircuit {
                     initial_location: checkpoint1_pos,
                 },
                 craft,
@@ -748,8 +749,8 @@ fn init_default_routines(
         /* let quarry_rb = player.0.handle();
         let strategy = commands
             .spawn()
-            .insert_bundle(craft::mind::boid::strategies::AttackPersueBundle::new(
-                craft::mind::boid::strategies::AttackPersue {
+            .insert_bundle(mind::boid::strategies::AttackPersueBundle::new(
+                mind::boid::strategies::AttackPersue {
                     quarry_rb,
                     attacking_range: 200.,
                 },
@@ -761,13 +762,13 @@ fn init_default_routines(
         /* let strategy =
         commands
             .spawn()
-            .insert_bundle(craft::mind::boid::strategies::SingleRoutineBundle::new(
-                craft::mind::boid::strategies::SingleRoutine::new(Box::new(
+            .insert_bundle(mind::boid::strategies::SingleRoutineBundle::new(
+                mind::boid::strategies::SingleRoutine::new(Box::new(
                     move |commands, strategy| {
                         commands.spawn().insert_bundle(
-                        craft::mind::boid::steering_systems::ArriveRoutineBundle::new(
-                            craft::mind::boid::steering_systems::Arrive {
-                                target: craft::mind::boid::steering_systems::ArriveTarget::Position{
+                        mind::boid::steering_systems::ArriveRoutineBundle::new(
+                            mind::boid::steering_systems::Arrive {
+                                target: mind::boid::steering_systems::ArriveTarget::Position{
                                     pos: checkpoint1_pos
                                 },
                                 arrival_tolerance: 5.
@@ -783,8 +784,8 @@ fn init_default_routines(
             .id(); */
         commands
             .entity(craft)
-            .insert(craft::mind::flock::CraftFlock(group))
-            .insert_bundle(craft::mind::boid::BoidMindBundle::new(strategy))
+            .insert(mind::flock::CraftFlock(group))
+            .insert_bundle(mind::boid::BoidMindBundle::new(strategy))
             .push_children(&[strategy]);
     }
 } */
@@ -792,8 +793,8 @@ fn init_default_routines(
 #[allow(unreachable_code)]
 fn craft_state_display(
     egui_context: ResMut<EguiContext>,
-    cur_craft: Res<craft::mind::player::CurrentCraft>,
-    craft_cameras: Query<&craft::mind::player::CraftCamera>,
+    cur_craft: Res<mind::player::CurrentCraft>,
+    craft_cameras: Query<&mind::player::CraftCamera>,
     mut crafts: Query<(
         &GlobalTransform,
         &craft::engine::LinearEngineState,

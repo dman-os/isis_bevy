@@ -3,7 +3,7 @@ use deps::*;
 use bevy::{ecs as bevy_ecs, prelude::*};
 use bevy_rapier3d::prelude::*;
 
-use crate::craft::mind::flock::strategy::CASState;
+use crate::mind::flock::strategy::CASState;
 
 use super::{
     look_to, steering_behaviours, ActiveSteeringRoutine, AngularRoutineOutput, LinAngRoutineBundle,

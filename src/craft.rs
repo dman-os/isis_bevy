@@ -5,12 +5,9 @@ use bevy::{ecs as bevy_ecs, prelude::*};
 use bevy_inspector_egui::RegisterInspectable;
 use bevy_rapier3d::prelude::*;
 
-use self::mind::sensors::*;
-
 pub mod arms;
 pub mod attire;
 pub mod engine;
-pub mod mind;
 
 pub struct CraftsPlugin;
 
@@ -21,7 +18,6 @@ impl Plugin for CraftsPlugin {
             .add_system(engine::angular_pid_driver)
             .add_system(engine::apply_flames_simple_accel)
             .add_plugin(attire::AttirePlugin)
-            .add_plugin(mind::MindPlugin)
             .add_plugin(arms::ArmsPlugin)
             .register_inspectable::<engine::LinearEngineState>()
             .register_inspectable::<engine::AngularEngineState>()
@@ -49,10 +45,6 @@ pub struct CraftBundle {
     pub linear_pid: engine::LinearDriverPid,
     pub angular_pid: engine::AngularDriverPid,
 
-    // indices
-    pub routine_index: CraftRoutinesIndex,
-    pub wpn_index: CraftWeaponsIndex,
-    pub strategy_index: CraftStrategyIndex,
     pub name: Name,
 }
 
@@ -96,9 +88,6 @@ impl Default for CraftBundle {
             rigid_body_sync: RigidBodyPositionSync::Discrete,
             collision_damage_tag: attire::CollisionDamageEnabledRb,
             collider: Default::default(),
-            routine_index: Default::default(),
-            wpn_index: Default::default(),
-            strategy_index: Default::default(),
             name: Self::DEFAULT_NAME.into(),
         }
     }

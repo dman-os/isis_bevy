@@ -20,8 +20,8 @@ pub fn be_ray(
     max_lin_accel: TVec3,
     linear_v_limit: TVec3,
 ) -> (
-    crate::craft::mind::boid::LinearRoutineOutput,
-    crate::craft::mind::boid::AngularRoutineOutput,
+    crate::mind::boid::LinearRoutineOutput,
+    crate::mind::boid::AngularRoutineOutput,
 ) {
     let target_offset = target_pos - xform.translation;
     let dst = target_offset.length_squared();
@@ -31,7 +31,7 @@ pub fn be_ray(
         return (
             // (target_lin_vel.normalize() * (target_lin_vel / linear_v_limit)).into(),
             TVec3::ZERO.into(),
-            crate::craft::mind::boid::steering_systems::look_to(
+            crate::mind::boid::steering_systems::look_to(
                 xform.rotation.inverse() * target_facing,
             )
             .into(),
@@ -64,13 +64,13 @@ pub fn be_ray(
         let seek = target_offset.normalize();
         (
             seek.into(),
-            crate::craft::mind::boid::steering_systems::look_to(xform.rotation.inverse() * seek)
+            crate::mind::boid::steering_systems::look_to(xform.rotation.inverse() * seek)
                 .into(),
         )
     } else {
         (
             (target_lin_vel - current_lin_vel).normalize().into(),
-            crate::craft::mind::boid::steering_systems::look_to(
+            crate::mind::boid::steering_systems::look_to(
                 xform.rotation.inverse() * target_facing,
             )
             .into(),

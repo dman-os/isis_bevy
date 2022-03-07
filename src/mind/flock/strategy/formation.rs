@@ -7,8 +7,8 @@ use super::{
     super::{CraftFlock, FlockMembers},
     ActiveFlockStrategy, FlockStrategy, FlockStrategyBundleJumbo,
 };
-use crate::craft::mind::*;
 use crate::math::*;
+use crate::mind::*;
 
 #[derive(Debug, Clone, Component)]
 pub struct Formation {

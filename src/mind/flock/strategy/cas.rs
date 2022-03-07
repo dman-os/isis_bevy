@@ -8,8 +8,8 @@ use super::{
     super::{CraftFlock, FlockMembers},
     FlockStrategy, FlockStrategyBundleExtra,
 };
-use crate::craft::mind::boid::*;
 use crate::math::*;
+use crate::mind::boid::*;
 
 /// Cohesion, Allignment, Separation.
 #[derive(Debug, Clone, Component, Default)]

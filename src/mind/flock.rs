@@ -52,7 +52,7 @@ pub mod formation {
     use bevy::{ecs as bevy_ecs, prelude::*, utils::*};
 
     use super::*;
-    use crate::craft::mind::*;
+    use crate::mind::*;
     use crate::math::*;
 
     #[derive(Debug, Clone, Component)]

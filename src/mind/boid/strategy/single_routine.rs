@@ -3,7 +3,7 @@ use deps::*;
 use bevy::{ecs as bevy_ecs, prelude::*};
 
 use super::{ActiveBoidStrategy, BoidStrategy, BoidStrategyBundleExtra, BoidStrategyOutput};
-use crate::craft::mind::boid::SteeringRoutineComposer;
+use crate::mind::boid::SteeringRoutineComposer;
 
 pub type RoutineSpawner =
     dyn FnOnce(&mut Commands, &BoidStrategy) -> Entity + Sync + 'static + Send;

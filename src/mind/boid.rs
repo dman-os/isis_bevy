@@ -4,8 +4,9 @@ use bevy::{ecs as bevy_ecs, prelude::*};
 use bevy_inspector_egui::Inspectable;
 
 use crate::{
-    craft::{arms::*, engine::*, mind::sensors::*},
+    craft::{arms::*, engine::*},
     math::*,
+    mind::sensors::*,
 };
 
 use steering::*;
@@ -35,6 +36,11 @@ pub struct BoidMindBundle {
     pub routine_composer: SteeringRoutineComposer,
     // actuation layer separation
     pub routine_output: BoidSteeringSystemOutput,
+
+    // indices
+    pub routine_index: CraftRoutinesIndex,
+    pub wpn_index: CraftWeaponsIndex,
+    pub strategy_index: CraftStrategyIndex,
 }
 
 #[derive(Debug, Default, Clone, Component)]

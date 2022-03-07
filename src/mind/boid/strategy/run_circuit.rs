@@ -8,7 +8,7 @@ use super::{
     BoidStrategyOutput,
 };
 use crate::{
-    craft::mind::{boid::steering::*, sensors::*},
+    mind::{boid::steering::*, sensors::*},
     math::*,
 };
 
