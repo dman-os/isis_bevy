@@ -181,12 +181,17 @@ fn handle_activate_weapon_events_projectile(
                         //body_type: RigidBodyType::KinematicVelocityBased,
                         ccd: RigidBodyCcd {
                             ccd_enabled: true,
+                            ccd_active: true,
+                            ccd_thickness: proj_wpn.proj_shape.ccd_thickness(),
+                            ccd_max_dist: proj_wpn.proj_shape.ccd_thickness() * 0.5,
                             ..Default::default()
                         }
                         .into(),
                         position: RigidBodyPosition {
-                            position: (xform.translation
-                                + (xform.rotation * proj_wpn.proj_spawn_offset))
+                            position: (
+                                xform.translation + (xform.rotation * proj_wpn.proj_spawn_offset),
+                                xform.rotation,
+                            )
                                 .into(),
                             ..Default::default()
                         }
@@ -199,7 +204,7 @@ fn handle_activate_weapon_events_projectile(
                         .into(),
                         ..Default::default()
                     })
-                    .insert(RigidBodyPositionSync::Discrete)
+                    .insert(RigidBodyPositionSync::Interpolated { prev_pos: None })
                     .insert_bundle(ColliderBundle {
                         shape: ColliderShapeComponent(proj_wpn.proj_shape.clone()),
                         collider_type: ColliderType::Sensor.into(),

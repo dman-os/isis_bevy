@@ -67,8 +67,9 @@ pub fn update(
             .get(routine.craft_entt)
             .expect("craft entt not found for routine");
 
-        // let dir = TVec3::from(vel.linvel).normalize();
+        // use last frame's desired vel dir to cast for obstruction
         let dir = xform.rotation * lin_state.input.normalize();
+        // let dir = TVec3::from(vel.linvel).normalize();
         let speed = vel.linvel.magnitude();
         let toi = avoid_coll.fwd_prediction_secs * speed;
         // adjust for the dimensions of the craft

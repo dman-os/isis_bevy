@@ -36,9 +36,9 @@ pub struct BoidMindBundle {
     pub routine_output: BoidSteeringSystemOutput,
 
     // indices
-    pub routine_index: CraftRoutinesIndex,
+    pub routine_index: SteeringRoutinesIndex,
     pub wpn_index: CraftWeaponsIndex,
-    pub strategy_index: CraftStrategyIndex,
+    pub strategy_index: BoidStrategyIndex,
 }
 
 #[derive(Debug, Clone, Component, Educe)]

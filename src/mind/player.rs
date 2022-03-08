@@ -1,8 +1,14 @@
 use deps::*;
 
-use crate::{craft::arms::*, math::*, mind::*};
+use crate::{
+    craft::{arms::*, attire::*},
+    math::*,
+    mind::*,
+};
 
 use bevy::{ecs as bevy_ecs, reflect as bevy_reflect};
+use bevy_rapier3d::prelude::*;
+
 use bevy_inspector_egui::Inspectable;
 
 #[derive(Debug, Default, Reflect, Inspectable)]
@@ -93,7 +99,7 @@ impl Default for CraftCamera {
             // facing_offset_radians: [0., 0., 0.].into(),
             facing_offset_radians: [-15. * (real::consts::PI / 180.), 0., 0.].into(),
             position_offset: TVec3::Y,
-            distance: 44.,
+            distance: 22.,
             rotation_speed: 5.,
             auto_align: true,
             align_delay: 1.5,
@@ -299,8 +305,10 @@ pub fn engine_input(
     mut player_input: ResMut<PlayerBoidInput>,
     k_input: Res<Input<KeyCode>>,
     cur_craft: Res<CurrentCraft>,
-    crafts: Query<(&GlobalTransform,)>,
-    cameras: Query<&CraftCamera>,
+    crafts: Query<(&GlobalTransform, &RigidBodyCollidersComponent)>,
+    cameras: Query<(&GlobalTransform, &CraftCamera)>,
+    query_pipeline: Res<QueryPipeline>,
+    collider_query: QueryPipelineColliderComponentsQuery,
     // mut pid: Local<RotToVelPid>,
 ) {
     let mut linear_input = TVec3::ZERO;
@@ -350,19 +358,46 @@ pub fn engine_input(
         angular_input *= 0.1;
     }
 
-    let (xform,) = crafts
+    let (xform, craft_colliders) = crafts
         .get(cur_craft.0)
         .expect("unable to find current craft entity");
     player_input.engine_lin = xform.rotation * linear_input;
     player_input.engine_ang = angular_input;
 
-    if let Some(c) = cameras
+    if let Some((cam_xform, craft_cam)) = cameras
         .iter()
-        .find(|c| c.target.is_none() || c.target.unwrap() == cur_craft.0)
+        .find(|(_, c)| c.target.is_none() || c.target.unwrap() == cur_craft.0)
     {
-        if !c.auto_align {
-            player_input.engine_ang +=
-                boid::steering::look_to(xform.rotation.inverse() * c.facing_direction);
+        if !craft_cam.auto_align {
+            // Wrap the bevy query so it can be used by the query pipeline.
+            let collider_set = QueryPipelineColliderComponentsSet(&collider_query);
+            let ray = Ray::new(
+                cam_xform.translation.into(),
+                // craft_xform.translation.into(),
+                craft_cam.facing_direction.normalize().into(),
+            );
+            let toi = match query_pipeline.cast_ray(
+                &collider_set,
+                &ray,
+                5_000.,
+                false,
+                InteractionGroups::new(
+                    ColliderGroups::SOLID.bits(),
+                    (ColliderGroups::SOLID | ColliderGroups::CRAFT_SOLID).bits(),
+                ),
+                Some(&|handle| {
+                    // not a craft collider
+                    !craft_colliders.0 .0[..].contains(&handle)
+                }),
+            ) {
+                Some((_, hit_toi)) => hit_toi,
+
+                None => 5_000.,
+            };
+            let hit: TVec3 = ray.point_at(toi).into();
+            player_input.engine_ang += boid::steering::look_to(
+                xform.rotation.inverse() * (hit - xform.translation).normalize(),
+            );
         }
     }
 }
@@ -513,17 +548,16 @@ pub fn update_ui_markers(
     crafts: Query<(
         &GlobalTransform,
         &crate::craft::engine::EngineConfig,
-        &crate::craft::engine::LinearEngineState,
+        &RigidBodyVelocityComponent,
+        &RigidBodyCollidersComponent,
     )>,
     windows: Res<Windows>,
     cameras: Query<(&GlobalTransform, &Camera)>,
     active_cameras: Res<bevy::render::camera::ActiveCameras>,
     craft_cameras: Query<&CraftCamera>,
-    weapons: Query<(
-        &GlobalTransform,
-        &RayCastSource<WpnFwdRaycaster>,
-        &CrosshairEntt,
-    )>,
+    query_pipeline: Res<QueryPipeline>,
+    collider_query: QueryPipelineColliderComponentsQuery,
+    weapons: Query<(&GlobalTransform, &CrosshairState)>,
 ) {
     let cur_craft = match cur_craft.as_ref() {
         Some(e) => e.0,
@@ -538,7 +572,7 @@ pub fn update_ui_markers(
         None => return,
     };
 
-    let (craft_xform, eng_conf, lin_state) = crafts
+    let (craft_xform, eng_conf, vel, craft_colliders) = crafts
         .get(cur_craft)
         .expect("unable to find current craft entity");
     let (cam_xform, cam) = cameras
@@ -550,27 +584,52 @@ pub fn update_ui_markers(
         .expect("unable to find Camera's window");
     let window_size = Vec2::new(window.width(), window.height());
     const PADDING: Vec2 = bevy::math::const_vec2!([32., 32.]);
-    let world_vel = craft_xform.rotation * lin_state.velocity;
+    const MARKER_MAX_RANGE: TReal = 5_000.0;
+    let world_vel: TVec3 = vel.linvel.into();
+
+    // Wrap the bevy query so it can be used by the query pipeline.
+    let collider_set = QueryPipelineColliderComponentsSet(&collider_query);
+
+    // craft facing marker
     {
+        let ray = Ray::new(
+            (craft_xform.translation + world_vel).into(),
+            craft_xform.forward().into(),
+        );
+        let toi = match query_pipeline.cast_ray(
+            &collider_set,
+            &ray,
+            MARKER_MAX_RANGE,
+            false,
+            InteractionGroups::new(
+                ColliderGroups::SOLID.bits(),
+                (ColliderGroups::SOLID | ColliderGroups::CRAFT_SOLID).bits(),
+            ),
+            Some(&|handle| {
+                // not a craft collider
+                !craft_colliders.0 .0[..].contains(&handle)
+            }),
+        ) {
+            Some((_, hit_toi)) => hit_toi,
+            None => MARKER_MAX_RANGE,
+        };
+
         let fwd_marker_pos = cam
-            .world_to_screen(
-                &windows,
-                cam_xform,
-                (craft_xform.translation + world_vel) + (craft_xform.forward() * 2000000.),
-            )
+            .world_to_screen(&windows, cam_xform, ray.point_at(toi).into())
             .unwrap_or_default();
-        let crosshair_pos = fwd_marker_pos.clamp(PADDING, window_size - PADDING);
+        let fwd_marker_pos = fwd_marker_pos.clamp(PADDING, window_size - PADDING);
         for (mut style, mut _visibility, calc_size) in query.q0().iter_mut() {
             style.position = Rect {
-                left: Val::Px(crosshair_pos.x - (calc_size.size.width * 0.5)),
-                right: Val::Px(crosshair_pos.x + (calc_size.size.width * 0.5)),
-                top: Val::Px(crosshair_pos.y + (calc_size.size.height * 0.5)),
-                bottom: Val::Px(crosshair_pos.y - (calc_size.size.height * 0.5)),
+                left: Val::Px(fwd_marker_pos.x - (calc_size.size.width * 0.5)),
+                right: Val::Px(fwd_marker_pos.x + (calc_size.size.width * 0.5)),
+                top: Val::Px(fwd_marker_pos.y + (calc_size.size.height * 0.5)),
+                bottom: Val::Px(fwd_marker_pos.y - (calc_size.size.height * 0.5)),
             };
         }
     }
 
-    if lin_state.velocity.length_squared() > 0.01 {
+    // craft vel marker
+    if world_vel.length_squared() > 0.01 {
         let vel_marker_pos = cam
             .world_to_screen(
                 &windows,
@@ -596,14 +655,34 @@ pub fn update_ui_markers(
         }
     }
 
+    // mouse direction marker
     match craft_cameras.get_single() {
         Ok(craft_cam) => {
+            let ray = Ray::new(
+                cam_xform.translation.into(),
+                // craft_xform.translation.into(),
+                craft_cam.facing_direction.normalize().into(),
+            );
+            let toi = match query_pipeline.cast_ray(
+                &collider_set,
+                &ray,
+                MARKER_MAX_RANGE,
+                false,
+                InteractionGroups::new(
+                    ColliderGroups::SOLID.bits(),
+                    (ColliderGroups::SOLID | ColliderGroups::CRAFT_SOLID).bits(),
+                ),
+                Some(&|handle| {
+                    // not a craft collider
+                    !craft_colliders.0 .0[..].contains(&handle)
+                }),
+            ) {
+                Some((_, hit_toi)) => hit_toi,
+
+                None => MARKER_MAX_RANGE,
+            };
             let facing_marker_pos = cam
-                .world_to_screen(
-                    &windows,
-                    cam_xform,
-                    craft_xform.translation + (craft_cam.facing_direction.normalize() * 2000000.),
-                )
+                .world_to_screen(&windows, cam_xform, ray.point_at(toi).into())
                 .unwrap_or_default();
             // let facing_marker_pos = facing_marker_pos.clamp(PADDING, window_size - PADDING);
 
@@ -624,25 +703,36 @@ pub fn update_ui_markers(
         }
     }
 
+    // crosshairs
     let mut q3 = query.q3();
-    for (xform, raycast_src, crosshair) in weapons.iter() {
-        let crosshair_pos = match raycast_src.intersect_top() {
-            Some((_, top_intersection)) => {
-                // let transform_new = top_intersection.normal_ray().to_transform();
-                cam.world_to_screen(&windows, cam_xform, top_intersection.position())
-                    .unwrap_or_default()
-            }
-            None => cam
-                .world_to_screen(
-                    &windows,
-                    cam_xform,
-                    (xform.translation + world_vel) + (xform.forward() * 2000.),
-                )
-                .unwrap_or_default(),
+    for (xform, crosshair) in weapons.iter() {
+        let ray = Ray::new(
+            (xform.translation + world_vel).into(),
+            (xform.forward() * crosshair.weapon_range).into(),
+        );
+        let toi = match query_pipeline.cast_ray(
+            &collider_set,
+            &ray,
+            1.0,
+            false,
+            InteractionGroups::new(
+                ColliderGroups::SOLID.bits(),
+                (ColliderGroups::SOLID | ColliderGroups::CRAFT_SOLID).bits(),
+            ),
+            Some(&|handle| {
+                // not a craft collider
+                !craft_colliders.0 .0[..].contains(&handle)
+            }),
+        ) {
+            Some((_, hit_toi)) => hit_toi,
+            None => 1.0,
         };
+        let crosshair_pos = cam
+            .world_to_screen(&windows, cam_xform, ray.point_at(toi).into())
+            .unwrap_or_default();
         let crosshair_pos = crosshair_pos.clamp(PADDING, window_size - PADDING);
         let (mut style, mut visibility, calc_size) = q3
-            .get_mut(crosshair.0)
+            .get_mut(crosshair.crosshair_entt)
             .expect("Crosshair not found for weapon");
         style.position = Rect {
             left: Val::Px(crosshair_pos.x - (calc_size.size.width * 0.5)),
@@ -654,24 +744,20 @@ pub fn update_ui_markers(
     }
 }
 
-pub type WpnFwdRaycaster = bevy_mod_picking::PickingRaycastSet;
-
 #[derive(Component)]
 pub struct Crosshair;
 
-#[derive(Component)]
-pub struct CrosshairEntt(pub Entity);
-
-use bevy_mod_picking::RayCastSource;
+#[derive(Component, Debug)]
+pub struct CrosshairState {
+    pub crosshair_entt: Entity,
+    pub weapon_range: TReal,
+}
 
 #[allow(clippy::type_complexity)]
 pub fn wpn_raycaster_butler(
     mut commands: Commands,
     cur_craft: Option<Res<CurrentCraft>>,
-    raycast_source_query: Query<
-        Entity,
-        (With<RayCastSource<WpnFwdRaycaster>>, With<CrosshairEntt>),
-    >,
+    hairy_weapons: Query<Entity, With<CrosshairState>>,
     crafts: Query<
         (
             &sensors::CraftWeaponsIndex,
@@ -692,17 +778,14 @@ pub fn wpn_raycaster_butler(
     if !has_changed && !has_wpns_changed.is_changed() {
         return;
     }
-    for entt in raycast_source_query.iter() {
-        commands
-            .entity(entt)
-            .remove::<RayCastSource<WpnFwdRaycaster>>()
-            .remove::<CrosshairEntt>();
+    for entt in hairy_weapons.iter() {
+        commands.entity(entt).remove::<CrosshairState>();
     }
     for entt in crosshairs.iter() {
         commands.entity(entt).despawn_recursive();
     }
-    for wpn in wpn_index.entt_to_class.keys() {
-        let crosshair = commands
+    for (wpn, desc) in wpn_index.entt_to_desc.iter() {
+        let crosshair_entt = commands
             .spawn()
             .insert_bundle(TextBundle {
                 text: Text {
@@ -725,9 +808,9 @@ pub fn wpn_raycaster_butler(
             })
             .insert(Crosshair)
             .id();
-        commands
-            .entity(*wpn)
-            .insert(CrosshairEntt(crosshair))
-            .insert(RayCastSource::<WpnFwdRaycaster>::new_transform_empty());
+        commands.entity(*wpn).insert(CrosshairState {
+            crosshair_entt,
+            weapon_range: desc.range,
+        });
     }
 }

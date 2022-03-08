@@ -150,7 +150,6 @@ Pieces:
   - Assignment strategy
     - Hard roles
 
-
 ## devlog
 
 ### -Z is forward
@@ -217,3 +216,7 @@ How about we model this along the axis of independence?
   - Must support single boid operations
   - Find a better name
 - Boid: a single craft 
+
+### CCD
+
+Projectiles above 500ms aren't handled well, watch out.

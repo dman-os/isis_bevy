@@ -171,7 +171,7 @@ pub fn craft_boid_strategy_output_mgr(
         *composer = output.routine_usage.clone(); // FIXME:
 
         if output.fire_weapons {
-            for wpn in wpn_index.entt_to_class.keys() {
+            for wpn in wpn_index.entt_to_desc.keys() {
                 if weapons
                     .get(*wpn)
                     .expect("Indexed weapon has no WeaponActivationState")

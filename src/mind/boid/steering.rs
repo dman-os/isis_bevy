@@ -110,7 +110,7 @@ where
 pub fn active_routine_tagger(
     mut commands: Commands,
     crafts: Query<
-        (&SteeringRoutineComposer, &sensors::CraftRoutinesIndex),
+        (&SteeringRoutineComposer, &sensors::SteeringRoutinesIndex),
         Changed<SteeringRoutineComposer>,
     >,
     mut cache: Local<bevy::utils::HashSet<Entity>>,

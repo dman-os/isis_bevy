@@ -42,7 +42,7 @@ pub fn butler(
         ),
         Added<RunCircuit>,
     >,
-    crafts: Query<&CraftRoutinesIndex>,
+    crafts: Query<&SteeringRoutinesIndex>,
 ) {
     for (entt, param, strategy, mut state, mut out) in added_strategies.iter_mut() {
         let routines = crafts
@@ -93,7 +93,7 @@ pub fn update(
     narrow_phase: Res<NarrowPhase>,
     parents: Query<&ColliderParentComponent>,
     mut arrive_routines: Query<&mut arrive::Arrive>,
-    crafts: Query<&CraftStrategyIndex>,
+    crafts: Query<&BoidStrategyIndex>,
 ) {
     for (checkpt_entt, checkpoint, checkopoint_xform) in checkpoints.iter() {
         // if something triggered the checkpoint

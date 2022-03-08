@@ -476,9 +476,9 @@ fn setup_world(
                 proj_mesh: proj_mesh.clone(),
                 proj_mtr: proj_mtr.clone(),
                 proj_shape: ColliderShape::ball(0.5),
-                proj_velocity: TVec3::Z * -750.,
+                proj_velocity: TVec3::Z * -500.,
                 proj_lifespan_secs: 3.,
-                proj_spawn_offset: TVec3::Z * -2.,
+                proj_spawn_offset: TVec3::Z * -5.,
                 proj_mass: ColliderMassProps::Density(
                     0.25 / (4. * math::real::consts::PI * 0.5 * 0.5),
                 ),
@@ -610,14 +610,17 @@ fn setup_world(
                 },
                 collider: craft::attire::CollisionDamageEnabledColliderBundle {
                     collider: ColliderBundle {
-                    shape: ColliderShape::ball(4.).into(),
-                    mass_properties: ColliderMassProps::Density(
-                    15_000. / (4. * math::real::consts::PI * 4. * 4.),
-                    ).into(),
-                    ..craft::attire::CollisionDamageEnabledColliderBundle::default_collider_bundle()
+                        shape: ColliderShape::ball(4.).into(),
+                        mass_properties: ColliderMassProps::Density(
+                            15_000. / (4. * math::real::consts::PI * 4. * 4.),
+                        ).into(),
+                        ..craft::attire::CollisionDamageEnabledColliderBundle::default_collider_bundle()
                     },
                     ..Default::default()
                 },
+                ..Default::default()
+            })
+            .insert_bundle(boid::BoidMindBundle{
                 ..Default::default()
             })
             .with_children(|parent| {
@@ -658,9 +661,6 @@ fn setup_world(
                         material: materials.add(Color::WHITE.into()),
                         ..Default::default()
                     });
-            })
-            .insert_bundle(boid::BoidMindBundle{
-                ..Default::default()
             }).id());
     }
 

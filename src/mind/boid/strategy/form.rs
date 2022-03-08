@@ -36,7 +36,7 @@ pub fn butler(
         ),
         Added<Form>,
     >,
-    crafts: Query<&CraftRoutinesIndex>,
+    crafts: Query<&SteeringRoutinesIndex>,
 ) {
     for (entt, param, strategy, mut state, mut out) in added_strategies.iter_mut() {
         let routines = crafts

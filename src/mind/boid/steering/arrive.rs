@@ -61,7 +61,9 @@ pub fn update(
                 }
                 min_a
             };
+            // FIXME: using the limit vel is too conservative, too slow in the final leg
             super::steering_behaviours::dst_to_change(config.linear_v_limit.z, 0., max_accel)
+            // super::steering_behaviours::dst_to_change(vel, 0., max_accel)
         });
         *output = super::steering_behaviours::arrive_at_position(
             xform.translation,

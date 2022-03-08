@@ -7,7 +7,7 @@ use bevy::{
 };
 
 use crate::{
-    craft::arms::*,
+    craft::{arms::*, attire::DamageType},
     math::*,
     mind::boid::{steering::*, strategy::*},
 };
@@ -39,12 +39,12 @@ impl<P> CrossReferenceIndex<P> {
 /// This'll track all the steering routines currently attached to the craft
 /// Craft mind component
 #[derive(Debug, Clone, Component, Default)]
-pub struct CraftRoutinesIndex {
+pub struct SteeringRoutinesIndex {
     pub entt_to_kind: HashMap<Entity, RoutineKind>,
     pub kind_to_entt: HashMap<RoutineKind, smallvec::SmallVec<[Entity; 3]>>,
 }
 
-impl CraftRoutinesIndex {
+impl SteeringRoutinesIndex {
     pub fn kind<P: Component>(&self) -> Option<&smallvec::SmallVec<[Entity; 3]>> {
         self.kind_to_entt.get(&RoutineKind::of::<P>())
     }
@@ -67,7 +67,7 @@ impl CraftRoutinesIndex {
 }
 
 /// Used to handle index maintainance for the case of [`SteeringRoutine`] entity despawns.
-pub type CraftRoutineCrossRefIndex = CrossReferenceIndex<Entity>;
+pub type SteeringRoutineCrossRefIndex = CrossReferenceIndex<Entity>;
 
 /// This is used to store what craft a previously active routine was pointing to
 /// in order to remove the routine from the indice after deactivation.
@@ -90,9 +90,9 @@ pub(super) fn craft_routine_index_butler(
             ),
         >,
     )>,
-    mut indices: Query<&mut CraftRoutinesIndex>,
+    mut indices: Query<&mut SteeringRoutinesIndex>,
     removed_components: RemovedComponents<SteeringRoutine>,
-    mut cross_ref_index: ResMut<CraftRoutineCrossRefIndex>,
+    mut cross_ref_index: ResMut<SteeringRoutineCrossRefIndex>,
 ) {
     for (entt, routine) in routines.q0().iter() {
         commands.entity(entt).insert(PreviouslyActiveRoutine);
@@ -117,13 +117,22 @@ pub(super) fn craft_routine_index_butler(
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct WeaponDesc {
+    pub kind: WeaponKind,
+    pub speed: TReal,
+    pub range: TReal,
+    pub class: WeaponClass,
+    pub damage_type: DamageType,
+}
+
 /// This'll track all the weapons currently attached to the craft
 /// Craft mind component
 #[derive(Debug, Clone, Component, Default)]
 pub struct CraftWeaponsIndex {
     pub avg_projectile_speed: TReal,
     mean_value_size: usize,
-    pub entt_to_class: HashMap<Entity, (WeaponKind, WeaponClass)>,
+    pub entt_to_desc: HashMap<Entity, WeaponDesc>,
     pub class_to_entt: HashMap<WeaponClass, smallvec::SmallVec<[Entity; 3]>>,
     pub kind_to_entt: HashMap<WeaponKind, smallvec::SmallVec<[Entity; 3]>>,
 }
@@ -132,13 +141,13 @@ impl CraftWeaponsIndex {
     pub fn kind<P: Component>(&self) -> Option<&smallvec::SmallVec<[Entity; 3]>> {
         self.kind_to_entt.get(&WeaponKind::of::<P>())
     }
-    pub fn insert(&mut self, entt: Entity, kind: WeaponKind, class: WeaponClass) {
-        self.entt_to_class.insert(entt, (kind, class));
-        self.kind_to_entt.entry(kind).or_default().push(entt);
-        self.class_to_entt.entry(class).or_default().push(entt);
+    pub fn insert(&mut self, entt: Entity, desc: WeaponDesc) {
+        self.kind_to_entt.entry(desc.kind).or_default().push(entt);
+        self.class_to_entt.entry(desc.class).or_default().push(entt);
+        self.entt_to_desc.insert(entt, desc);
     }
     pub fn remove(&mut self, entt: Entity) {
-        if let Some((kind, class)) = self.entt_to_class.remove(&entt) {
+        if let Some(WeaponDesc { kind, class, .. }) = self.entt_to_desc.remove(&entt) {
             if let Some(routines) = self.kind_to_entt.get_mut(&kind) {
                 for (ii, entt_in_map) in routines.iter().enumerate() {
                     if *entt_in_map == entt {
@@ -160,7 +169,7 @@ impl CraftWeaponsIndex {
 }
 
 /// Used to handle index maintainance for the case of [`CraftWeapon`] entity despawns.
-pub type CraftWeaponCrossRefIndex = CrossReferenceIndex<(Entity, Option<TReal>)>;
+pub type CraftWeaponCrossRefIndex = CrossReferenceIndex<(Entity, WeaponDesc)>;
 
 pub(super) fn craft_wpn_index_butler(
     new_wpns: Query<(Entity, &CraftWeapon), Added<CraftWeapon>>,
@@ -174,38 +183,41 @@ pub(super) fn craft_wpn_index_butler(
         let mut index = indices
             .get_mut(wpn.craft_entt())
             .expect("CraftWeaponsIndex not found on craft");
-        index.insert(entt, wpn.kind(), wpn.class());
 
-        let speed = if wpn.kind() == WeaponKind::of::<ProjectileWeapon>() {
-            let speed = projectile_wpns
+        let desc = if WeaponKind::of::<ProjectileWeapon>() == wpn.kind() {
+            let param = projectile_wpns
                 .get(entt)
-                .expect("ProjectileWeapon component not found")
-                .proj_velocity
-                .length();
+                .expect("ProjectileWeapon component not found");
+            let speed = param.proj_velocity.length();
 
             index.avg_projectile_speed +=
                 (speed - index.avg_projectile_speed) / (index.mean_value_size + 1) as TReal;
             index.mean_value_size += 1;
-            Some(speed)
+            WeaponDesc {
+                kind: wpn.kind(),
+                class: wpn.class(),
+                range: speed * param.proj_lifespan_secs as f32,
+                damage_type: param.proj_damage.damage_type,
+                speed,
+            }
         } else {
-            None
+            unreachable!()
         };
+        index.insert(entt, desc.clone());
 
         // add them to the global index
-        cross_ref_index.insert(entt, (wpn.craft_entt(), speed));
+        cross_ref_index.insert(entt, (wpn.craft_entt(), desc));
     }
     for removed_wpn in removed.iter() {
         // avoid panicing since the entire craft (and its indices) might be gone
-        if let Some((Ok(mut index), speed)) = cross_ref_index
+        if let Some((Ok(mut index), WeaponDesc { speed, .. })) = cross_ref_index
             .remove(&removed_wpn)
-            .map(|(e, speed)| (indices.get_mut(e), speed))
+            .map(|(e, desc)| (indices.get_mut(e), desc))
         {
             index.remove(removed_wpn);
-            if let Some(speed) = speed {
-                index.avg_projectile_speed +=
-                    (speed - index.avg_projectile_speed) / (index.mean_value_size - 1) as TReal;
-                index.mean_value_size -= 1;
-            }
+            index.avg_projectile_speed +=
+                (speed - index.avg_projectile_speed) / (index.mean_value_size - 1) as TReal;
+            index.mean_value_size -= 1;
         }
     }
 }
@@ -213,12 +225,12 @@ pub(super) fn craft_wpn_index_butler(
 /// This'll track all the strategies currently attached to the craft
 /// Craft mind component
 #[derive(Debug, Clone, Component, Default)]
-pub struct CraftStrategyIndex {
+pub struct BoidStrategyIndex {
     pub entt_to_class: HashMap<Entity, BoidStrategyKind>,
     pub kind_to_entt: HashMap<BoidStrategyKind, smallvec::SmallVec<[Entity; 3]>>,
 }
 
-impl CraftStrategyIndex {
+impl BoidStrategyIndex {
     pub fn kind<P: Component>(&self) -> Option<&smallvec::SmallVec<[Entity; 3]>> {
         self.kind_to_entt.get(&BoidStrategyKind::of::<P>())
     }
@@ -241,13 +253,13 @@ impl CraftStrategyIndex {
 }
 
 /// Used to handle index maintainance for the case of [`CraftStrategy`] entity despawns.
-pub type CraftStrategyCrossRefIndex = CrossReferenceIndex<Entity>;
+pub type BoidStrategyCrossRefIndex = CrossReferenceIndex<Entity>;
 
 pub(super) fn craft_strategy_index_butler(
     new: Query<(Entity, &BoidStrategy), Added<BoidStrategy>>,
-    mut indices: Query<&mut CraftStrategyIndex>,
+    mut indices: Query<&mut BoidStrategyIndex>,
     removed: RemovedComponents<BoidStrategy>,
-    mut cross_ref_index: ResMut<CraftStrategyCrossRefIndex>,
+    mut cross_ref_index: ResMut<BoidStrategyCrossRefIndex>,
 ) {
     for (entt, strategy) in new.iter() {
         // add them to the per craft

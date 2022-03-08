@@ -34,9 +34,9 @@ pub fn butler(
         Added<AttackPersue>,
     >,
     crafts: Query<(
-        &CraftRoutinesIndex,
+        &SteeringRoutinesIndex,
         &CraftWeaponsIndex,
-        &CraftStrategyIndex,
+        &BoidStrategyIndex,
         Changed<CraftWeaponsIndex>,
     )>,
     mut routines: Query<&mut intercept::Intercept>,

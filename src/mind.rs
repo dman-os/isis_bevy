@@ -31,7 +31,7 @@ impl Plugin for MindPlugin {
                 CoreStage::PreUpdate,
                 sensors::craft_wpn_index_butler.before(BoidStrategyButler),
             )
-            .init_resource::<sensors::CraftStrategyCrossRefIndex>()
+            .init_resource::<sensors::BoidStrategyCrossRefIndex>()
             .add_system_to_stage(
                 CoreStage::PreUpdate,
                 sensors::craft_strategy_index_butler.before(BoidStrategyButler),
@@ -77,7 +77,7 @@ impl Plugin for MindPlugin {
                     .after(CraftBoidStrategyOutputMgr)
                     .before(SteeringSystems),
             )
-            .init_resource::<sensors::CraftRoutineCrossRefIndex>()
+            .init_resource::<sensors::SteeringRoutineCrossRefIndex>()
             .add_system(sensors::craft_routine_index_butler.after(ActiveRoutineTagger))
             .add_system(sensors::craft_routine_index_butler)
             .add_system(flock::formation::update)
