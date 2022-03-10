@@ -1,6 +1,6 @@
 use deps::*;
 
-use bevy::{ecs as bevy_ecs, prelude::*};
+use bevy::{ prelude::*};
 use bevy_inspector_egui::RegisterInspectable;
 
 pub mod boid;

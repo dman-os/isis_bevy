@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use deps::*;
 
-use bevy::{ecs as bevy_ecs, prelude::*};
+use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 use bitflags::bitflags;
 use deps::bevy::utils::HashMap;
@@ -117,7 +117,7 @@ impl AttireProfile {
     pub fn damage(&mut self, damage: Damage) -> Option<Damage> {
         let mut remaining_damage = Some(damage);
         for attire in self.members.iter_mut() {
-            remaining_damage = attire.damage(remaining_damage.unwrap());
+            remaining_damage = attire.damage(remaining_damage.unwrap_or_log());
             if remaining_damage.is_none() {
                 break;
             }
@@ -359,7 +359,7 @@ pub(super) fn handle_collision_damage_events(
     mut generated_events: Local<Vec<CollisionDamageEvent>>,
 ) {
     for event in contact_events.iter() {
-        let (manifold, contact) = event.contact_pair.find_deepest_contact().unwrap();
+        let (manifold, contact) = event.contact_pair.find_deepest_contact().unwrap_or_log();
         let damage = {
             // calculate the force from the impulse
             // J = F Δt
@@ -504,10 +504,11 @@ pub(super) fn handle_collision_damage_events(
             }
         }
         if let Some((attire_entt, dist)) = closest_attire {
-            tracing::warn!(
-                "CollisonDamageEnabledRb collided but no attires covered deepest contact point, damaging closest attire ({attire_entt:?}) with dist_sqr {dist:?}",
+            // TODO: fixme
+            tracing::debug!(
+                "CollisonDamageEnabledRb collided but no attires covered deepest contact point, damaging closest attire with at diastance {dist:?}",
             );
-            let (mut attire, coll_shape, coll_pos) = attires.get_mut(attire_entt).unwrap();
+            let (mut attire, coll_shape, coll_pos) = attires.get_mut(attire_entt).unwrap_or_log();
             attire.damage(damage);
             // generate the event to let others know it was damaged
             generated_events.push(CollisionDamageEvent {

@@ -3,7 +3,7 @@ use deps::*;
 use super::LinOnlyRoutineBundle;
 use super::{steering_behaviours, ActiveSteeringRoutine, LinearRoutineOutput, SteeringRoutine};
 use crate::math::*;
-use bevy::{ecs as bevy_ecs, prelude::*};
+use bevy::{ prelude::*};
 
 #[derive(Debug, Clone, Component)]
 pub enum Target {
@@ -30,7 +30,7 @@ pub fn update(
     for (param, routine, mut output) in routines.iter_mut() {
         let xform = objects
             .get(routine.craft_entt)
-            .expect("craft entt not found for routine");
+            .expect_or_log("craft entt not found for routine");
         let pos = match param.target {
             Target::Object { entt } => match objects.get(entt) {
                 Ok(obj_xform) => obj_xform.translation,

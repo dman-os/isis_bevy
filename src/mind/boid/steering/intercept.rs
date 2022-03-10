@@ -1,6 +1,6 @@
 use deps::*;
 
-use bevy::{ecs as bevy_ecs, prelude::*};
+use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
 use super::{ActiveSteeringRoutine, LinOnlyRoutineBundle, LinearRoutineOutput, SteeringRoutine};
@@ -26,11 +26,11 @@ pub fn update(
     for (param, routine, mut output) in routines.iter_mut() {
         let (xform, config) = crafts
             .get(routine.craft_entt)
-            .expect("craft entt not found for routine");
+            .expect_or_log("craft entt not found for routine");
         let (quarry_xform, quarry_vel) = quarries
             .get(param.quarry_rb.entity())
-            .expect("quarry rigid body not found for on Intercept routine");
-        let speed = param.speed.unwrap_or(config.linear_v_limit.z);
+            .expect_or_log("quarry rigid body not found for on Intercept routine");
+        let speed = param.speed.unwrap_or(config.linvel_limit.z);
         *output = super::steering_behaviours::intercept_target(
             xform.translation,
             speed,

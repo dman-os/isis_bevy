@@ -1,7 +1,7 @@
 use deps::*;
 
 use crate::math::*;
-use bevy::{ecs as bevy_ecs, prelude::*};
+use bevy::prelude::*;
 use bevy_inspector_egui::RegisterInspectable;
 use bevy_rapier3d::prelude::*;
 

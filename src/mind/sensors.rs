@@ -1,7 +1,7 @@
 use deps::*;
 
 use bevy::{
-    ecs as bevy_ecs,
+    
     prelude::*,
     utils::{AHashExt, HashMap},
 };
@@ -100,13 +100,13 @@ pub(super) fn craft_routine_index_butler(
         // add them to the index
         let mut index = indices
             .get_mut(routine.craft_entt())
-            .expect("craft not foud SteeringRoutine");
+            .expect_or_log("craft not foud SteeringRoutine");
         index.insert(entt, routine.kind());
     }
     for (entt, routine) in routines.q1().iter() {
         let mut index = indices
             .get_mut(routine.craft_entt())
-            .expect("craft_entt not found for ActiveRoutine");
+            .expect_or_log("craft_entt not found for ActiveRoutine");
         index.remove(entt);
         commands.entity(entt).remove::<PreviouslyActiveRoutine>();
     }
@@ -182,12 +182,12 @@ pub(super) fn craft_wpn_index_butler(
         // add them to the per craft
         let mut index = indices
             .get_mut(wpn.craft_entt())
-            .expect("CraftWeaponsIndex not found on craft");
+            .expect_or_log("CraftWeaponsIndex not found on craft");
 
         let desc = if WeaponKind::of::<ProjectileWeapon>() == wpn.kind() {
             let param = projectile_wpns
                 .get(entt)
-                .expect("ProjectileWeapon component not found");
+                .expect_or_log("ProjectileWeapon component not found");
             let speed = param.proj_velocity.length();
 
             index.avg_projectile_speed +=
@@ -265,7 +265,7 @@ pub(super) fn craft_strategy_index_butler(
         // add them to the per craft
         let mut index = indices
             .get_mut(strategy.craft_entt())
-            .expect("craft not foud CraftStrategy");
+            .expect_or_log("craft not foud CraftStrategy");
         index.insert(entt, strategy.kind());
         // add them to the global index
         cross_ref_index.insert(entt, strategy.craft_entt());

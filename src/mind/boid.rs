@@ -1,6 +1,6 @@
 use deps::*;
 
-use bevy::{ecs as bevy_ecs, prelude::*};
+use bevy::prelude::*;
 use bevy_inspector_egui::Inspectable;
 use educe::Educe;
 
@@ -55,6 +55,9 @@ pub enum BoidMindDirective {
     FlyWithFlockCAS {
         param: steering::fly_with_flock::FlyWithFlock,
     },
+    RunCircuit {
+        param: strategy::run_circuit::RunCircuit,
+    },
 }
 
 pub fn boid_mind(
@@ -87,7 +90,7 @@ pub fn boid_mind(
                         .spawn()
                         .insert_bundle(steering::arrive::Bundle::new(
                             steering::arrive::Arrive {
-                                target: arrive::Target::Position { pos },
+                                target: arrive::Target::Position { pos, speed: 0. },
                                 arrival_tolerance: 5.,
                                 deceleration_radius: None,
                             },
@@ -157,6 +160,16 @@ pub fn boid_mind(
                         .id(),
                 )
             }
+            BoidMindDirective::RunCircuit { param } => Some(
+                commands
+                    .spawn()
+                    .insert_bundle(strategy::run_circuit::Bundle::new(
+                        param.clone(),
+                        craft_entt,
+                        Default::default(),
+                    ))
+                    .id(),
+            ),
         }
     }
 }

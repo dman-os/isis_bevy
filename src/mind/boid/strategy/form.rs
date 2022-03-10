@@ -2,7 +2,7 @@
 
 use deps::*;
 
-use bevy::{ecs as bevy_ecs, prelude::*};
+use bevy::prelude::*;
 
 use super::{
     super::SteeringRoutineComposer, ActiveBoidStrategy, BoidStrategy, BoidStrategyBundleExtra,
@@ -41,7 +41,7 @@ pub fn butler(
     for (entt, param, strategy, mut state, mut out) in added_strategies.iter_mut() {
         let routines = crafts
             .get(strategy.craft_entt())
-            .expect("craft not found for BoidStrategy");
+            .expect_or_log("craft not found for BoidStrategy");
         let avoid_collision = routines
             .kind::<avoid_collision::AvoidCollision>()
             .map(|v| v[0])
@@ -57,21 +57,21 @@ pub fn butler(
 
         let (mut formation_state, fomation_output) = formations
             .get_mut(param.formation)
-            .expect("Formation not found for Form strategy");
+            .expect_or_log("Formation not found for Form strategy");
         formation_state
             .boid_strategies
             .insert(strategy.craft_entt(), entt);
         let pos = fomation_output
             .positions
             .get(&strategy.craft_entt())
-            .expect("Assigned position not found for formant");
+            .expect_or_log("Assigned position not found for formant");
         let pos = *pos;
 
         let arrive = commands
             .spawn()
             .insert_bundle(arrive::Bundle::new(
                 arrive::Arrive {
-                    target: arrive::Target::Position { pos },
+                    target: arrive::Target::Position { pos, speed: 0. },
                     arrival_tolerance: 5.,
                     deceleration_radius: None,
                 },
@@ -104,7 +104,7 @@ pub fn update(
         for (craft_entt, strategy) in formation_state.boid_strategies.iter() {
             let (state, is_active) = strategies
                 .get(*strategy)
-                .expect("From strategy not found for formant");
+                .expect_or_log("From strategy not found for formant");
             if is_active.is_none() {
                 // skip if boid_strategy is not active yet
                 skip_count += 1;
@@ -112,15 +112,15 @@ pub fn update(
             }
 
             let mut arrive_param = arrive_routines
-                .get_mut(state.arrive_routine.unwrap())
-                .expect("Arrive routine not found for FormState");
+                .get_mut(state.arrive_routine.unwrap_or_log())
+                .expect_or_log("Arrive routine not found for FormState");
 
             let pos = out
                 .positions
                 .get(craft_entt)
-                .expect("Assigned position not found for formant");
+                .expect_or_log("Assigned position not found for formant");
             let pos = *pos;
-            arrive_param.target = arrive::Target::Position { pos };
+            arrive_param.target = arrive::Target::Position { pos, speed: 0. };
         }
         if skip_count == 0 && out.positions.len() != formation_state.boid_strategies.len() {
             tracing::error!(

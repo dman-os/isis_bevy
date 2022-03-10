@@ -1,6 +1,6 @@
 use deps::*;
 
-use bevy::{ecs as bevy_ecs, prelude::*};
+use bevy::prelude::*;
 use bevy_inspector_egui::prelude::*;
 
 use crate::craft::*;
@@ -279,7 +279,7 @@ pub fn mind_update_engine_input(
     crafts
         .iter_mut()
         .for_each(|(routine_res, mut lin_state, mut ang_state, config)| {
-            lin_state.input = routine_res.lin * config.linear_v_limit.abs();
+            lin_state.input = routine_res.lin * config.linvel_limit.abs();
             ang_state.input = routine_res.ang;
         });
 }
@@ -391,7 +391,7 @@ pub fn routine_composer(
         for entt in cache.drain() {
             let routine = routines
                 .get(entt)
-                .expect("composed steering routine not found");
+                .expect_or_log("composed steering routine not found");
             index.add_routine(entt, routine.kind);
         }
     }
@@ -399,7 +399,7 @@ pub fn routine_composer(
  */
 
 /// Output of linear steering routines which is usually linear velocity desired next frame in
-/// fraction of [`EngineConfig:.linear_v_limit`] in world space.
+/// fraction of [`EngineConfig:.linvel_limit`] in world space.
 #[derive(Debug, Clone, Copy, Default, Inspectable, Component)]
 #[component(storage = "SparseSet")]
 pub struct LinearRoutineOutput(pub TVec3);
@@ -433,8 +433,8 @@ pub fn just_be(
     current_ang_vel: TVec3,
     max_lin_accel: TVec3,
     max_ang_accel: TVec3,
-    linear_v_limit: TVec3,
-    angular_v_limit: TVec3,
+    linvel_limit: TVec3,
+    angvel_limit: TVec3,
 ) -> (LinearRoutineOutput, AngularRoutineOutput) {
     todo!()
 } */

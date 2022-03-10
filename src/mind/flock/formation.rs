@@ -1,6 +1,6 @@
 use deps::*;
 
-use bevy::{ecs as bevy_ecs, prelude::*, utils::HashMap};
+use bevy::{ prelude::*, utils::HashMap};
 
 use crate::math::*;
 use crate::mind::*;
@@ -148,14 +148,14 @@ pub fn butler(
     for (entt, formation, slotting_strategy, mut slots, mut output) in formations.q0().iter_mut() {
         let members = flocks
             .get(formation.flock_entt)
-            .expect("unable to find Flock for Formation");
+            .expect_or_log("unable to find Flock for Formation");
 
         for craft_entt in members.iter() {
             let craft_entt = *craft_entt;
 
             let (xform,) = crafts
                 .get(craft_entt)
-                .expect("unable to find craft for flock");
+                .expect_or_log("unable to find craft for flock");
             output.positions.insert(craft_entt, xform.translation);
             // *directive = boid::BoidMindDirective::JoinFomation { formation: entt };
         }
@@ -168,7 +168,7 @@ pub fn butler(
     for (formation, slotting_strategy, mut slots) in formations.q1().iter_mut() {
         let members = flocks
             .get(formation.flock_entt)
-            .expect("unable to find Flock for Formation");
+            .expect_or_log("unable to find Flock for Formation");
 
         *slots = slotting_strategy.slot(members);
     }
@@ -191,12 +191,12 @@ pub fn butler(
                             .positions
                             .remove(&craft_entt)
                             // .unwrap_or_else(|| Default::default())
-                            .unwrap(),
+                            .unwrap_or_log(),
                     );
                 } else {
                     let (xform,) = crafts
                         .get(craft_entt)
-                        .expect("unable to find craft for flock");
+                        .expect_or_log("unable to find craft for flock");
                     output.positions.insert(craft_entt, xform.translation);
                     // *directive = boid::BoidMindDirective::JoinFomation { formation: entt };
                 }
@@ -229,7 +229,7 @@ pub fn update(
         match &pattern {
             FormationPattern::Sphere { center, radius } => {
                 let center_pivot = match center {
-                    // FormationPivot::Craft { entt } => crafts.get(*entt).unwrap().into(),
+                    // FormationPivot::Craft { entt } => crafts.get(*entt).unwrap_or_log().into(),
                     FormationPivot::Craft { .. } => todo!(),
                     FormationPivot::Anchor { xform } => xform,
                 };

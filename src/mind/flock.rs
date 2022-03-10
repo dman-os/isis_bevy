@@ -1,6 +1,6 @@
 use deps::*;
 
-use bevy::{ecs as bevy_ecs, prelude::*};
+use bevy::{ prelude::*};
 use educe::Educe;
 
 use crate::math::*;

@@ -4,16 +4,15 @@ use dylink;
 
 use deps::*;
 
-use anyhow::Result;
 use bevy::{
     diagnostic::*,
-    ecs as bevy_ecs,
     input::{keyboard::KeyboardInput, ElementState},
     prelude::*,
     render::camera::Camera,
     render::mesh::shape,
 };
 use bevy_egui::*;
+use bevy_prototype_debug_lines::*;
 use bevy_rapier3d::prelude::*;
 use rand::prelude::*;
 
@@ -24,10 +23,30 @@ pub mod math;
 pub mod mind;
 pub mod utils;
 
-#[bevy_main]
-fn main() -> Result<()> {
+// pub struct ConsoleLog {}
+// impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for ConsoleLog {}
+
+fn main() {
     #[cfg(feature = "dylink")]
     println!("WARNING: dylink enabled");
+
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var(
+            "RUST_LOG",
+            "info,isis=info,bevy_render=info,bevy_app=info,event=info,wgpu=warn,naga=info",
+        );
+    }
+
+    // let log_output = LogOutput::default();
+
+    tracing_subscriber::fmt()
+        .pretty()
+        // .compact()
+        // .with_ansi(false)
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_timer(tracing_subscriber::fmt::time::uptime())
+        // .with_writer(log_output.clone())
+        .init();
 
     let mut inspect_registry = bevy_inspector_egui::InspectableRegistry::default();
     inspect_registry.register_raw::<RigidBodyPositionComponent, _>(|cmp, ui, _ctx| {
@@ -59,38 +78,42 @@ fn main() -> Result<()> {
         false
     });
     let mut app = App::new();
-    app.add_plugins(DefaultPlugins)
-        .insert_resource(WindowDescriptor {
-            title: "ISIS".to_string(),
-            ..Default::default()
-        })
-        .add_plugin(EguiPlugin)
-        .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
-        .insert_resource(RapierConfiguration {
-            gravity: [0.0, 0.0, 0.0].into(),
-            ..Default::default()
-        })
-        .add_plugin(RapierRenderPlugin)
-        .add_plugin(DiagnosticsPlugin)
-        // .add_plugin(LogDiagnosticsPlugin::default())
-        .add_plugin(EntityCountDiagnosticsPlugin)
-        .add_plugin(FrameTimeDiagnosticsPlugin)
-        .add_plugin(bevy_inspector_egui::WorldInspectorPlugin::new())
-        .insert_resource(inspect_registry)
-        .add_plugin(bevy_polyline::PolylinePlugin)
-        // .add_plugins(bevy_mod_picking::DefaultPickingPlugins)
-        .add_plugin(bevy_mod_picking::PickingPlugin)
-        // .add_plugin(bevy_mod_picking::DebugCursorPickingPlugin)
-        // .add_plugin(bevy_prototype_debug_lines::DebugLinesPlugin)
-        // .insert_resource(bevy::ecs::schedule::ReportExecutionOrderAmbiguities)
-        .add_plugin(GamePlugin);
+    app.add_plugins_with(DefaultPlugins, |group| {
+        group.disable::<bevy::log::LogPlugin>()
+    })
+    .insert_resource(WindowDescriptor {
+        title: "ISIS".to_string(),
+        ..Default::default()
+    })
+    // .insert_resource(log_output)
+    .add_plugin(EguiPlugin)
+    .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
+    .insert_resource(RapierConfiguration {
+        gravity: [0.0, 0.0, 0.0].into(),
+        ..Default::default()
+    })
+    .add_plugin(RapierRenderPlugin)
+    .add_plugin(DiagnosticsPlugin)
+    // .add_plugin(LogDiagnosticsPlugin::default())
+    .add_plugin(EntityCountDiagnosticsPlugin)
+    .add_plugin(FrameTimeDiagnosticsPlugin)
+    .insert_resource(inspect_registry)
+    .insert_resource(bevy_inspector_egui::WorldInspectorParams {
+        ..Default::default()
+    })
+    .add_plugin(bevy_inspector_egui::WorldInspectorPlugin::new())
+    .add_plugin(bevy_polyline::PolylinePlugin)
+    // .add_plugins(bevy_mod_picking::DefaultPickingPlugins)
+    .add_plugin(bevy_mod_picking::PickingPlugin)
+    // .add_plugin(bevy_mod_picking::DebugCursorPickingPlugin)
+    // .add_plugin(bevy_prototype_debug_lines::DebugLinesPlugin)
+    // .insert_resource(bevy::ecs::schedule::ReportExecutionOrderAmbiguities)
+    .add_plugin(GamePlugin);
     //println!(
     //"{}",
     //bevy_mod_debugdump::schedule_graph::schedule_graph_dot(&app.app.schedule)
     //);
-    app.run();
-
-    Ok(())
+    app.run()
 }
 
 pub struct GamePlugin;
@@ -102,6 +125,7 @@ impl Plugin for GamePlugin {
             .add_startup_system(setup_fps_display)
             .add_system(text_update_system)
             .add_system(move_camera_system)
+            // .add_system(quake_log)
             .insert_resource(CameraMovementSettings {
                 angular_speed: std::f32::consts::PI / 2.,
                 linear_speed: 20.0,
@@ -111,6 +135,7 @@ impl Plugin for GamePlugin {
             .add_startup_system(setup_environment)
             .add_startup_system(setup_world)
             .add_system(craft_state_display)
+            .add_plugin(DebugLinesPlugin::with_depth_test(true))
             // .add_system(init_default_routines)
             // .add_startup_system(my_system)
             .insert_resource(ClearColor(Color::BLACK));
@@ -169,6 +194,78 @@ fn text_update_system(diagnostics: Res<Diagnostics>, mut query: Query<&mut Text,
         }
     }
 }
+
+/*
+
+#[derive(Default, Clone)]
+pub struct LogOutput {
+    vec: std::sync::Arc<parking_lot::RwLock<Vec<String>>>,
+}
+
+// pub struct CustomWriter<'a, T>(parking_lot::RwLockWriteGuard<'a, T>);
+pub struct CustomWriter<'a>(parking_lot::RwLockWriteGuard<'a, Vec<String>>);
+
+// impl<T> std::io::Write for CustomWriter<'_, T>
+// where
+//     T: std::io::Write,
+// {
+impl std::io::Write for CustomWriter<'_> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match std::io::stdout().write(buf) {
+            Ok(bytes) => {
+                let _ = self
+                    .0
+                    .push(String::from_utf8_lossy(&buf[0..bytes]).into_owned());
+                Ok(bytes)
+            }
+            err => err,
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        std::io::stdout().flush()
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogOutput {
+    // type Writer = CustomWriter<'a, Vec<u8>>;
+    type Writer = CustomWriter<'a>;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        CustomWriter(self.vec.write())
+    }
+}
+
+fn quake_log(
+    mut egui_context: ResMut<EguiContext>,
+    log_output: Res<LogOutput>,
+    windows: Res<Windows>,
+) {
+    let (default_width, default_height) = if let Some(w) = windows.get_primary() {
+        (w.width() * 0.66, w.height() * 0.15)
+    } else {
+        (500., 500.)
+    };
+    egui::Window::new("log")
+        .collapsible(true)
+        // .fixed_size([default_width, default_height])
+        .anchor(egui::Align2::CENTER_TOP, [0., 0.])
+        .default_width(default_width)
+        .default_height(default_height)
+        .show(egui_context.ctx_mut(), |ui| {
+            let vec = log_output.vec.read();
+            egui::ScrollArea::vertical()
+                .always_show_scroll(true)
+                .stick_to_bottom()
+                .auto_shrink([false; 2])
+                .show(ui, |ui| {
+                    for row in vec.iter() {
+                        ui.monospace(row);
+                        ui.separator();
+                    }
+                });
+        });
+} */
 
 fn setup_environment(
     mut commands: Commands,
@@ -272,88 +369,87 @@ fn setup_world(
     let mut rng = rand::thread_rng();
 
     // setup the random floating spheres
-    /*     {
-           const SIZE_RANGE: TReal = 100.;
-           const MASS_RANGE: TReal = 1000.;
-           //const LOCATION_RANGE: [TReal; 3]= [500.; 3];
-           const LOCATION_RANGE: [TReal; 3] = [500., 100.0, 500.0];
-           for _i in 0..100 {
-               //for _ in (0..1).into_iter() {
-               let size = rng.gen::<TReal>() * SIZE_RANGE;
-               let radius = size * 0.5;
-               let mass = rng.gen::<TReal>() * MASS_RANGE;
-               let pos = {
-                   let pos: TVec3 = rng.gen::<[TReal; 3]>().into();
-                   let pos = pos * TVec3::from(LOCATION_RANGE);
-                   [
-                       pos.x * if rng.gen_bool(0.5) { 1. } else { -1. },
-                       pos.y * if rng.gen_bool(0.5) { 1. } else { -1. },
-                       pos.z * if rng.gen_bool(0.5) { 1. } else { -1. },
-                   ]
-                   .into()
-               };
-               let mut xform = Transform::from_translation(pos);
-               xform.rotate(TQuat::from_euler(
-                   EulerRot::YXZ,
-                   rng.gen::<TReal>() * 360.0,
-                   rng.gen::<TReal>() * 360.0,
-                   rng.gen::<TReal>() * 360.0,
-               ));
+    {
+        const SIZE_RANGE: TReal = 100.;
+        const MASS_RANGE: TReal = 1000.;
+        //const LOCATION_RANGE: [TReal; 3]= [500.; 3];
+        const LOCATION_RANGE: [TReal; 3] = [500., 100.0, 500.0];
+        for ii in 0..100 {
+            //for _ in (0..1).into_iter() {
+            let size = rng.gen::<TReal>() * SIZE_RANGE;
+            let radius = size * 0.5;
+            let mass = rng.gen::<TReal>() * MASS_RANGE;
+            let pos = {
+                let pos: TVec3 = rng.gen::<[TReal; 3]>().into();
+                let pos = pos * TVec3::from(LOCATION_RANGE);
+                [
+                    pos.x * if rng.gen_bool(0.5) { 1. } else { -1. },
+                    pos.y * if rng.gen_bool(0.5) { 1. } else { -1. },
+                    pos.z * if rng.gen_bool(0.5) { 1. } else { -1. },
+                ]
+                .into()
+            };
+            let mut xform = Transform::from_translation(pos);
+            xform.rotate(TQuat::from_euler(
+                EulerRot::YXZ,
+                rng.gen::<TReal>() * 360.0,
+                rng.gen::<TReal>() * 360.0,
+                rng.gen::<TReal>() * 360.0,
+            ));
 
-               commands
-                   .spawn()
-                    .insert(Name::new(format!("ball {_i}")))
-                   .insert_bundle(PbrBundle {
-                       mesh: meshes.add(Mesh::from(shape::Icosphere {
-                           radius,
-                           ..Default::default()
-                       })),
-                       transform: xform,
-                       material: materials.add(
-                           Color::rgba(
-                               rng.gen::<TReal>(),
-                               rng.gen::<TReal>(),
-                               rng.gen::<TReal>(),
-                               1.,
-                           )
-                           .into(),
-                       ),
-                       ..Default::default()
-                   })
-                   .insert_bundle(bevy_mod_picking::PickableBundle::default())
-                   /*
-                   .insert_bundle(RigidBodyBundle {
-                       body_type: RigidBodyType::Dynamic.into(),
-                       activation: RigidBodyActivation::inactive().into(),
-                       position: RigidBodyPositionComponent(pos.into()),
-                       ..Default::default()
-                   })
-                   .insert(RigidBodyPositionSync::Discrete)
-                   // */
-                   .insert(ColliderPositionSync::Discrete)
-                   .insert_bundle(ColliderBundle {
-                       material: ColliderMaterial {
-                           ..Default::default()
-                       }
-                       .into(),
-                       position: ColliderPositionComponent(pos.into()),
-                       flags: ColliderFlags {
-                           collision_groups: *craft::attire::OBSTACLE_COLLIDER_IGROUP,
-                           ..Default::default()
-                       }
-                       .into(),
-                       shape: ColliderShape::ball(radius).into(),
-                       mass_properties: ColliderMassProps::Density(
-                           mass / (4. * math::real::consts::PI * radius * radius),
-                       )
-                       .into(),
-                       ..Default::default()
-                   });
-           }
-       }
-    */
+            commands
+                .spawn()
+                .insert(Name::new(format!("ball {ii}")))
+                .insert_bundle(PbrBundle {
+                    mesh: meshes.add(Mesh::from(shape::Icosphere {
+                        radius,
+                        ..Default::default()
+                    })),
+                    transform: xform,
+                    material: materials.add(
+                        Color::rgba(
+                            rng.gen::<TReal>(),
+                            rng.gen::<TReal>(),
+                            rng.gen::<TReal>(),
+                            1.,
+                        )
+                        .into(),
+                    ),
+                    ..Default::default()
+                })
+                .insert_bundle(bevy_mod_picking::PickableBundle::default())
+                /*
+                .insert_bundle(RigidBodyBundle {
+                    body_type: RigidBodyType::Dynamic.into(),
+                    activation: RigidBodyActivation::inactive().into(),
+                    position: RigidBodyPositionComponent(pos.into()),
+                    ..Default::default()
+                })
+                .insert(RigidBodyPositionSync::Discrete)
+                // */
+                .insert(ColliderPositionSync::Discrete)
+                .insert_bundle(ColliderBundle {
+                    material: ColliderMaterial {
+                        ..Default::default()
+                    }
+                    .into(),
+                    position: ColliderPositionComponent(pos.into()),
+                    flags: ColliderFlags {
+                        collision_groups: *craft::attire::OBSTACLE_COLLIDER_IGROUP,
+                        ..Default::default()
+                    }
+                    .into(),
+                    shape: ColliderShape::ball(radius).into(),
+                    mass_properties: ColliderMassProps::Density(
+                        mass / (4. * math::real::consts::PI * radius * radius),
+                    )
+                    .into(),
+                    ..Default::default()
+                });
+        }
+    }
 
-    // spawn the single floating sphere
+    /*  // spawn the single floating sphere
     {
         let radius = 10.;
         let pos = TVec3::new(500., 0., 500.);
@@ -408,10 +504,10 @@ fn setup_world(
                 ..Default::default()
             })
             .insert_bundle(bevy_mod_picking::PickableBundle::default());
-    }
+    } */
 
     // setup the test circuit
-    {
+    let initial_point = {
         let material = materials.add(Color::PINK.into());
         let mesh = meshes.add(Mesh::from(shape::Icosphere {
             radius: 10.0,
@@ -424,10 +520,9 @@ fn setup_world(
             [-1000.0, 0., -1000.0].into(),
             //[1000.0, 0., -1000.0].into(),
         ];
-        for ii in 0..points.len() {
+        let points = points.map(|p| {
             commands
                 .spawn()
-                .insert(Name::new(format!("checkpoint {ii}")))
                 .insert_bundle(bevy_mod_picking::PickableBundle::default())
                 .insert_bundle(PbrBundle {
                     mesh: mesh.clone(),
@@ -442,15 +537,23 @@ fn setup_world(
                     .into(),
                     collider_type: ColliderType::Sensor.into(),
                     shape: ColliderShape::ball(10.).into(),
-                    position: (points[ii], TQuat::IDENTITY).into(),
+                    position: (p, TQuat::IDENTITY).into(),
                     ..Default::default()
                 })
                 .insert(ColliderPositionSync::Discrete)
-                .insert(mind::boid::strategy::run_circuit::CircuitCheckpoint {
-                    next_point_location: points[(ii + 1) % points.len()],
+                .id()
+        });
+        for ii in 0..points.len() {
+            let entt = points[ii];
+            commands
+                .entity(entt)
+                .insert(Name::new(format!("waypoint {ii}")))
+                .insert(mind::boid::strategy::run_circuit::CircuitWaypoint {
+                    next_point: points[(ii + 1) % points.len()],
                 });
         }
-    }
+        points[0]
+    };
 
     let ball_fighter_model = asset_server.load("models/ball_fighter.gltf#Scene0");
     let proj_mesh = meshes.add(
@@ -592,7 +695,7 @@ fn setup_world(
             .id();
         commands.insert_resource(mind::player::CurrentWeapon(wpn_id));
     }
-    let mut members = smallvec::smallvec![];
+    let mut members = flock::FlockMembers::default();
     // spawn the ai craft
     for ii in -7..=7 {
         // for ii in 0..1 {
@@ -621,6 +724,7 @@ fn setup_world(
                 ..Default::default()
             })
             .insert_bundle(boid::BoidMindBundle{
+                directive:boid::BoidMindDirective::RunCircuit{param:boid::strategy::run_circuit::RunCircuit { initial_point }},
                 ..Default::default()
             })
             .with_children(|parent| {
@@ -664,7 +768,7 @@ fn setup_world(
             }).id());
     }
 
-    let flock_entt = commands.spawn().insert(Name::new("flock")).id();
+    /* let flock_entt = commands.spawn().insert(Name::new("flock")).id();
     let formation = commands
         .spawn()
         .insert_bundle(flock::formation::FlockFormationBundle::new(
@@ -681,18 +785,18 @@ fn setup_world(
     commands
         .entity(flock_entt)
         .insert_bundle(flock::FlockMindBundle {
-            members: flock::FlockMembers(members),
+            members,
             directive: flock::FlockMindDirective::HoldPosition {
                 pos: [0., 0., -300.].into(),
                 formation,
             },
             ..Default::default()
-        });
+        }); */
 }
 
 #[allow(unreachable_code)]
 fn craft_state_display(
-    egui_context: ResMut<EguiContext>,
+    mut egui_context: ResMut<EguiContext>,
     cur_craft: Res<mind::player::CurrentCraft>,
     craft_cameras: Query<&mind::player::CraftCamera>,
     mut crafts: Query<(
@@ -704,12 +808,12 @@ fn craft_state_display(
     )>,
 ) {
     let (craft_xform, lin_state, ang_state, mut lin_pid, mut ang_pid) =
-        crafts.get_mut(cur_craft.0).unwrap();
+        crafts.get_mut(cur_craft.0).unwrap_or_log();
     let cam = craft_cameras.single();
     egui::Window::new("Status")
         .collapsible(true)
         .default_pos([1100., 0.])
-        .show(egui_context.ctx(), |ui| {
+        .show(egui_context.ctx_mut(), |ui| {
             ui.label(format!("position:      {:+03.1?}", craft_xform.translation));
             ui.label(format!("linear vel:    {:+03.1?}", lin_state.velocity));
             ui.label(format!("linear input:  {:+03.1?}", lin_state.input));

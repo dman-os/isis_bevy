@@ -1,6 +1,6 @@
 use deps::*;
 
-use bevy::{ecs as bevy_ecs, prelude::*};
+use bevy::{ prelude::*};
 
 use super::ActiveFlockStrategy;
 use super::{super::FlockMembers, FlockStrategy, FlockStrategyBundleExtra};
@@ -42,13 +42,13 @@ pub fn butler(
     for (strategy_entt, strategy, param, _state) in strategies.q0().iter_mut() {
         let (members,) = flocks
             .get(strategy.flock_entt)
-            .expect("unable to find Flock for new strategy");
+            .expect_or_log("unable to find Flock for new strategy");
         for craft_entt in members.iter() {
             let craft_entt = *craft_entt;
 
             let (mut directive,) = crafts
                 .get_mut(craft_entt)
-                .expect("unable to find craft for flock");
+                .expect_or_log("unable to find craft for flock");
             *directive = boid::BoidMindDirective::JoinFomation {
                 formation: param.formation,
             };
@@ -63,7 +63,7 @@ pub fn butler(
 
                 let (mut directive,) = crafts
                     .get_mut(craft_entt)
-                    .expect("unable to find craft for flock");
+                    .expect_or_log("unable to find craft for flock");
                 match directive.as_ref() {
                     boid::BoidMindDirective::JoinFomation { formation } => {
                         if *formation != param.formation {

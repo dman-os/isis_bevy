@@ -1,6 +1,6 @@
 use deps::*;
 
-use bevy::{ecs as bevy_ecs, prelude::*};
+use bevy::{ prelude::*};
 use bevy_rapier3d::prelude::*;
 
 use super::{ActiveBoidStrategy, BoidStrategy, BoidStrategyBundleExtra, BoidStrategyOutput};
@@ -44,7 +44,7 @@ pub fn butler(
     for (entt, param, strategy, mut state) in added_strategies.iter_mut() {
         let (routines, wpns, ..) = crafts
             .get(strategy.craft_entt())
-            .expect("craft not found for BoidStrategy");
+            .expect_or_log("craft not found for BoidStrategy");
         state.intercept_routine = Some(
             commands
                 .spawn()
@@ -124,10 +124,10 @@ pub fn update(
     for (param, strategy, state, mut out) in strategies.iter_mut() {
         let xform = crafts
             .get(strategy.craft_entt())
-            .expect("craft xform not found for CraftStrategy craft_entt");
+            .expect_or_log("craft xform not found for CraftStrategy craft_entt");
         let quarry_xform = crafts
             .get(param.quarry_rb.entity())
-            .expect("quarry_xform not found for on AttackPersue strategy");
+            .expect_or_log("quarry_xform not found for on AttackPersue strategy");
 
         let target_distance_squared =
             (quarry_xform.translation - xform.translation).length_squared();
@@ -138,7 +138,7 @@ pub fn update(
             // intercept
             BoidStrategyOutput {
                 routine_usage: SteeringRoutineComposer::Single {
-                    entt: state.intercept_routine.unwrap(),
+                    entt: state.intercept_routine.unwrap_or_log(),
                 },
                 fire_weapons: false,
             }
@@ -153,8 +153,8 @@ pub fn update(
                 BoidStrategyOutput {
                     routine_usage: SteeringRoutineComposer::PriorityOverride {
                         routines: smallvec::smallvec![
-                            state.avoid_collision.unwrap(),
-                            state.intercept_wpn_speed.unwrap(),
+                            state.avoid_collision.unwrap_or_log(),
+                            state.intercept_wpn_speed.unwrap_or_log(),
                         ],
                     },
                     // fire_weapons: true,
@@ -165,8 +165,8 @@ pub fn update(
                 BoidStrategyOutput {
                     routine_usage: SteeringRoutineComposer::PriorityOverride {
                         routines: smallvec::smallvec![
-                            state.avoid_collision.unwrap(),
-                            state.intercept_routine.unwrap(),
+                            state.avoid_collision.unwrap_or_log(),
+                            state.intercept_routine.unwrap_or_log(),
                         ],
                     },
                     fire_weapons: false,
@@ -176,8 +176,8 @@ pub fn update(
                 BoidStrategyOutput {
                     routine_usage: SteeringRoutineComposer::PriorityOverride {
                         routines: smallvec::smallvec![
-                            state.avoid_collision.unwrap(),
-                            state.intercept_routine.unwrap(),
+                            state.avoid_collision.unwrap_or_log(),
+                            state.intercept_routine.unwrap_or_log(),
                         ],
                     },
                     fire_weapons: false,

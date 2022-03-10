@@ -1,6 +1,6 @@
 use deps::*;
 
-use bevy::{ecs as bevy_ecs, prelude::*};
+use bevy::{ prelude::*};
 
 use super::{ActiveBoidStrategy, BoidStrategy, BoidStrategyBundle, BoidStrategyOutput};
 use crate::mind::boid::{SteeringRoutineComposer, SteeringRoutineWeight};
@@ -46,7 +46,7 @@ pub fn butler(
     >,
 ) {
     for (entt, mut param, strategy, mut out) in added_strategies.iter_mut() {
-        let routine_usage = match param.composition.take().unwrap() {
+        let routine_usage = match param.composition.take().unwrap_or_log() {
             Composition::Single { routine_spawner } => {
                 let routine = routine_spawner(&mut commands, strategy);
 

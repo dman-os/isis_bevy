@@ -18,7 +18,7 @@ pub fn be_ray(
     xform: &GlobalTransform,
     current_lin_vel: TVec3,
     max_lin_accel: TVec3,
-    linear_v_limit: TVec3,
+    linvel_limit: TVec3,
 ) -> (
     crate::mind::boid::LinearRoutineOutput,
     crate::mind::boid::AngularRoutineOutput,
@@ -29,7 +29,7 @@ pub fn be_ray(
 
     if dst < TReal::EPSILON && vel_diff.length_squared() < TReal::EPSILON {
         return (
-            // (target_lin_vel.normalize() * (target_lin_vel / linear_v_limit)).into(),
+            // (target_lin_vel.normalize() * (target_lin_vel / linvel_limit)).into(),
             TVec3::ZERO.into(),
             crate::mind::boid::steering_systems::look_to(
                 xform.rotation.inverse() * target_facing,
@@ -88,15 +88,42 @@ pub fn do_velocity(current_vel: TVec3, target_vel: TVec3) -> TVec3 {
 }
 
 #[inline]
+pub fn arrive_at_vector(
+    current_pos: TVec3,
+    target_pos: TVec3,
+    current_vel: TVec3,
+    target_lin_vel: TVec3,
+    acceleration_radius: TReal,
+    linvel_limit: TVec3,
+) -> TVec3 {
+    let target_offset = target_pos - current_pos;
+    // inverse the z to since -z is fwd
+    let dst = target_offset.length();
+
+    const BREATHING_SPACE_MULTIPLIER: TReal = 1.4;
+
+    let acceleration_radius = acceleration_radius * BREATHING_SPACE_MULTIPLIER;
+    if dst > acceleration_radius {
+        target_offset.normalize()
+    } else {
+        target_lin_vel.lerp(
+            current_vel.normalize() * linvel_limit,
+            dst / acceleration_radius,
+        ) / linvel_limit
+        // target_lin_vel
+    }
+}
+
+#[inline]
 pub fn arrive_at_position(
     current_pos: TVec3,
-    // current_vel: TVec3,
     target_pos: TVec3,
+    target_speed: TReal,
+    max_speed: TReal,
     arrival_tolerance: TReal,
     deceleration_radius: TReal,
 ) -> TVec3 {
     let target_offset = target_pos - current_pos;
-    // inverse the z to since -z is fwd
     let dst = target_offset.length_squared();
     // if we've arrived according to the tolerance
     if dst < arrival_tolerance * arrival_tolerance {
@@ -104,12 +131,13 @@ pub fn arrive_at_position(
         return TVec3::ZERO;
     }
     let dst = dst.sqrt();
-    // let speed_to_target = current_vel.dot(target_offset) / dst;
     // let deceleration_radius = dst_to_change(speed_to_target, 0., max_accel);
 
-    const BREATHING_SPACE_MULTIPLIER: TReal = 1.4;
-    target_offset.normalize()
-        * ((dst - arrival_tolerance) / (deceleration_radius * BREATHING_SPACE_MULTIPLIER))
+    const BREATHING_SPACE_MULTIPLIER: TReal = 1.5;
+    let deceleration_radius = deceleration_radius * BREATHING_SPACE_MULTIPLIER;
+    // let speed_to_target = current_vel.dot(target_offset) / dst;
+    let weight = (dst - arrival_tolerance) / deceleration_radius;
+    target_offset.normalize() * ((target_speed + (max_speed - target_speed) * weight) / max_speed)
 }
 
 #[inline]
@@ -242,7 +270,7 @@ pub fn avoid_obstacle_seblague(
 }
 
 #[inline]
-fn time_to_change(cur_spd: TReal, target_spd: TReal, accel: TReal) -> TReal {
+pub fn time_to_change(cur_spd: TReal, target_spd: TReal, accel: TReal) -> TReal {
     // a = (vf - vi) / t
     // t = (vf - vi) / a
     debug_assert!(accel > TReal::EPSILON, "acceleration is zero");

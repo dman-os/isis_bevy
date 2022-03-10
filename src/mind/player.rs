@@ -6,7 +6,6 @@ use crate::{
     mind::*,
 };
 
-use bevy::{ecs as bevy_ecs, reflect as bevy_reflect};
 use bevy_rapier3d::prelude::*;
 
 use bevy_inspector_egui::Inspectable;
@@ -29,7 +28,7 @@ pub fn player_mind(
             let craft_entt = cur_craft.0;
             let (mut composer,) = crafts
                 .get_mut(craft_entt)
-                .expect("player's CurrentCraft not found");
+                .expect_or_log("player's CurrentCraft not found");
 
             *composer = boid::steering::SteeringRoutineComposer::Single {
                 entt: commands
@@ -142,14 +141,15 @@ pub fn cam_input(
     let target_xform = targets.get(cam.target.unwrap_or_else(|| {
         cur_craft
             .as_ref()
-            .expect("CraftCamera target not set and CurrentCraft res not found")
+            .expect_or_log("CraftCamera target not set and CurrentCraft res not found")
             .0
     }));
+
     if target_xform.is_err() {
         tracing::error!("camera target GlobalXform not found");
         return;
     }
-    let target_xform = target_xform.unwrap();
+    let target_xform = target_xform.unwrap_or_log();
 
     // update cross frame tracking data
     cam.secs_since_manual_rot += time.delta_seconds();
@@ -292,7 +292,7 @@ pub fn wpn_input(
     if k_input.pressed(KeyCode::Space)
         && weapons
             .get(cur_wpn.0)
-            .expect("CurrentWeapon has no WeaponActivationState")
+            .expect_or_log("CurrentWeapon has no WeaponActivationState")
             .can_activate(&time)
     {
         activate_wpn_events.send(ActivateWeaponEvent {
@@ -353,20 +353,20 @@ pub fn engine_input(
         angular_input.z -= 1.;
     }
     if k_input.pressed(KeyCode::LShift) {
-        angular_input *= 10.;
-    } else {
         angular_input *= 0.1;
+    } else {
+        angular_input *= 10.;
     }
 
     let (xform, craft_colliders) = crafts
         .get(cur_craft.0)
-        .expect("unable to find current craft entity");
+        .expect_or_log("unable to find current craft entity");
     player_input.engine_lin = xform.rotation * linear_input;
     player_input.engine_ang = angular_input;
 
     if let Some((cam_xform, craft_cam)) = cameras
         .iter()
-        .find(|(_, c)| c.target.is_none() || c.target.unwrap() == cur_craft.0)
+        .find(|(_, c)| c.target.is_none() || c.target.unwrap_or_log() == cur_craft.0)
     {
         if !craft_cam.auto_align {
             // Wrap the bevy query so it can be used by the query pipeline.
@@ -417,53 +417,6 @@ pub fn setup_markers(
     // mut meshes: ResMut<Assets<Mesh>>,
     // mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    /*   commands
-    .spawn()
-    .insert_bundle(NodeBundle {
-        color: UiColor(Color::NONE),
-        style: Style {
-            position_type: PositionType::Absolute,
-            justify_content: JustifyContent::Center,
-            align_content: AlignContent::Center,
-            size: Size {
-                width: Val::Percent(100.),
-                height: Val::Percent(100.),
-            },
-            ..Default::default()
-        },
-        ..Default::default()
-    })
-    .with_children(|parent| {
-        parent.spawn().insert_bundle(TextBundle {
-            text: Text {
-                // Construct a `Vec` of `TextSection`s
-                sections: vec![TextSection {
-                    value: "+".to_string(),
-                    style: TextStyle {
-                        font: asset_server.load("fonts/test_font.ttf"),
-                        font_size: 25.0,
-                        color: Color::WHITE,
-                    },
-                }],
-                ..Default::default()
-            },
-            style: Style {
-                align_self: AlignSelf::Center,
-                // position_type: PositionType::Absolute,
-                // position: Rect {
-                //     left: Val::Percent(50.),
-                //     right: Val::Percent(50.),
-                //     top: Val::Percent(50.),
-                //     bottom: Val::Percent(50.),
-                //     ..Default::default()
-                // },
-                ..Default::default()
-            },
-            ..Default::default()
-        });
-    })
-    .insert(FacingMarker); */
-
     let text_style = TextStyle {
         font: asset_server.load("fonts/test_font.ttf"),
         font_size: 25.0,
@@ -565,7 +518,7 @@ pub fn update_ui_markers(
     };
     let active_cam = match active_cameras
         .get("camera_3d")
-        .expect("'camera_3d' not found amongst ActiveCameras")
+        .expect_or_log("'camera_3d' not found amongst ActiveCameras")
         .entity
     {
         Some(e) => e,
@@ -574,14 +527,14 @@ pub fn update_ui_markers(
 
     let (craft_xform, eng_conf, vel, craft_colliders) = crafts
         .get(cur_craft)
-        .expect("unable to find current craft entity");
+        .expect_or_log("unable to find current craft entity");
     let (cam_xform, cam) = cameras
         .get(active_cam)
-        .expect("unable to find 'camera_3d' entity");
+        .expect_or_log("unable to find 'camera_3d' entity");
 
     let window = windows
         .get(cam.window)
-        .expect("unable to find Camera's window");
+        .expect_or_log("unable to find Camera's window");
     let window_size = Vec2::new(window.width(), window.height());
     const PADDING: Vec2 = bevy::math::const_vec2!([32., 32.]);
     const MARKER_MAX_RANGE: TReal = 5_000.0;
@@ -593,7 +546,7 @@ pub fn update_ui_markers(
     // craft facing marker
     {
         let ray = Ray::new(
-            (craft_xform.translation + world_vel).into(),
+            (craft_xform.translation).into(),
             craft_xform.forward().into(),
         );
         let toi = match query_pipeline.cast_ray(
@@ -733,7 +686,7 @@ pub fn update_ui_markers(
         let crosshair_pos = crosshair_pos.clamp(PADDING, window_size - PADDING);
         let (mut style, mut visibility, calc_size) = q3
             .get_mut(crosshair.crosshair_entt)
-            .expect("Crosshair not found for weapon");
+            .expect_or_log("Crosshair not found for weapon");
         style.position = Rect {
             left: Val::Px(crosshair_pos.x - (calc_size.size.width * 0.5)),
             right: Val::Px(crosshair_pos.x + (calc_size.size.width * 0.5)),
@@ -774,7 +727,7 @@ pub fn wpn_raycaster_butler(
     };
     let (wpn_index, has_wpns_changed) = crafts
         .get(cur_craft)
-        .expect("CurrentCraft has no CraftWeaponsIndex");
+        .expect_or_log("CurrentCraft has no CraftWeaponsIndex");
     if !has_changed && !has_wpns_changed.is_changed() {
         return;
     }

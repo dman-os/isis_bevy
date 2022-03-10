@@ -1,8 +1,6 @@
 use deps::*;
 
-use bevy::ecs as bevy_ecs;
 use bevy::prelude::*;
-use bevy::reflect as bevy_reflect;
 use bevy_inspector_egui::prelude::*;
 use bevy_rapier3d::prelude::*;
 
@@ -46,6 +44,8 @@ pub struct EngineConfig {
     /// In KG.
     pub mass: TReal,
 
+    // TODO: rename this to soft_acceleration_limit and calculate actual
+    // limit from it andconsidering the availaible force and mass
     /// Maximum acceleration allowed to the craft.
     /// In m/s.
     pub acceleration_limit: TVec3,
@@ -54,23 +54,23 @@ pub struct EngineConfig {
 
     /// Linear velocity cap no matter the input.
     /// In m/s.
-    pub linear_v_limit: TVec3,
+    pub linvel_limit: TVec3,
 
     /// Angular velocity cap no matter the input.
     /// In rad/s.
-    pub angular_v_limit: TVec3,
+    pub angvel_limit: TVec3,
 
     /// Max force the linear thrusters are capable of exerting.
     /// In Newtons.
     pub linear_thruster_force: TVec3,
 
-    /// Whether or not to respect linear_v_limit in the z axis.
+    /// Whether or not to respect linvel_limit in the z axis.
     pub limit_forward_v: bool,
 
-    /// Whether or not to respect linear_v_limit in in the X or Y axis.
+    /// Whether or not to respect linvel_limit in in the X or Y axis.
     pub limit_strafe_v: bool,
 
-    /// Whether or not to respect angular_v_limit.
+    /// Whether or not to respect angvel_limit.
     pub limit_angular_v: bool,
 
     ///  Whether or not to respect acceleration_limit.
@@ -118,8 +118,8 @@ impl Default for EngineConfig {
             acceleration_limit: [6., 6., 6.].into(),
             acceleration_limit_multiplier: 9.81,
             // matters not if v_limit.z is negative since this's a limit
-            linear_v_limit: [100., 100., 200.].into(),
-            angular_v_limit: [3., 3., 3.].into(),
+            linvel_limit: [100., 100., 200.].into(),
+            angvel_limit: [3., 3., 3.].into(),
             limit_forward_v: true,
             limit_strafe_v: true,
             limit_angular_v: true,
@@ -183,7 +183,7 @@ pub fn linear_pid_driver(
 
         // if dampeners are on
         if config.limit_strafe_v {
-            let v_limit = config.linear_v_limit;
+            let v_limit = config.linvel_limit;
 
             // clamp the input to the limit
             linear_input = linear_input.clamp(-v_limit, v_limit);
@@ -239,12 +239,11 @@ pub fn angular_pid_driver(
             let mut angular_input = state.input;
 
             if config.limit_angular_v {
-                angular_input =
-                    angular_input.clamp(-config.angular_v_limit, config.angular_v_limit);
+                angular_input = angular_input.clamp(-config.angvel_limit, config.angvel_limit);
             }
             let max_torque = config
                 .thruster_torque
-                .expect("transient values weren't derived")
+                .expect_or_log("transient values weren't derived")
                 * config.thruster_force_multiplier;
 
             // TODO: work out if this is actually the inertia tensor
@@ -260,7 +259,7 @@ pub fn angular_pid_driver(
             if config.limit_acceleration {
                 let artificial_accel_limit = config
                     .angular_acceleration_limit
-                    .expect("transient values weren't derived");
+                    .expect_or_log("transient values weren't derived");
                 pid.0.integrat_max = acceleration_limit.min(artificial_accel_limit);
                 pid.0.integrat_min = -pid.0.integrat_max;
 

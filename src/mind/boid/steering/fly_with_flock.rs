@@ -1,6 +1,6 @@
 use deps::*;
 
-use bevy::{ecs as bevy_ecs, prelude::*};
+use bevy::{ prelude::*};
 use bevy_rapier3d::prelude::*;
 
 use crate::mind::flock::strategy::cas::*;
@@ -33,10 +33,10 @@ pub fn update(
     for (param, routine, mut lin_out, mut ang_out) in routines.iter_mut() {
         let (xform, vel) = crafts
             .get(routine.craft_entt)
-            .expect("craft entt not found for routine");
+            .expect_or_log("craft entt not found for routine");
         let cas = strategies
             .get(param.flock_strategy_entt)
-            .expect("unable to find craft_group for fly_with_flock routine");
+            .expect_or_log("unable to find craft_group for fly_with_flock routine");
         let (cohesion, allignment, separation) = (
             steering_behaviours::cohesion(xform.translation, cas.member_count, cas.center_sum),
             steering_behaviours::allignment(vel.linvel.into(), cas.member_count, cas.vel_sum),

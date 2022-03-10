@@ -99,14 +99,24 @@ We'll also need someform of scheduling to distribute work across frames.
     - assign goals to Flocks
 - Flock
   - responsiblities
-    - assign goals to Boids
+    - assign directives to Boids
     - formations
+  - directives
+    - hold position
+    - join formation
+    - follow waypoint
+    - attack targets
 - Boid
   - individual orchestration
   - responsiblities
     - engine inputs
     - arms inputs
         - assign targets to turrents 
+  - directives
+    - hold position
+    - follow waypoint
+    - join formation
+    - attack target
 
 ##### Boid Mind
 
@@ -139,7 +149,6 @@ Concerns include:
 * <https://github.com/libgdx/gdx-ai/wiki/Formation-Motion>
 * <https://www.gamasutra.com/view/feature/3314/coordinated_unit_movement.php?print=1>
 * <https://sander.landofsand.com/publications/CIG08Heijden.pdf>
-
 
 Pieces:
 - Pivots
@@ -217,6 +226,6 @@ How about we model this along the axis of independence?
   - Find a better name
 - Boid: a single craft 
 
-### CCD
+### Bug: CCD
 
 Projectiles above 500ms aren't handled well, watch out.

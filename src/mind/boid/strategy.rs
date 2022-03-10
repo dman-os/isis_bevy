@@ -1,6 +1,6 @@
 use deps::*;
 
-use bevy::{ecs as bevy_ecs, prelude::*};
+use bevy::prelude::*;
 use bevy_inspector_egui::Inspectable;
 
 use crate::craft::*;
@@ -167,14 +167,14 @@ pub fn craft_boid_strategy_output_mgr(
         };
         let output = strategies
             .get(strategy)
-            .expect("active BoidStrategy not found");
+            .expect_or_log("active BoidStrategy not found");
         *composer = output.routine_usage.clone(); // FIXME:
 
         if output.fire_weapons {
             for wpn in wpn_index.entt_to_desc.keys() {
                 if weapons
                     .get(*wpn)
-                    .expect("Indexed weapon has no WeaponActivationState")
+                    .expect_or_log("Indexed weapon has no WeaponActivationState")
                     .can_activate(&time)
                 {
                     activate_wpn_events.send(arms::ActivateWeaponEvent { weapon_id: *wpn });

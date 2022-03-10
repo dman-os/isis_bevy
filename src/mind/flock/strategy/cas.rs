@@ -1,6 +1,6 @@
 use deps::*;
 
-use bevy::{ecs as bevy_ecs, prelude::*, reflect as bevy_reflect};
+use bevy::prelude::*;
 use bevy_inspector_egui::prelude::*;
 use bevy_rapier3d::prelude::*;
 
@@ -39,12 +39,12 @@ pub fn butler(
     for (strategy_entt, _param, strategy) in strategies.q0().iter_mut() {
         let members = flocks
             .get(strategy.flock_entt)
-            .expect("unable to find Flock for new strategy");
+            .expect_or_log("unable to find Flock for new strategy");
         for craft_entt in members.iter() {
             let craft_entt = *craft_entt;
             let (mut directive,) = crafts
                 .get_mut(craft_entt)
-                .expect("unable to find Boid for Flock member");
+                .expect_or_log("unable to find Boid for Flock member");
             *directive = boid::BoidMindDirective::FlyWithFlockCAS {
                 param: boid::steering::fly_with_flock::FlyWithFlock {
                     flock_strategy_entt: strategy_entt,
@@ -60,7 +60,7 @@ pub fn butler(
                 let craft_entt = *craft_entt;
                 let (mut directive,) = crafts
                     .get_mut(craft_entt)
-                    .expect("unable to find Boid for Flock member");
+                    .expect_or_log("unable to find Boid for Flock member");
                 match directive.as_ref() {
                     boid::BoidMindDirective::FlyWithFlockCAS { .. } => {
                         continue;
@@ -86,7 +86,7 @@ pub fn update(
     for (strategy, mut state) in strategies.iter_mut() {
         let members = flocks
             .get(strategy.flock_entt)
-            .expect("unable to find FlockMind for new strategy");
+            .expect_or_log("unable to find FlockMind for new strategy");
         state.craft_positions.clear();
         state.vel_sum = TVec3::ZERO;
         state.center_sum = TVec3::ZERO;

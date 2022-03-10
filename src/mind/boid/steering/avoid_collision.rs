@@ -1,6 +1,7 @@
 use deps::*;
 
-use bevy::{ecs as bevy_ecs, prelude::*};
+use bevy::prelude::*;
+use bevy_prototype_debug_lines::*;
 use bevy_rapier3d::prelude::*;
 
 use super::{
@@ -57,6 +58,7 @@ pub fn update(
     query_pipeline: Res<QueryPipeline>,
     collider_query: QueryPipelineColliderComponentsQuery,
     time: Res<Time>,
+    mut lines: ResMut<DebugLines>,
 ) {
     let mut avoid_collision_raycast_ctr = 0usize;
     // Wrap the bevy query so it can be used by the query pipeline.
@@ -65,7 +67,7 @@ pub fn update(
         *lin_out = Default::default();
         let (xform, config, vel, craft_colliders, lin_state) = crafts
             .get(routine.craft_entt)
-            .expect("craft entt not found for routine");
+            .expect_or_log("craft entt not found for routine");
 
         // use last frame's desired vel dir to cast for obstruction
         let dir = xform.rotation * lin_state.input.normalize();
@@ -89,7 +91,10 @@ pub fn update(
             &dir.into(),
             &cast_shape,
             toi,
-            InteractionGroups::new(ColliderGroups::SOLID.bits(), ColliderGroups::SOLID.bits()),
+            InteractionGroups::new(
+                ColliderGroups::SOLID.bits(),
+                (ColliderGroups::SOLID/* | ColliderGroups::CRAFT_SOLID */).bits(),
+            ),
             Some(&|handle| {
                 // not a craft collider
                 !craft_colliders.0.0[..].contains(&handle)
@@ -97,10 +102,12 @@ pub fn update(
                     && !avoid_coll.raycast_exclusion[..].contains(&handle)
             }),
         ) {
+            lines.line_colored(xform.translation, dir * hit.toi, 0., Color::RED);
             // use behavior to avoid it
             *lin_out = steering_behaviours::avoid_obstacle_seblague(
                 dir,
                 &mut |cast_dir| {
+                    lines.line_colored(xform.translation, cast_dir * toi, 0., Color::BLUE);
                     avoid_collision_raycast_ctr += 1;
                     query_pipeline
                         .cast_shape(
@@ -123,10 +130,12 @@ pub fn update(
             )
             .into();
 
+            lines.line_colored(xform.translation, lin_out.0 * toi, 0., Color::GREEN);
+
             // cache avoidance vector
             avoid_coll.last_dodge_timestamp = time.seconds_since_startup();
             avoid_coll.last_dodge_dir = lin_out.0;
-            tracing::info!(
+            tracing::trace!(
                 ?dir,
                 ?lin_out,
                 ?toi,
