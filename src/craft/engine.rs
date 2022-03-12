@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use bevy_inspector_egui::prelude::*;
 use bevy_rapier3d::prelude::*;
 
+use crate::craft::CraftDimensions;
 use crate::math::*;
 
 #[derive(Debug, Default, Clone, Component, Reflect, Inspectable)]
@@ -34,8 +35,7 @@ pub struct AngularEngineState {
 }
 
 // TODO: break this up to multiple components
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Component, Reflect, Inspectable)]
-#[serde(crate = "serde")]
+#[derive(Debug, Clone, Component, Reflect, Inspectable)]
 pub struct EngineConfig {
     ///  Speed to travel at when there is no input i.e. how fast to travel when idle.
     pub set_speed: TVec3,
@@ -81,33 +81,6 @@ pub struct EngineConfig {
     pub angular_thruster_force: TVec3,
 
     pub thruster_force_multiplier: TReal,
-
-    /// The dimensions of the craft.
-    /// TODO: extract this to own component
-    pub extents: TVec3,
-
-    /// TODO: extract these into another component
-    /// DERIVED ITEMS
-
-    /// Angular thruster toruqe, transient auto cacluated value from the
-    /// angular_thrustuer_force according to the craft's shape and mass.
-    /// In  Newton meters.
-    pub thruster_torque: Option<TVec3>,
-
-    /// Angular acceleration limit, another transient auto cacluated value. It's cacluated from
-    /// the normal acceleration limit (which is in m/ss) and adjusted to the size/shape of the craft.
-    /// In rad/s/s.
-    ///
-    /// Curretly unused. Defaults to INFINITY meaning there's no artifical acceleration_limit on
-    /// the crafts. They use all of what's availaible from the thrusters.
-    pub angular_acceleration_limit: Option<TVec3>,
-    ///// Moment of inertia, transient auto cacluated value used to convert the required angular
-    ///// acceleration into the appropriate torque. Aquried directly from Godot's physics engine.
-    ///// In  kg*m*m.
-    ///// Defaults to one to avoid hard to track division by zero errors. The moi is asychronously
-    ///// retrieved from the engine and some frames pass before it happens. Time enough for the NANs
-    ///// to propagate EVERYWHERE!
-    //pub moment_of_inertia: Vector3,
 }
 
 impl Default for EngineConfig {
@@ -127,30 +100,53 @@ impl Default for EngineConfig {
             linear_thruster_force: [1., 1., 1.5].into(),
             angular_thruster_force: [1., 1., 1.].into(),
             thruster_force_multiplier: 1_000_000.0,
-            extents: TVec3::ONE * 8.0,
-            thruster_torque: None,
-            angular_acceleration_limit: None,
         }
-        .derive_items()
     }
 }
 
 impl EngineConfig {
-    /// Use this everytime the config changes to calculate transiet items,
-    pub fn derive_items(mut self) -> Self {
-        self.angular_acceleration_limit = Some([TReal::INFINITY; 3].into());
-
+    /// Use this everytime the [`EngineConfig`] or [`CraftDimensions`] changes to calculate transiet items.
+    pub fn derive_items(&self, dimensions: CraftDimensions) -> DerivedEngineConfig {
         use bevy::math::vec2;
         let axes_diameter: TVec3 = [
-            vec2(self.extents.y, self.extents.z).length(),
-            vec2(self.extents.x, self.extents.z).length(),
-            vec2(self.extents.x, self.extents.y).length(),
+            vec2(dimensions.y, dimensions.z).length(),
+            vec2(dimensions.x, dimensions.z).length(),
+            vec2(dimensions.x, dimensions.y).length(),
         ]
         .into();
 
-        self.thruster_torque = Some(axes_diameter * self.angular_thruster_force);
-        self
+        DerivedEngineConfig {
+            angular_acceleration_limit: [TReal::INFINITY; 3].into(),
+            thruster_torque: axes_diameter * self.angular_thruster_force,
+        }
     }
+
+    pub fn actual_acceleration_limit(&self) -> TVec3 {
+        self.acceleration_limit * self.acceleration_limit_multiplier
+    }
+}
+
+#[derive(Debug, Clone, Component, Reflect, Inspectable)]
+pub struct DerivedEngineConfig {
+    /// Angular thruster toruqe, transient auto cacluated value from the
+    /// angular_thrustuer_force according to the craft's shape and mass.
+    /// In  Newton meters.
+    pub thruster_torque: TVec3,
+
+    /// Angular acceleration limit, another transient auto cacluated value. It's cacluated from
+    /// the normal acceleration limit (which is in m/ss) and adjusted to the size/shape of the craft.
+    /// In rad/s/s.
+    ///
+    /// Curretly unused. Defaults to INFINITY meaning there's no artifical acceleration_limit on
+    /// the crafts. They use all of what's availaible from the thrusters.
+    pub angular_acceleration_limit: TVec3,
+    ///// Moment of inertia, transient auto cacluated value used to convert the required angular
+    ///// acceleration into the appropriate torque. Aquried directly from Godot's physics engine.
+    ///// In  kg*m*m.
+    ///// Defaults to one to avoid hard to track division by zero errors. The moi is asychronously
+    ///// retrieved from the engine and some frames pass before it happens. Time enough for the NANs
+    ///// to propagate EVERYWHERE!
+    //pub moment_of_inertia: Vector3,
 }
 
 #[derive(Debug, Component)]
@@ -229,22 +225,20 @@ pub fn angular_pid_driver(
     mut crafts: Query<(
         &mut AngularEngineState,
         &EngineConfig,
+        &DerivedEngineConfig,
         &mut AngularDriverPid,
         &RigidBodyMassPropsComponent,
     )>,
     time: Res<Time>,
 ) {
-    for (mut state, config, mut pid, mass_props) in crafts.iter_mut() {
+    for (mut state, config, derived_config, mut pid, mass_props) in crafts.iter_mut() {
         {
             let mut angular_input = state.input;
 
             if config.limit_angular_v {
                 angular_input = angular_input.clamp(-config.angvel_limit, config.angvel_limit);
             }
-            let max_torque = config
-                .thruster_torque
-                .expect_or_log("transient values weren't derived")
-                * config.thruster_force_multiplier;
+            let max_torque = derived_config.thruster_torque * config.thruster_force_multiplier;
 
             // TODO: work out if this is actually the inertia tensor
             let local_moi_inv_sqrt = mass_props.local_mprops.inv_principal_inertia_sqrt;
@@ -257,9 +251,7 @@ pub fn angular_pid_driver(
             .into();
 
             if config.limit_acceleration {
-                let artificial_accel_limit = config
-                    .angular_acceleration_limit
-                    .expect_or_log("transient values weren't derived");
+                let artificial_accel_limit = derived_config.angular_acceleration_limit;
                 pid.0.integrat_max = acceleration_limit.min(artificial_accel_limit);
                 pid.0.integrat_min = -pid.0.integrat_max;
 

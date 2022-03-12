@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy_inspector_egui::Inspectable;
 use educe::Educe;
 
-use crate::{math::*, mind::sensors::*};
+use crate::{craft::*, math::*, mind::sensors::*};
 
 use steering::*;
 use strategy::*;
@@ -30,10 +30,8 @@ pub struct BoidMindBundle {
     pub config: BoidMindConfig,
     // smarts layer coordination
     pub active_strategy: CurrentBoidStrategy,
-    pub routine_composer: SteeringRoutineComposer,
+    pub cur_routine: CurrentSteeringRoutine,
     pub directive: BoidMindDirective,
-    // actuation layer separation
-    pub routine_output: BoidSteeringSystemOutput,
 
     // indices
     pub routine_index: SteeringRoutinesIndex,
@@ -46,6 +44,7 @@ pub struct BoidMindBundle {
 pub enum BoidMindDirective {
     #[educe(Default)]
     None,
+    SlaveToPlayerControl,
     HoldPosition {
         pos: TVec3,
     },
@@ -62,26 +61,62 @@ pub enum BoidMindDirective {
 
 pub fn boid_mind(
     mut commands: Commands,
-    mut minds: Query<
-        (Entity, &BoidMindDirective, &mut CurrentBoidStrategy),
+    mut boids: Query<
+        (
+            Entity,
+            &BoidMindDirective,
+            &mut CurrentBoidStrategy,
+            &engine::EngineConfig,
+            &CraftDimensions,
+        ),
         Changed<BoidMindDirective>,
     >,
 ) {
-    for (craft_entt, directive, mut cur_stg) in minds.iter_mut() {
+    for (boid_entt, directive, mut cur_stg, engine_config, dim) in boids.iter_mut() {
         if let Some(cur_stg) = cur_stg.strategy.take() {
             commands.entity(cur_stg).despawn_recursive();
         }
         cur_stg.strategy = match directive {
             BoidMindDirective::None => None,
+            BoidMindDirective::SlaveToPlayerControl => {
+                let player: Box<strategy::custom::RoutineSpawner> = Box::new(move |commands, _| {
+                    commands
+                        .spawn()
+                        .insert_bundle(steering::player::Bundle::new(
+                            steering::player::Player,
+                            boid_entt,
+                        ))
+                        .id()
+                });
+                Some(
+                    commands
+                        .spawn()
+                        .insert_bundle(strategy::custom::Bundle::new(
+                            strategy::custom::Custom::new(strategy::custom::Composition::Single {
+                                routine_spawner: player,
+                            }),
+                            boid_entt,
+                        ))
+                        .id(),
+                )
+            }
             BoidMindDirective::HoldPosition { pos } => {
                 let pos = *pos;
+                let linvel_limit = engine_config.linvel_limit;
+                let accel_limit = engine_config.actual_acceleration_limit();
+                let raycast_toi_modifier = dim.max_element();
+                let cast_shape_radius = raycast_toi_modifier * 0.5;
                 let avoid_collision: Box<strategy::custom::RoutineSpawner> =
                     Box::new(move |commands, _| {
                         commands
                             .spawn()
                             .insert_bundle(steering::avoid_collision::Bundle::new(
-                                steering::avoid_collision::AvoidCollision::default(),
-                                craft_entt,
+                                steering::avoid_collision::AvoidCollision::new(
+                                    cast_shape_radius,
+                                    raycast_toi_modifier,
+                                ),
+                                boid_entt,
+                                Default::default(),
                             ))
                             .id()
                     });
@@ -93,8 +128,10 @@ pub fn boid_mind(
                                 target: arrive::Target::Position { pos, speed: 0. },
                                 arrival_tolerance: 5.,
                                 deceleration_radius: None,
+                                linvel_limit,
+                                accel_limit,
                             },
-                            craft_entt,
+                            boid_entt,
                         ))
                         .id()
                 });
@@ -108,7 +145,7 @@ pub fn boid_mind(
                                     routines: smallvec::smallvec![avoid_collision, arrive],
                                 },
                             ),
-                            craft_entt,
+                            boid_entt,
                         ))
                         .id(),
                 )
@@ -120,7 +157,7 @@ pub fn boid_mind(
                         .spawn()
                         .insert_bundle(strategy::form::Bundle::new(
                             strategy::form::Form { formation },
-                            craft_entt,
+                            boid_entt,
                             Default::default(),
                         ))
                         .id(),
@@ -128,13 +165,19 @@ pub fn boid_mind(
             }
             BoidMindDirective::FlyWithFlockCAS { param } => {
                 let param = param.clone();
+                let raycast_toi_modifier = dim.max_element();
+                let cast_shape_radius = raycast_toi_modifier * 0.5;
                 let avoid_collision: Box<strategy::custom::RoutineSpawner> =
                     Box::new(move |commands, _| {
                         commands
                             .spawn()
                             .insert_bundle(steering::avoid_collision::Bundle::new(
-                                steering::avoid_collision::AvoidCollision::default(),
-                                craft_entt,
+                                steering::avoid_collision::AvoidCollision::new(
+                                    cast_shape_radius,
+                                    raycast_toi_modifier,
+                                ),
+                                boid_entt,
+                                Default::default(),
                             ))
                             .id()
                     });
@@ -142,7 +185,7 @@ pub fn boid_mind(
                     Box::new(move |commands, _| {
                         commands
                             .spawn()
-                            .insert_bundle(steering::fly_with_flock::Bundle::new(param, craft_entt))
+                            .insert_bundle(steering::fly_with_flock::Bundle::new(param, boid_entt))
                             .id()
                     });
 
@@ -155,7 +198,7 @@ pub fn boid_mind(
                                     routines: smallvec::smallvec![avoid_collision, fly_with_flock],
                                 },
                             ),
-                            craft_entt,
+                            boid_entt,
                         ))
                         .id(),
                 )
@@ -165,7 +208,7 @@ pub fn boid_mind(
                     .spawn()
                     .insert_bundle(strategy::run_circuit::Bundle::new(
                         param.clone(),
-                        craft_entt,
+                        boid_entt,
                         Default::default(),
                     ))
                     .id(),

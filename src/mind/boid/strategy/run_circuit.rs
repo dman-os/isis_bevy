@@ -3,14 +3,12 @@ use deps::*;
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
-use super::{
-    super::SteeringRoutineComposer, ActiveBoidStrategy, BoidStrategy, BoidStrategyBundleExtra,
-    BoidStrategyOutput,
-};
 use crate::{
     craft::*,
     mind::{boid::*, *},
 };
+
+use super::{ActiveBoidStrategy, BoidStrategy, BoidStrategyBundleExtra, BoidStrategyOutput};
 
 #[derive(Debug, Clone, Component)]
 pub struct RunCircuit {
@@ -24,6 +22,7 @@ pub struct CircuitWaypoint {
 
 #[derive(Debug, Clone, Component, Default)]
 pub struct RunCircuitState {
+    pub composer_routine: Option<Entity>,
     pub arrive_routine: Option<Entity>,
     pub avoid_collision_routine: Option<Entity>,
 }
@@ -43,15 +42,22 @@ pub fn butler(
         Added<RunCircuit>,
     >,
     waypoints: Query<(&GlobalTransform,)>,
-    crafts: Query<(&sensors::SteeringRoutinesIndex,)>,
+    crafts: Query<(
+        &sensors::SteeringRoutinesIndex,
+        &engine::EngineConfig,
+        &CraftDimensions,
+    )>,
 ) {
     for (entt, param, strategy, mut state, mut out) in added_strategies.iter_mut() {
-        let (routines,) = crafts
-            .get(strategy.craft_entt())
+        let (routines, engine_config, dim) = crafts
+            .get(strategy.boid_entt())
             .expect_or_log("craft not found for BoidStrategy");
         let (waypoint1_xform,) = waypoints
             .get(param.initial_point)
             .expect_or_log("initial CircuitWaypoint not found");
+
+        let raycast_toi_modifier = dim.max_element();
+        let cast_shape_radius = raycast_toi_modifier * 0.5;
         let avoid_collision = routines
             .kind::<avoid_collision::AvoidCollision>()
             .map(|v| v[0])
@@ -59,8 +65,12 @@ pub fn butler(
                 commands
                     .spawn()
                     .insert_bundle(avoid_collision::Bundle::new(
-                        avoid_collision::AvoidCollision::default(),
-                        strategy.craft_entt(),
+                        avoid_collision::AvoidCollision::new(
+                            cast_shape_radius,
+                            raycast_toi_modifier,
+                        ),
+                        strategy.boid_entt(),
+                        Default::default(),
                     ))
                     .id()
             });
@@ -77,17 +87,29 @@ pub fn butler(
                     },
                     arrival_tolerance: 5.,
                     deceleration_radius: None,
+                    linvel_limit: engine_config.linvel_limit,
+                    accel_limit: engine_config.actual_acceleration_limit(),
                 },
-                strategy.craft_entt(),
+                strategy.boid_entt(),
+            ))
+            .id();
+        let compose = commands
+            .spawn()
+            .insert_bundle(compose::Bundle::new(
+                compose::Compose {
+                    composer: compose::SteeringRoutineComposer::PriorityOverride {
+                        routines: smallvec::smallvec![avoid_collision, arrive],
+                    },
+                },
+                strategy.boid_entt(),
             ))
             .id();
 
         state.arrive_routine = Some(arrive);
         state.avoid_collision_routine = Some(avoid_collision);
+        state.composer_routine = Some(compose);
         *out = BoidStrategyOutput {
-            routine_usage: SteeringRoutineComposer::PriorityOverride {
-                routines: smallvec::smallvec![avoid_collision, arrive],
-            },
+            routine: Some(compose),
             fire_weapons: false,
         };
 
@@ -105,7 +127,7 @@ pub fn update(
     crafts: Query<(
         // &CurrentBoidStrategy,
         &sensors::BoidStrategyIndex,
-        &engine::EngineConfig,
+        &CraftDimensions,
         &RigidBodyVelocityComponent,
     )>,
 ) {
@@ -121,7 +143,7 @@ pub fn update(
             } else {
                 collider1.entity()
             };
-            if let Ok(Ok((index, engine_config, vel))) = parents
+            if let Ok(Ok((index, dim, vel))) = parents
                 // if other_collider has a rigd body
                 .get(other_collider)
                 // and that rigd body belongs to a craft
@@ -142,7 +164,7 @@ pub fn update(
                                 speed,
                             } => {
                                 if prev_pos.distance_squared(checkopoint_xform.translation)
-                                    - (engine_config.extents.max_element().powi(2))
+                                    - (dim.max_element().powi(2))
                                     < 1.
                                 {
                                     let cur_spd = vel.linvel.magnitude();

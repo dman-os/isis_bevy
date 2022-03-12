@@ -4,11 +4,12 @@ use deps::*;
 
 use bevy::prelude::*;
 
-use super::{
-    super::SteeringRoutineComposer, ActiveBoidStrategy, BoidStrategy, BoidStrategyBundleExtra,
-    BoidStrategyOutput,
+use crate::craft::*;
+use crate::mind::{
+    boid::{steering::*, strategy::*},
+    flock::formation::*,
+    sensors::*,
 };
-use crate::mind::{boid::steering::*, flock::formation::*, sensors::*};
 
 #[derive(Debug, Clone, Component)]
 pub struct Form {
@@ -17,15 +18,17 @@ pub struct Form {
 
 #[derive(Debug, Clone, Component, Default)]
 pub struct FormState {
-    pub arrive_routine: Option<Entity>,
+    pub composer_routine: Option<Entity>,
     pub avoid_collision_routine: Option<Entity>,
+    pub arrive_routine: Option<Entity>,
+    pub face_routine: Option<Entity>,
 }
 
 pub type Bundle = BoidStrategyBundleExtra<Form, FormState>;
 
 pub fn butler(
     mut commands: Commands,
-    mut formations: Query<(&mut FormationState, &FormationOutput)>,
+    mut formations: Query<(&mut FormationState, &FormationOutputs)>,
     mut added_strategies: Query<
         (
             Entity,
@@ -36,12 +39,19 @@ pub fn butler(
         ),
         Added<Form>,
     >,
-    crafts: Query<&SteeringRoutinesIndex>,
+    crafts: Query<(
+        &SteeringRoutinesIndex,
+        &engine::EngineConfig,
+        &CraftDimensions,
+    )>,
 ) {
     for (entt, param, strategy, mut state, mut out) in added_strategies.iter_mut() {
-        let routines = crafts
-            .get(strategy.craft_entt())
+        let (routines, engine_config, dim) = crafts
+            .get(strategy.boid_entt())
             .expect_or_log("craft not found for BoidStrategy");
+
+        let raycast_toi_modifier = dim.max_element();
+        let cast_shape_radius = raycast_toi_modifier * 0.5;
         let avoid_collision = routines
             .kind::<avoid_collision::AvoidCollision>()
             .map(|v| v[0])
@@ -49,42 +59,75 @@ pub fn butler(
                 commands
                     .spawn()
                     .insert_bundle(avoid_collision::Bundle::new(
-                        avoid_collision::AvoidCollision::default(),
-                        strategy.craft_entt(),
+                        avoid_collision::AvoidCollision::new(
+                            cast_shape_radius,
+                            raycast_toi_modifier,
+                        ),
+                        strategy.boid_entt(),
+                        Default::default(),
                     ))
                     .id()
             });
 
-        let (mut formation_state, fomation_output) = formations
-            .get_mut(param.formation)
-            .expect_or_log("Formation not found for Form strategy");
+        let (mut formation_state, fomation_output) =
+            formations.get_mut(param.formation).unwrap_or_log();
         formation_state
             .boid_strategies
-            .insert(strategy.craft_entt(), entt);
-        let pos = fomation_output
-            .positions
-            .get(&strategy.craft_entt())
-            .expect_or_log("Assigned position not found for formant");
-        let pos = *pos;
-
+            .insert(strategy.boid_entt(), entt);
+        let form_out = fomation_output
+            .index
+            .get(&strategy.boid_entt())
+            .unwrap_or_log();
         let arrive = commands
             .spawn()
             .insert_bundle(arrive::Bundle::new(
                 arrive::Arrive {
-                    target: arrive::Target::Position { pos, speed: 0. },
+                    target: arrive::Target::Position {
+                        pos: form_out.pos,
+                        speed: 0.,
+                    },
                     arrival_tolerance: 5.,
                     deceleration_radius: None,
+                    linvel_limit: engine_config.linvel_limit,
+                    accel_limit: engine_config.actual_acceleration_limit(),
                 },
-                strategy.craft_entt(),
+                strategy.boid_entt(),
+            ))
+            .id();
+        let face = commands
+            .spawn()
+            .insert_bundle(face::Bundle::new(
+                face::Face {
+                    target: face::Target::Direction {
+                        dir: form_out.facing,
+                    },
+                },
+                strategy.boid_entt(),
+            ))
+            .id();
+        let compose = commands
+            .spawn()
+            .insert_bundle(compose::Bundle::new(
+                compose::Compose {
+                    composer: compose::SteeringRoutineComposer::AvoidCollisionHelper {
+                        avoid_collision,
+                        routines: smallvec::smallvec![
+                            ((1., 0.).into(), arrive),
+                            ((0., 1.).into(), face),
+                        ],
+                    },
+                },
+                strategy.boid_entt(),
             ))
             .id();
 
-        state.arrive_routine = Some(arrive);
+        state.composer_routine = Some(compose);
         state.avoid_collision_routine = Some(avoid_collision);
+        state.arrive_routine = Some(arrive);
+        state.face_routine = Some(face);
+
         *out = BoidStrategyOutput {
-            routine_usage: SteeringRoutineComposer::PriorityOverride {
-                routines: smallvec::smallvec![avoid_collision, arrive],
-            },
+            routine: Some(compose),
             fire_weapons: false,
         };
 
@@ -94,38 +137,44 @@ pub fn butler(
 
 pub fn update(
     strategies: Query<(&FormState, Option<&ActiveBoidStrategy>)>,
-    formations: Query<(&FormationOutput, &FormationState)>,
+    formations: Query<(&FormationOutputs, &FormationState)>,
     mut arrive_routines: Query<&mut arrive::Arrive>,
+    mut face_routines: Query<&mut face::Face>,
 ) {
     // return;
     for (out, formation_state) in formations.iter() {
         let mut skip_count = 0;
 
-        for (craft_entt, strategy) in formation_state.boid_strategies.iter() {
-            let (state, is_active) = strategies
-                .get(*strategy)
-                .expect_or_log("From strategy not found for formant");
+        for (boid_entt, strategy) in formation_state.boid_strategies.iter() {
+            let (state, is_active) = strategies.get(*strategy).unwrap_or_log();
             if is_active.is_none() {
                 // skip if boid_strategy is not active yet
                 skip_count += 1;
                 continue;
             }
+            let out = out.index.get(boid_entt).unwrap_or_log();
 
             let mut arrive_param = arrive_routines
                 .get_mut(state.arrive_routine.unwrap_or_log())
-                .expect_or_log("Arrive routine not found for FormState");
-
-            let pos = out
-                .positions
-                .get(craft_entt)
-                .expect_or_log("Assigned position not found for formant");
-            let pos = *pos;
-            arrive_param.target = arrive::Target::Position { pos, speed: 0. };
+                .unwrap_or_log();
+            arrive_param.target = arrive::Target::Position {
+                pos: out.pos,
+                speed: out.speed,
+            };
+            let mut face_param = face_routines
+                .get_mut(state.face_routine.unwrap_or_log())
+                .unwrap_or_log();
+            face_param.target = face::Target::Direction { dir: out.facing };
         }
-        if skip_count == 0 && out.positions.len() != formation_state.boid_strategies.len() {
+        // FIXME: 3 frame gap unless I divvy up the damn PreUpdate stage
+        /* if skip_count == 0 && out.positions.len() != formation_state.boid_strategies.len() {
+            let expected = out.positions.len();
+            let particpating = formation_state.boid_strategies.len();
             tracing::error!(
+                ?expected,
+                ?particpating,
                 "expected formant count to particpating formant count disrepancies detected"
             );
-        }
+        } */
     }
 }

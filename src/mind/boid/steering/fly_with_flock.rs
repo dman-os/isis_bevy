@@ -1,6 +1,6 @@
 use deps::*;
 
-use bevy::{ prelude::*};
+use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
 use crate::mind::flock::strategy::cas::*;
@@ -32,7 +32,7 @@ pub fn update(
 ) {
     for (param, routine, mut lin_out, mut ang_out) in routines.iter_mut() {
         let (xform, vel) = crafts
-            .get(routine.craft_entt)
+            .get(routine.boid_entt)
             .expect_or_log("craft entt not found for routine");
         let cas = strategies
             .get(param.flock_strategy_entt)

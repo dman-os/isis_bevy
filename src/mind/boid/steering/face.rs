@@ -1,9 +1,6 @@
 use deps::*;
 
-use super::{
-    steering_behaviours, ActiveSteeringRoutine, LinOnlyRoutineBundle, LinearRoutineOutput,
-    SteeringRoutine,
-};
+use super::{ActiveSteeringRoutine, AngOnlyRoutineBundle, AngularRoutineOutput, SteeringRoutine};
 use crate::math::*;
 use bevy::prelude::*;
 
@@ -12,19 +9,19 @@ pub enum Target {
     /// must have a global xform
     Object { entt: Entity },
     /// assumed to be in world basis
-    Position { pos: TVec3 },
+    Direction { dir: TVec3 },
 }
 
 #[derive(Debug, Clone, Component)]
-pub struct Seek {
+pub struct Face {
     pub target: Target,
 }
 
-pub type Bundle = LinOnlyRoutineBundle<Seek>;
+pub type Bundle = AngOnlyRoutineBundle<Face>;
 
 pub fn update(
     mut routines: Query<
-        (&Seek, &SteeringRoutine, &mut LinearRoutineOutput),
+        (&Face, &SteeringRoutine, &mut AngularRoutineOutput),
         With<ActiveSteeringRoutine>,
     >,
     objects: Query<&GlobalTransform>,
@@ -34,9 +31,12 @@ pub fn update(
             .get(routine.boid_entt)
             .expect_or_log("craft entt not found for routine");
         let pos = match param.target {
-            Target::Object { entt } => objects.get(entt).unwrap_or_log().translation,
-            Target::Position { pos } => pos,
+            Target::Object { entt } => {
+                let target_pos = objects.get(entt).unwrap_or_log().translation;
+                (target_pos - xform.translation).normalize()
+            }
+            Target::Direction { dir } => dir,
         };
-        *output = steering_behaviours::seek_position(xform.translation, pos).into();
+        *output = super::look_to(xform.rotation.inverse() * pos).into();
     }
 }

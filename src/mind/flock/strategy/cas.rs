@@ -25,7 +25,6 @@ pub struct CASState {
 
 pub type Bundle = FlockStrategyBundleExtra<CAS, CASState>;
 
-#[allow(clippy::type_complexity)]
 pub fn butler(
     mut commands: Commands,
     mut strategies: QuerySet<(
@@ -40,10 +39,10 @@ pub fn butler(
         let members = flocks
             .get(strategy.flock_entt)
             .expect_or_log("unable to find Flock for new strategy");
-        for craft_entt in members.iter() {
-            let craft_entt = *craft_entt;
+        for boid_entt in members.iter() {
+            let boid_entt = *boid_entt;
             let (mut directive,) = crafts
-                .get_mut(craft_entt)
+                .get_mut(boid_entt)
                 .expect_or_log("unable to find Boid for Flock member");
             *directive = boid::BoidMindDirective::FlyWithFlockCAS {
                 param: boid::steering::fly_with_flock::FlyWithFlock {
@@ -56,10 +55,10 @@ pub fn butler(
 
     for (flock_entt, members) in member_changes.iter() {
         if let Ok((strategy_entt, _param)) = strategies.q1().get_mut(flock_entt) {
-            for craft_entt in members.iter() {
-                let craft_entt = *craft_entt;
+            for boid_entt in members.iter() {
+                let boid_entt = *boid_entt;
                 let (mut directive,) = crafts
-                    .get_mut(craft_entt)
+                    .get_mut(boid_entt)
                     .expect_or_log("unable to find Boid for Flock member");
                 match directive.as_ref() {
                     boid::BoidMindDirective::FlyWithFlockCAS { .. } => {

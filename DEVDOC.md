@@ -1,8 +1,15 @@
 #  IN SPACE IN SPACESHIP DEVDOCS
 
-WORLD TO LOCAL - inverse transformation you idiot!
+- WORLD TO LOCAL - inverse transformation you idiot!
+- DON'T TRUST DOCUMENTATION. IT's ALL STALE!
+
 
 ## TODO
+
+- [ ] Engine config change notifications
+- [ ] Replace `expect` with `unwrap`
+- [ ] Consider a bottom up approach to the minds. More complexity at the boid layer.
+- [ ] BUG: added implies changed!
 
 - [ ] Surmount technical hurdles
 - [ ] Refine loop
@@ -14,7 +21,8 @@ WORLD TO LOCAL - inverse transformation you idiot!
 
 - Consider using arc and weak references to improve performance
 
-- How are we treating unused steering routines?
+- How are we treating unused/expired steering routines?
+
 
 ## design doc
 
@@ -92,11 +100,13 @@ We'll also need someform of scheduling to distribute work across frames.
 - Master
   - scenario orchestration
   - responsiblities
-    - assign goals to groups
+    - assign goals to Tribes
 - Tribe
   - faction orchestration
   - responsiblities
-    - assign goals to Flocks
+    - assign goals to Guys
+- Guy
+  - interface between Tribe and Flocks/Boids
 - Flock
   - responsiblities
     - assign directives to Boids
@@ -129,7 +139,9 @@ We'll also need someform of scheduling to distribute work across frames.
   - [x] Cohesion
   - [x] Separation
   - [x] Alignment
-  - [x] Arrive
+  - [ ] Arrive
+    - [x] Arrive with speed
+    - [ ] Arrive with velocity
 
 #### Behavior trees
 
@@ -158,6 +170,23 @@ Pieces:
 - Slots
   - Assignment strategy
     - Hard roles
+
+- [ ] Simple geometric formations
+  - [ ] Sphere
+  - [ ] Line
+  - [ ] Wall
+  - [ ] Delta
+- [ ] Dynamic formations
+  - [ ] Sine wave
+- [ ] Member change handling
+  - [ ] Leader change handling
+- [ ] Formation constraints
+- [ ] Formation lifecycle
+  - [ ] Notifications?
+- [ ] Slot assignment strategy
+  - [ ] Size based?
+  - [ ] Class based
+  - [ ] Assign to closest slot
 
 ## devlog
 
@@ -229,3 +258,47 @@ How about we model this along the axis of independence?
 ### Bug: CCD
 
 Projectiles above 500ms aren't handled well, watch out.
+
+### My Brain Hurts
+
+I've been trying to come up with a good way to architect the way...flocks? formations? directives? I'm sure I"m missing some more peices there. I don't know! I am unbelievably confused. Something's wrong with me. I can't remember the last time my skull felt this thick.
+
+- We have boids. Boids are single crafts.
+- We have flocks. Flocks are a group of boids acting in concert. 
+  - They can ***optionally*** be in formation.
+    - Quad emphasis on "optional".
+- Agents! Agents are the entities that take your orders. Well, most of the time anyways. TODO: find a better name. There are two main kind of agents. Agents that control a single boid and agents that control a single flock. They're the interface between the Tribe/Player and the flocks and boids.
+- I want to implement what the gdx-ai literature describes as [Multi-Level Formation][0]. Formations are applied on flocks but a formation itself can be a *formant* in another formation. "formations of formations". 
+- So, an order is issued to an agent. Let's say, move to this positin and stay there. Here's the pipeline:
+  - Agent recieves order
+    - If controlling a single boid
+      - Simply arrive at location
+    - If controlling a flock
+      - If in formation
+        - Move lead formatin pivot there
+      - If not in formaiton
+        - Move center of mass of boids there?
+- Simple enough in description. But trying to come up with a elegant, ECS way of making this happpen. MUSH!
+
+[0]: https://github.com/libgdx/gdx-ai/wiki/Formation-Motion#multi-level-formation-motion
+
+What's challenging me:
+- Coupling: I'm trying to avoid the different systems from relying on each other too much
+- Formation steering! Which system controls directs the formation motion? The first answer would be the FlockStrategies but having to handle the case where there's no formation set. That just fucks me up.
+- Formation life-cycle.
+
+
+Aaaand, yeah. I can see where I went wrong there but Flocks formations aren't really optional.
+
+Coupling graph:
+
+
+```mermaid
+stateDiagram-v2
+  FlockMind --> FlockStrategy: selects
+  FlockStrategy --> Formation: directs
+  FlockMind --> Formation: selects
+  FlockStrategy --> BoidStrategy: selects
+  BoidStrategy --> SteeringRoutine : selects
+  Formation --> SteeringRoutine : directs
+```

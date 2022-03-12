@@ -1,5 +1,11 @@
+#![allow(
+    clippy::too_many_arguments,
+    clippy::type_complexity,
+    clippy::single_component_path_imports
+)]
+
 #[cfg(feature = "dylink")]
-#[allow(unused_imports, clippy::single_component_path_imports)]
+#[allow(unused_imports)]
 use dylink;
 
 use deps::*;
@@ -38,13 +44,13 @@ fn main() {
     }
 
     // let log_output = LogOutput::default();
-
     tracing_subscriber::fmt()
         .pretty()
         // .compact()
         // .with_ansi(false)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .with_timer(tracing_subscriber::fmt::time::uptime())
+        // .with_timer(FrameTime)
         // .with_writer(log_output.clone())
         .init();
 
@@ -108,12 +114,13 @@ fn main() {
     // .add_plugin(bevy_mod_picking::DebugCursorPickingPlugin)
     // .add_plugin(bevy_prototype_debug_lines::DebugLinesPlugin)
     // .insert_resource(bevy::ecs::schedule::ReportExecutionOrderAmbiguities)
-    .add_plugin(GamePlugin);
+    .add_plugin(GamePlugin)
+    .add_system(bevy::input::system::exit_on_esc_system);
     //println!(
     //"{}",
     //bevy_mod_debugdump::schedule_graph::schedule_graph_dot(&app.app.schedule)
     //);
-    app.run()
+    app.run();
 }
 
 pub struct GamePlugin;
@@ -195,78 +202,6 @@ fn text_update_system(diagnostics: Res<Diagnostics>, mut query: Query<&mut Text,
     }
 }
 
-/*
-
-#[derive(Default, Clone)]
-pub struct LogOutput {
-    vec: std::sync::Arc<parking_lot::RwLock<Vec<String>>>,
-}
-
-// pub struct CustomWriter<'a, T>(parking_lot::RwLockWriteGuard<'a, T>);
-pub struct CustomWriter<'a>(parking_lot::RwLockWriteGuard<'a, Vec<String>>);
-
-// impl<T> std::io::Write for CustomWriter<'_, T>
-// where
-//     T: std::io::Write,
-// {
-impl std::io::Write for CustomWriter<'_> {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        match std::io::stdout().write(buf) {
-            Ok(bytes) => {
-                let _ = self
-                    .0
-                    .push(String::from_utf8_lossy(&buf[0..bytes]).into_owned());
-                Ok(bytes)
-            }
-            err => err,
-        }
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        std::io::stdout().flush()
-    }
-}
-
-impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogOutput {
-    // type Writer = CustomWriter<'a, Vec<u8>>;
-    type Writer = CustomWriter<'a>;
-
-    fn make_writer(&'a self) -> Self::Writer {
-        CustomWriter(self.vec.write())
-    }
-}
-
-fn quake_log(
-    mut egui_context: ResMut<EguiContext>,
-    log_output: Res<LogOutput>,
-    windows: Res<Windows>,
-) {
-    let (default_width, default_height) = if let Some(w) = windows.get_primary() {
-        (w.width() * 0.66, w.height() * 0.15)
-    } else {
-        (500., 500.)
-    };
-    egui::Window::new("log")
-        .collapsible(true)
-        // .fixed_size([default_width, default_height])
-        .anchor(egui::Align2::CENTER_TOP, [0., 0.])
-        .default_width(default_width)
-        .default_height(default_height)
-        .show(egui_context.ctx_mut(), |ui| {
-            let vec = log_output.vec.read();
-            egui::ScrollArea::vertical()
-                .always_show_scroll(true)
-                .stick_to_bottom()
-                .auto_shrink([false; 2])
-                .show(ui, |ui| {
-                    for row in vec.iter() {
-                        ui.monospace(row);
-                        ui.separator();
-                    }
-                });
-        });
-} */
-
 fn setup_environment(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -320,46 +255,6 @@ fn setup_environment(
     */
 }
 
-/* fn my_system(
-    mut commands: Commands,
-    mut polylines: ResMut<Assets<bevy_polyline::Polyline>>,
-    mut polyline_materials: ResMut<Assets<bevy_polyline::PolylineMaterial>>,
-) {
-    const RAY_COUNT: usize = 100;
-    let RAY_DIRECTIONS = {
-        let mut directions = [TVec3::ZERO; RAY_COUNT];
-        let golden_ratio = (1.0 + (5.0 as TReal).sqrt()) * 0.5;
-        let angle_increment = real::consts::TAU * golden_ratio;
-        for ii in 0..RAY_COUNT {
-            let t = ii as TReal / RAY_COUNT as TReal;
-            let inclination = (1.0 - (2.0 * t)).acos();
-            let azimuth = angle_increment * (ii as TReal);
-            directions[ii] = TVec3::new(
-                inclination.sin() * azimuth.cos(),
-                inclination.sin() * azimuth.sin(),
-                inclination.cos(),
-            )
-            .normalize();
-        }
-        directions
-    };
-    for ray in RAY_DIRECTIONS {
-        commands.spawn_bundle(bevy_polyline::PolylineBundle {
-            polyline: polylines.add(bevy_polyline::Polyline {
-                vertices: vec![TVec3::ZERO, ray],
-                ..Default::default()
-            }),
-            material: polyline_materials.add(bevy_polyline::PolylineMaterial {
-                width: 3.0,
-                color: Color::RED,
-                perspective: false,
-                ..Default::default()
-            }),
-            ..Default::default()
-        });
-    }
-} */
-
 fn setup_world(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -367,8 +262,7 @@ fn setup_world(
     asset_server: Res<AssetServer>,
 ) {
     let mut rng = rand::thread_rng();
-
-    // setup the random floating spheres
+    /* // setup the random floating spheres
     {
         const SIZE_RANGE: TReal = 100.;
         const MASS_RANGE: TReal = 1000.;
@@ -447,9 +341,9 @@ fn setup_world(
                     ..Default::default()
                 });
         }
-    }
+    } */
 
-    /*  // spawn the single floating sphere
+    // spawn the single floating sphere
     {
         let radius = 10.;
         let pos = TVec3::new(500., 0., 500.);
@@ -504,7 +398,7 @@ fn setup_world(
                 ..Default::default()
             })
             .insert_bundle(bevy_mod_picking::PickableBundle::default());
-    } */
+    }
 
     // setup the test circuit
     let initial_point = {
@@ -517,7 +411,7 @@ fn setup_world(
         let points = [
             [1000.0, 0., 1000.0 as TReal].into(),
             //[-1000.0, 0., 1000.0].into(),
-            [-1000.0, 0., -1000.0].into(),
+            [-100.0, 0., -100.0].into(),
             //[1000.0, 0., -1000.0].into(),
         ];
         let points = points.map(|p| {
@@ -556,49 +450,51 @@ fn setup_world(
     };
 
     let ball_fighter_model = asset_server.load("models/ball_fighter.gltf#Scene0");
-    let proj_mesh = meshes.add(
-        shape::Icosphere {
-            radius: 0.5,
+    let new_kinetic_cannon: &dyn Fn(_) -> _ = {
+        let proj_mesh = meshes.add(
+            shape::Icosphere {
+                radius: 0.5,
+                ..Default::default()
+            }
+            .into(),
+        );
+        let proj_mtr = materials.add(StandardMaterial {
+            base_color: Color::WHITE,
+            emissive: Color::GOLD * 20.,
+            unlit: true,
             ..Default::default()
-        }
-        .into(),
-    );
-    let proj_mtr = materials.add(StandardMaterial {
-        base_color: Color::WHITE,
-        emissive: Color::GOLD * 20.,
-        unlit: true,
-        ..Default::default()
-    });
-    let new_kinetic_cannon: &dyn Fn(_) -> _ = &(move |craft_entt| {
-        craft::arms::WeaponBundle::new(
-            craft::arms::ProjectileWeapon {
-                proj_damage: craft::attire::Damage {
-                    value: 100.,
-                    damage_type: craft::attire::DamageType::Kinetic,
+        });
+        &(move |boid_entt| {
+            craft::arms::WeaponBundle::new(
+                craft::arms::ProjectileWeapon {
+                    proj_damage: craft::attire::Damage {
+                        value: 100.,
+                        damage_type: craft::attire::DamageType::Kinetic,
+                    },
+                    proj_mesh: proj_mesh.clone(),
+                    proj_mtr: proj_mtr.clone(),
+                    proj_shape: ColliderShape::ball(0.5),
+                    proj_velocity: TVec3::Z * -500.,
+                    proj_lifespan_secs: 3.,
+                    proj_spawn_offset: TVec3::Z * -5.,
+                    proj_mass: ColliderMassProps::Density(
+                        0.25 / (4. * math::real::consts::PI * 0.5 * 0.5),
+                    ),
                 },
-                proj_mesh: proj_mesh.clone(),
-                proj_mtr: proj_mtr.clone(),
-                proj_shape: ColliderShape::ball(0.5),
-                proj_velocity: TVec3::Z * -500.,
-                proj_lifespan_secs: 3.,
-                proj_spawn_offset: TVec3::Z * -5.,
-                proj_mass: ColliderMassProps::Density(
-                    0.25 / (4. * math::real::consts::PI * 0.5 * 0.5),
-                ),
-            },
-            craft_entt,
-            "kinetic_cannon",
-            craft::arms::WeaponActivationState::new_discrete(5.),
-        )
-    });
+                boid_entt,
+                "kinetic_cannon",
+                craft::arms::WeaponActivationState::new_discrete(5.),
+            )
+        })
+    };
 
     use mind::*;
     // spawn the player craft
-    {
+    let player_craft_id = {
         let player_craft_id = commands
             .spawn()
-            .insert(Name::new("player"))
             .insert_bundle(craft::CraftBundle {
+                name: Name::new("player"),
                 collider: craft::attire::CollisionDamageEnabledColliderBundle {
                     collider: ColliderBundle {
                         shape: ColliderShape::ball(4.).into(),
@@ -610,7 +506,12 @@ fn setup_world(
                     },
                     ..Default::default()
                 },
-                ..Default::default()
+                ..craft::CraftBundle::new(
+                    craft::engine::EngineConfig {
+                        ..Default::default()
+                    },
+                    (TVec3::ONE * 8.).into()
+                )
             }).insert_bundle(boid::BoidMindBundle{
                 ..Default::default()
             })
@@ -653,7 +554,9 @@ fn setup_world(
                 ..mind::player::CraftCamera::default()
             });
         commands.insert_resource(mind::player::CurrentCraft(player_craft_id));
-        /* let ball = commands
+        /*
+        // grappling hook line
+        let ball = commands
         .spawn()
         .insert_bundle(RigidBodyBundle {
             position: [0., 0., -70.].into(),
@@ -694,7 +597,8 @@ fn setup_world(
             .insert(Parent(player_craft_id))
             .id();
         commands.insert_resource(mind::player::CurrentWeapon(wpn_id));
-    }
+        player_craft_id
+    };
     let mut members = flock::FlockMembers::default();
     // spawn the ai craft
     for ii in -7..=7 {
@@ -703,10 +607,6 @@ fn setup_world(
             .spawn()
             .insert_bundle(craft::CraftBundle {
                 name: Name::new(format!("ai {ii}")),
-                config: craft::engine::EngineConfig {
-                    // linear_thruster_force: [0.; 3].into(),
-                    ..Default::default()
-                },
                 rigid_body: RigidBodyBundle {
                     position: [25. * ii as TReal, 0., -50.].into(),
                     ..craft::CraftBundle::default_rb_bundle()
@@ -721,10 +621,17 @@ fn setup_world(
                     },
                     ..Default::default()
                 },
-                ..Default::default()
+                ..craft::CraftBundle::new(
+                    craft::engine::EngineConfig {
+                        ..Default::default()
+                    },
+                    (TVec3::ONE * 8.).into()
+                )
             })
             .insert_bundle(boid::BoidMindBundle{
-                directive:boid::BoidMindDirective::RunCircuit{param:boid::strategy::run_circuit::RunCircuit { initial_point }},
+                /* directive: boid::BoidMindDirective::RunCircuit {
+                    param: boid::strategy::run_circuit::RunCircuit { initial_point }
+                }, */
                 ..Default::default()
             })
             .with_children(|parent| {
@@ -768,16 +675,13 @@ fn setup_world(
             }).id());
     }
 
-    /* let flock_entt = commands.spawn().insert(Name::new("flock")).id();
+    let flock_entt = commands.spawn().insert(Name::new("flock")).id();
     let formation = commands
         .spawn()
         .insert_bundle(flock::formation::FlockFormationBundle::new(
-            flock::formation::FormationPattern::Sphere {
-                center: flock::formation::FormationPivot::Anchor {
-                    xform: Transform::from_translation([0., 0., -300.].into()),
-                },
-                radius: 150.,
-            },
+            flock::formation::FormationPattern::Sphere { radius: 150. },
+            // members[0],
+            player_craft_id,
             flock::formation::SlottingStrategy::Simple,
             flock_entt,
         ))
@@ -785,13 +689,16 @@ fn setup_world(
     commands
         .entity(flock_entt)
         .insert_bundle(flock::FlockMindBundle {
-            members,
-            directive: flock::FlockMindDirective::HoldPosition {
-                pos: [0., 0., -300.].into(),
-                formation,
+            directive: flock::FlockMindDirective::FormUp {
+                // leader_directive: Some(
+                //     boid::BoidMindDirective::RunCircuit {
+                //         param: boid::strategy::run_circuit::RunCircuit { initial_point }
+                //     }
+                // ),
+                leader_directive: None,
             },
-            ..Default::default()
-        }); */
+            ..flock::FlockMindBundle::new(members, formation)
+        });
 }
 
 #[allow(unreachable_code)]
@@ -972,5 +879,120 @@ fn move_camera_system(
 
 #[test]
 fn zmblo() {
-    assert_eq!(Transform::identity(), Transform::identity().inverse());
+    let xform = TQuat::from_euler(EulerRot::YZX, 2.12, 1.2432, 3.12321);
+    let lin = xform.inverse() * TVec3::ZERO;
+    let ang = mind::boid::steering::look_to(lin);
+    println!("{lin:?} {ang:?}");
 }
+
+/* fn my_system(
+    mut commands: Commands,
+    mut polylines: ResMut<Assets<bevy_polyline::Polyline>>,
+    mut polyline_materials: ResMut<Assets<bevy_polyline::PolylineMaterial>>,
+) {
+    const RAY_COUNT: usize = 100;
+    let RAY_DIRECTIONS = {
+        let mut directions = [TVec3::ZERO; RAY_COUNT];
+        let golden_ratio = (1.0 + (5.0 as TReal).sqrt()) * 0.5;
+        let angle_increment = real::consts::TAU * golden_ratio;
+        for ii in 0..RAY_COUNT {
+            let t = ii as TReal / RAY_COUNT as TReal;
+            let inclination = (1.0 - (2.0 * t)).acos();
+            let azimuth = angle_increment * (ii as TReal);
+            directions[ii] = TVec3::new(
+                inclination.sin() * azimuth.cos(),
+                inclination.sin() * azimuth.sin(),
+                inclination.cos(),
+            )
+            .normalize();
+        }
+        directions
+    };
+    for ray in RAY_DIRECTIONS {
+        commands.spawn_bundle(bevy_polyline::PolylineBundle {
+            polyline: polylines.add(bevy_polyline::Polyline {
+                vertices: vec![TVec3::ZERO, ray],
+                ..Default::default()
+            }),
+            material: polyline_materials.add(bevy_polyline::PolylineMaterial {
+                width: 3.0,
+                color: Color::RED,
+                perspective: false,
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+    }
+}
+*/
+
+/*
+#[derive(Default, Clone)]
+pub struct LogOutput {
+    vec: std::sync::Arc<parking_lot::RwLock<Vec<String>>>,
+}
+
+// pub struct CustomWriter<'a, T>(parking_lot::RwLockWriteGuard<'a, T>);
+pub struct CustomWriter<'a>(parking_lot::RwLockWriteGuard<'a, Vec<String>>);
+
+// impl<T> std::io::Write for CustomWriter<'_, T>
+// where
+//     T: std::io::Write,
+// {
+impl std::io::Write for CustomWriter<'_> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match std::io::stdout().write(buf) {
+            Ok(bytes) => {
+                let _ = self
+                    .0
+                    .push(String::from_utf8_lossy(&buf[0..bytes]).into_owned());
+                Ok(bytes)
+            }
+            err => err,
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        std::io::stdout().flush()
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogOutput {
+    // type Writer = CustomWriter<'a, Vec<u8>>;
+    type Writer = CustomWriter<'a>;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        CustomWriter(self.vec.write())
+    }
+}
+
+fn quake_log(
+    mut egui_context: ResMut<EguiContext>,
+    log_output: Res<LogOutput>,
+    windows: Res<Windows>,
+) {
+    let (default_width, default_height) = if let Some(w) = windows.get_primary() {
+        (w.width() * 0.66, w.height() * 0.15)
+    } else {
+        (500., 500.)
+    };
+    egui::Window::new("log")
+        .collapsible(true)
+        // .fixed_size([default_width, default_height])
+        .anchor(egui::Align2::CENTER_TOP, [0., 0.])
+        .default_width(default_width)
+        .default_height(default_height)
+        .show(egui_context.ctx_mut(), |ui| {
+            let vec = log_output.vec.read();
+            egui::ScrollArea::vertical()
+                .always_show_scroll(true)
+                .stick_to_bottom()
+                .auto_shrink([false; 2])
+                .show(ui, |ui| {
+                    for row in vec.iter() {
+                        ui.monospace(row);
+                        ui.separator();
+                    }
+                });
+        });
+} */

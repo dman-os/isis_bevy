@@ -133,7 +133,7 @@ pub fn arrive_at_position(
     let dst = dst.sqrt();
     // let deceleration_radius = dst_to_change(speed_to_target, 0., max_accel);
 
-    const BREATHING_SPACE_MULTIPLIER: TReal = 1.5;
+    const BREATHING_SPACE_MULTIPLIER: TReal = 1.4;
     let deceleration_radius = deceleration_radius * BREATHING_SPACE_MULTIPLIER;
     // let speed_to_target = current_vel.dot(target_offset) / dst;
     let weight = (dst - arrival_tolerance) / deceleration_radius;

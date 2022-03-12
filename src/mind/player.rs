@@ -1,7 +1,7 @@
 use deps::*;
 
 use crate::{
-    craft::{arms::*, attire::*},
+    craft::{arms::*, attire::*, *},
     math::*,
     mind::*,
 };
@@ -16,29 +16,19 @@ pub struct PlayerMindConfig {
 }
 
 pub fn player_mind(
-    mut commands: Commands,
     cur_craft: Res<CurrentCraft>,
     config: ResMut<PlayerMindConfig>,
-    mut crafts: Query<(&mut boid::steering::SteeringRoutineComposer,)>,
+    mut crafts: Query<(&mut boid::BoidMindDirective,)>,
 ) {
     if config.is_changed() {
         if config.auto_steer {
             todo!()
         } else {
-            let craft_entt = cur_craft.0;
-            let (mut composer,) = crafts
-                .get_mut(craft_entt)
+            let boid_entt = cur_craft.0;
+            let (mut directive,) = crafts
+                .get_mut(boid_entt)
                 .expect_or_log("player's CurrentCraft not found");
-
-            *composer = boid::steering::SteeringRoutineComposer::Single {
-                entt: commands
-                    .spawn()
-                    .insert_bundle(boid::steering::player::Bundle::new(
-                        boid::steering::player::Player,
-                        craft_entt,
-                    ))
-                    .id(),
-            }
+            *directive = boid::BoidMindDirective::SlaveToPlayerControl;
         }
     }
 }
@@ -123,19 +113,27 @@ pub fn cam_input(
     // mut cursor_moved_events: EventReader<CursorMoved>,
     // windows: Res<Windows>,
 ) {
-    let mouse_motion = mouse_motion_events
-        .iter()
-        .map(|m| m.delta)
-        .reduce(|m1, m2| m1 + m2)
-        .unwrap_or_default();
-
-    let _mouse_wheel = mouse_wheel_events
-        .iter()
-        .map(|m| m.y)
-        .reduce(|m1, m2| m1 + m2)
-        .unwrap_or_default();
-
     let toggle_free_look = k_input.just_released(KeyCode::Grave);
+    let disable_mouse_cam = k_input.pressed(KeyCode::LControl);
+    let mouse_motion = if !disable_mouse_cam {
+        mouse_motion_events
+            .iter()
+            .map(|m| m.delta)
+            .reduce(|m1, m2| m1 + m2)
+            .unwrap_or_default()
+    } else {
+        Vec2::ZERO
+    };
+
+    let mouse_wheel = if !disable_mouse_cam {
+        mouse_wheel_events
+            .iter()
+            .map(|m| m.y)
+            .reduce(|m1, m2| m1 + m2)
+            .unwrap_or_default()
+    } else {
+        0.
+    };
 
     let (mut cam, mut xform, glob_xform, _bevy_cam) = cameras.single_mut();
     let target_xform = targets.get(cam.target.unwrap_or_else(|| {
@@ -153,7 +151,7 @@ pub fn cam_input(
 
     // update cross frame tracking data
     cam.secs_since_manual_rot += time.delta_seconds();
-    // cam.distance += mouse_wheel;
+    cam.distance += mouse_wheel;
     if toggle_free_look {
         cam.auto_align = !cam.auto_align;
     }
@@ -489,7 +487,6 @@ pub fn setup_markers(
         .insert(VelocityDirMarker);
 }
 
-#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn update_ui_markers(
     mut query: QuerySet<(
         QueryState<(&mut Style, &mut Visibility, &CalculatedSize), With<CraftFwdMarker>>,
@@ -500,7 +497,7 @@ pub fn update_ui_markers(
     cur_craft: Option<Res<CurrentCraft>>,
     crafts: Query<(
         &GlobalTransform,
-        &crate::craft::engine::EngineConfig,
+        &CraftDimensions,
         &RigidBodyVelocityComponent,
         &RigidBodyCollidersComponent,
     )>,
@@ -525,7 +522,7 @@ pub fn update_ui_markers(
         None => return,
     };
 
-    let (craft_xform, eng_conf, vel, craft_colliders) = crafts
+    let (craft_xform, dim, vel, craft_colliders) = crafts
         .get(cur_craft)
         .expect_or_log("unable to find current craft entity");
     let (cam_xform, cam) = cameras
@@ -587,8 +584,7 @@ pub fn update_ui_markers(
             .world_to_screen(
                 &windows,
                 cam_xform,
-                craft_xform.translation
-                    + (world_vel.normalize() * eng_conf.extents.max_element() * 2.),
+                craft_xform.translation + (world_vel.normalize() * dim.max_element() * 2.),
             )
             .unwrap_or_default();
         let vel_marker_pos = vel_marker_pos.clamp(PADDING, window_size - PADDING);
@@ -706,7 +702,6 @@ pub struct CrosshairState {
     pub weapon_range: TReal,
 }
 
-#[allow(clippy::type_complexity)]
 pub fn wpn_raycaster_butler(
     mut commands: Commands,
     cur_craft: Option<Res<CurrentCraft>>,

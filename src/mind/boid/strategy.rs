@@ -11,7 +11,7 @@ pub mod custom;
 pub mod form;
 pub mod run_circuit;
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, Default)]
 #[component(storage = "SparseSet")]
 pub struct ActiveBoidStrategy;
 
@@ -34,13 +34,13 @@ where
 {
     // pub const DEFAULT_NAME: &'static str = std::any::type_name::<P>();
     pub const DEFAULT_NAME: &'static str = "boid_strategy";
-    pub fn new(param: P, craft_entt: Entity) -> Self {
+    pub fn new(param: P, boid_entt: Entity) -> Self {
         Self {
             param,
             output: Default::default(),
-            tag: BoidStrategy::new(craft_entt, BoidStrategyKind::of::<P>()),
+            tag: BoidStrategy::new(boid_entt, BoidStrategyKind::of::<P>()),
             name: Self::DEFAULT_NAME.into(),
-            parent: Parent(craft_entt),
+            parent: Parent(boid_entt),
         }
     }
 }
@@ -65,14 +65,14 @@ where
     P: Component,
     P2: Component,
 {
-    pub fn new(param: P, craft_entt: Entity, extra: P2) -> Self {
+    pub fn new(param: P, boid_entt: Entity, extra: P2) -> Self {
         Self {
             param,
             output: Default::default(),
             extra,
-            tag: BoidStrategy::new(craft_entt, BoidStrategyKind::of::<P>()),
+            tag: BoidStrategy::new(boid_entt, BoidStrategyKind::of::<P>()),
             name: BoidStrategyBundle::<P>::DEFAULT_NAME.into(),
-            parent: Parent(craft_entt),
+            parent: Parent(boid_entt),
         }
     }
 }
@@ -98,14 +98,14 @@ where
     P: Component,
     B: Bundle,
 {
-    pub fn new(param: P, craft_entt: Entity, extra: B) -> Self {
+    pub fn new(param: P, boid_entt: Entity, extra: B) -> Self {
         Self {
             param,
             output: Default::default(),
             extra,
-            tag: BoidStrategy::new(craft_entt, BoidStrategyKind::of::<P>()),
+            tag: BoidStrategy::new(boid_entt, BoidStrategyKind::of::<P>()),
             name: BoidStrategyBundle::<P>::DEFAULT_NAME.into(),
-            parent: Parent(craft_entt),
+            parent: Parent(boid_entt),
         }
     }
 }
@@ -113,7 +113,7 @@ where
 #[derive(Debug, Clone, Default, Inspectable, Component)]
 pub struct BoidStrategyOutput {
     #[inspectable(ignore)]
-    pub routine_usage: super::SteeringRoutineComposer,
+    pub routine: Option<Entity>,
     pub fire_weapons: bool,
 }
 
@@ -121,27 +121,25 @@ pub type BoidStrategyKind = std::any::TypeId;
 
 #[derive(Debug, Clone, Copy, Component)]
 pub struct BoidStrategy {
-    craft_entt: Entity,
+    boid_entt: Entity,
     kind: BoidStrategyKind,
 }
 
 impl BoidStrategy {
-    pub fn new(craft_entt: Entity, kind: BoidStrategyKind) -> Self {
-        Self { craft_entt, kind }
+    pub fn new(boid_entt: Entity, kind: BoidStrategyKind) -> Self {
+        Self { boid_entt, kind }
     }
 
-    /// Get a reference to the craft strategy's craft entt.
-    pub fn craft_entt(&self) -> Entity {
-        self.craft_entt
+    pub fn boid_entt(&self) -> Entity {
+        self.boid_entt
     }
 
-    /// Get a reference to the craft strategy's kind.
     pub fn kind(&self) -> BoidStrategyKind {
         self.kind
     }
 }
 
-#[derive(Debug, Default, Clone, Component)]
+#[derive(Debug, Default, Clone, Component, Reflect, Inspectable)]
 pub struct CurrentBoidStrategy {
     pub strategy: Option<Entity>,
 }
@@ -151,7 +149,7 @@ pub struct CurrentBoidStrategy {
 /// TODO: use change tracking to avoid work
 pub fn craft_boid_strategy_output_mgr(
     mut crafts: Query<(
-        &mut boid::steering::SteeringRoutineComposer,
+        &mut boid::steering::CurrentSteeringRoutine,
         &CurrentBoidStrategy,
         &sensors::CraftWeaponsIndex,
     )>,
@@ -160,7 +158,7 @@ pub fn craft_boid_strategy_output_mgr(
     weapons: Query<&arms::WeaponActivationState>,
     time: Res<Time>,
 ) {
-    for (mut composer, mind, wpn_index) in crafts.iter_mut() {
+    for (mut cur_routine, mind, wpn_index) in crafts.iter_mut() {
         let strategy = match mind.strategy {
             Some(s) => s,
             None => continue,
@@ -168,7 +166,7 @@ pub fn craft_boid_strategy_output_mgr(
         let output = strategies
             .get(strategy)
             .expect_or_log("active BoidStrategy not found");
-        *composer = output.routine_usage.clone(); // FIXME:
+        cur_routine.routine = output.routine;
 
         if output.fire_weapons {
             for wpn in wpn_index.entt_to_desc.keys() {

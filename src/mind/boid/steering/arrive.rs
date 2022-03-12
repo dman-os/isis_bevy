@@ -5,7 +5,7 @@ use bevy::prelude::*;
 // use bevy_rapier3d::prelude::*;
 
 use super::{ActiveSteeringRoutine, LinOnlyRoutineBundle, LinearRoutineOutput, SteeringRoutine};
-use crate::{craft::engine::*, math::*};
+use crate::math::*;
 
 /// All vectors are in in world basis
 #[derive(Debug, Clone, Component)]
@@ -24,6 +24,8 @@ pub struct Arrive {
     pub target: Target,
     pub arrival_tolerance: TReal,
     pub deceleration_radius: Option<TReal>,
+    pub accel_limit: TVec3,
+    pub linvel_limit: TVec3,
 }
 
 pub type Bundle = LinOnlyRoutineBundle<Arrive>;
@@ -33,13 +35,13 @@ pub fn update(
         (&Arrive, &SteeringRoutine, &mut LinearRoutineOutput),
         With<ActiveSteeringRoutine>,
     >,
-    crafts: Query<(&GlobalTransform, &EngineConfig)>, // crafts
-                                                      // objects: Query<&GlobalTransform>,
-                                                      // mut lines: ResMut<DebugLines>,
+    boids: Query<(&GlobalTransform,)>, // boids
+                                       // objects: Query<&GlobalTransform>,
+                                       // mut lines: ResMut<DebugLines>,
 ) {
     for (param, routine, mut output) in routines.iter_mut() {
-        let (xform, config) = crafts
-            .get(routine.craft_entt)
+        let (xform,) = boids
+            .get(routine.boid_entt)
             .expect_or_log("craft entt not found for routine");
         *output = match param.target {
             /* Target::Object { entt, offset } => match objects.get(entt) {
@@ -58,8 +60,7 @@ pub fn update(
                 // calclulate the radius from the max speed and avail accel
                 let deceleration_radius = param.deceleration_radius.unwrap_or_else(|| {
                     let max_accel = {
-                        let max_accel =
-                            config.acceleration_limit * config.acceleration_limit_multiplier;
+                        let max_accel = param.accel_limit;
                         let mut min_a = max_accel[0];
                         for ii in [1, 2] {
                             let a = max_accel[ii];
@@ -76,7 +77,7 @@ pub fn update(
                     config.acceleration_limit * config.acceleration_limit_multiplier; */
                     // FIXME: using the limit vel is too conservative, too slow in the final leg
                     super::steering_behaviours::dst_to_change(
-                        config.linvel_limit.z,
+                        param.linvel_limit.z,
                         target_spd,
                         max_accel,
                     )
@@ -95,7 +96,7 @@ pub fn update(
                     xform.translation,
                     pos,
                     target_spd,
-                    config.linvel_limit.z,
+                    param.linvel_limit.z,
                     param.arrival_tolerance,
                     deceleration_radius,
                 )

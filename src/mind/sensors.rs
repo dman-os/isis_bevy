@@ -1,7 +1,6 @@
 use deps::*;
 
 use bevy::{
-    
     prelude::*,
     utils::{AHashExt, HashMap},
 };
@@ -15,24 +14,24 @@ use crate::{
 /// Used to store entity data for [`RemovedComponents`] usage.
 #[derive(Debug, Component)]
 pub struct CrossReferenceIndex<P> {
-    pub data: HashMap<Entity, P>,
+    pub index: HashMap<Entity, P>,
 }
 
 impl<P> Default for CrossReferenceIndex<P> {
     fn default() -> Self {
         Self {
-            data: HashMap::with_capacity(0),
+            index: HashMap::with_capacity(0),
         }
     }
 }
 
 impl<P> CrossReferenceIndex<P> {
     pub fn insert(&mut self, entt: Entity, item: P) {
-        self.data.insert(entt, item);
+        self.index.insert(entt, item);
     }
 
     pub fn remove(&mut self, k: &Entity) -> Option<P> {
-        self.data.remove(k)
+        self.index.remove(k)
     }
 }
 
@@ -75,7 +74,6 @@ pub type SteeringRoutineCrossRefIndex = CrossReferenceIndex<Entity>;
 #[component(storage = "SparseSet")]
 pub struct PreviouslyActiveRoutine;
 
-#[allow(clippy::type_complexity)]
 pub(super) fn craft_routine_index_butler(
     mut commands: Commands,
     mut routines: QuerySet<(
@@ -99,14 +97,14 @@ pub(super) fn craft_routine_index_butler(
 
         // add them to the index
         let mut index = indices
-            .get_mut(routine.craft_entt())
+            .get_mut(routine.boid_entt())
             .expect_or_log("craft not foud SteeringRoutine");
         index.insert(entt, routine.kind());
     }
     for (entt, routine) in routines.q1().iter() {
         let mut index = indices
-            .get_mut(routine.craft_entt())
-            .expect_or_log("craft_entt not found for ActiveRoutine");
+            .get_mut(routine.boid_entt())
+            .expect_or_log("boid_entt not found for ActiveRoutine");
         index.remove(entt);
         commands.entity(entt).remove::<PreviouslyActiveRoutine>();
     }
@@ -181,7 +179,7 @@ pub(super) fn craft_wpn_index_butler(
     for (entt, wpn) in new_wpns.iter() {
         // add them to the per craft
         let mut index = indices
-            .get_mut(wpn.craft_entt())
+            .get_mut(wpn.boid_entt())
             .expect_or_log("CraftWeaponsIndex not found on craft");
 
         let desc = if WeaponKind::of::<ProjectileWeapon>() == wpn.kind() {
@@ -206,7 +204,7 @@ pub(super) fn craft_wpn_index_butler(
         index.insert(entt, desc.clone());
 
         // add them to the global index
-        cross_ref_index.insert(entt, (wpn.craft_entt(), desc));
+        cross_ref_index.insert(entt, (wpn.boid_entt(), desc));
     }
     for removed_wpn in removed.iter() {
         // avoid panicing since the entire craft (and its indices) might be gone
@@ -264,11 +262,11 @@ pub(super) fn craft_strategy_index_butler(
     for (entt, strategy) in new.iter() {
         // add them to the per craft
         let mut index = indices
-            .get_mut(strategy.craft_entt())
-            .expect_or_log("craft not foud CraftStrategy");
+            .get_mut(strategy.boid_entt())
+            .expect_or_log("BoidStrategy's boid_entt not found in world");
         index.insert(entt, strategy.kind());
         // add them to the global index
-        cross_ref_index.insert(entt, strategy.craft_entt());
+        cross_ref_index.insert(entt, strategy.boid_entt());
     }
     for removed_wpn in removed.iter() {
         // avoid panicing since the entire craft (and its indices) might be gone

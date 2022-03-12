@@ -1,79 +1,85 @@
 use deps::*;
 
-use bevy::{ prelude::*, utils::HashMap};
+use bevy::{prelude::*, utils::HashMap};
+use bevy_rapier3d::prelude::*;
 
 use crate::math::*;
-use crate::mind::*;
 
-use super::FlockMembers;
+use super::{FlockChangeEvent, FlockChangeEvents, FlockChangeEventsReader, FlockMembers};
 
-#[derive(Debug, Clone, Component)]
-pub struct CurrentFlockFormation {
-    pub formation: Entity,
-}
-
-/// A bundle for flock strategies.
 #[derive(Bundle)]
 pub struct FlockFormationBundle {
     pub pattern: FormationPattern,
+    pub center_pivot: FormationCenterPivot,
     pub slotting_strategy: SlottingStrategy,
+    pub flock_change_reader: FlockChangeEventsReader,
     pub slots: FormationSlots,
     pub state: FormationState,
-    pub output: FormationOutput,
+    pub output: FormationOutputs,
+    pub name: Name,
     pub tag: FlockFormation,
     pub parent: Parent,
 }
 
 impl FlockFormationBundle {
+    pub const DEFAULT_NAME: &'static str = "flock_formation";
     pub fn new(
         pattern: FormationPattern,
+        center_pivot: Entity,
         slotting_strategy: SlottingStrategy,
         flock_entt: Entity,
     ) -> Self {
         Self {
             pattern,
+            center_pivot: FormationCenterPivot {
+                boid_entt: center_pivot,
+            },
             slotting_strategy,
             slots: Default::default(),
             state: Default::default(),
             output: Default::default(),
             tag: FlockFormation::new(flock_entt),
             parent: Parent(flock_entt),
+            name: Self::DEFAULT_NAME.into(),
+            flock_change_reader: FlockChangeEventsReader::default(),
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, Component)]
-pub struct FlockFormation {
-    flock_entt: Entity,
 }
 
 #[derive(Debug, Component)]
 #[component(storage = "SparseSet")]
 pub struct ActiveFlockFormation;
 
+#[derive(Debug, Clone, Copy, Component)]
+pub struct FlockFormation {
+    flock_entt: Entity,
+}
+
 impl FlockFormation {
     pub fn new(flock_entt: Entity) -> Self {
         Self { flock_entt }
     }
 
-    /// Get a reference to the flock formation's flock entt.
-    pub fn flock_entt(&self) -> &Entity {
-        &self.flock_entt
+    pub fn flock_entt(&self) -> Entity {
+        self.flock_entt
+    }
+}
+
+#[derive(Debug, Clone, Component)]
+pub struct FormationCenterPivot {
+    boid_entt: Entity,
+}
+
+impl FormationCenterPivot {
+    #[inline]
+    pub fn boid_entt(&self) -> Entity {
+        self.boid_entt
     }
 }
 
 #[derive(Debug, Clone, Component)]
 pub enum FormationPattern {
-    Sphere {
-        center: FormationPivot,
-        radius: TReal,
-    },
-}
-
-#[derive(Debug, Clone)]
-pub enum FormationPivot {
-    Craft { entt: Entity },
-    Anchor { xform: Transform },
+    Sphere { radius: TReal },
 }
 
 #[derive(Debug, Clone, Component)]
@@ -81,129 +87,240 @@ pub enum SlottingStrategy {
     Simple,
 }
 
-impl SlottingStrategy {
-    pub fn slot(
-        &self,
-        members: &flock::FlockMembers,
-        // _member_xforms: &'a dyn Fn(Entity) -> &'a GlobalTransform,
-    ) -> FormationSlots {
-        FormationSlots {
-            slots: members.iter().enumerate().map(|(i, c)| (*c, i)).collect(),
-        }
-    }
+#[derive(Debug, Clone)]
+pub enum FormationSlotKind {
+    Boid,
+    Anchor,
+}
+
+#[derive(Debug, Clone)]
+pub struct FormationSlotDesc {
+    pub kind: FormationSlotKind,
 }
 
 #[derive(Debug, Default, Component)]
 pub struct FormationSlots {
-    pub slots: HashMap<Entity, usize>,
+    slots: HashMap<Entity, FormationSlotDesc>,
+    added: smallvec::SmallVec<[Entity; 4]>,
+    removed: smallvec::SmallVec<[(Entity, FormationSlotDesc); 2]>,
+}
+
+impl FormationSlots {
+    #[inline]
+    pub fn insert(&mut self, entt: Entity, kind: FormationSlotKind) -> Option<FormationSlotDesc> {
+        self.added.push(entt);
+        self.slots.insert(entt, FormationSlotDesc { kind })
+    }
+
+    #[inline]
+    pub fn get(&self, entt: Entity) -> Option<&FormationSlotDesc> {
+        self.slots.get(&entt)
+    }
+
+    #[inline]
+    pub fn remove(&mut self, entt: Entity) -> Option<FormationSlotDesc> {
+        match self.slots.remove(&entt) {
+            Some(desc) => {
+                self.removed.push((entt, desc.clone()));
+                Some(desc)
+            }
+            None => None,
+        }
+    }
+
+    #[inline]
+    fn added(&mut self) -> smallvec::Drain<[Entity; 4]> {
+        self.added.drain(0..self.added.len())
+    }
+
+    #[inline]
+    fn removed(&mut self) -> smallvec::Drain<[(Entity, FormationSlotDesc); 2]> {
+        self.removed.drain(0..self.removed.len())
+    }
 }
 
 #[derive(Debug, Component, Default)]
 pub struct FormationState {
     pub boid_strategies: HashMap<Entity, Entity>,
+    pub shadow_leader_anchor: Option<Entity>,
+}
+
+#[derive(Debug, Default)]
+pub struct FormationOutput {
+    pub pos: TVec3,
+    pub facing: TVec3,
+    pub speed: TReal,
 }
 
 #[derive(Debug, Default, Component)]
-pub struct FormationOutput {
-    pub positions: HashMap<Entity, TVec3>,
+pub struct FormationOutputs {
+    pub index: HashMap<Entity, FormationOutput>,
 }
 
-#[derive(Default)]
-pub struct FormationButlerCache {
-    boid_strategies: HashMap<Entity, Entity>,
-    positions: HashMap<Entity, TVec3>,
-}
-
-#[allow(clippy::type_complexity)]
+// TODO: formation constraints
+// TODO: formation dissolution
 pub fn butler(
     mut commands: Commands,
     mut formations: QuerySet<(
+        // new
         QueryState<
             (
                 Entity,
                 &FlockFormation,
+                &FormationCenterPivot,
+                &mut FlockChangeEventsReader,
+                &mut FormationState,
+                &mut FormationOutputs,
                 &SlottingStrategy,
                 &mut FormationSlots,
-                &mut FormationOutput,
             ),
             Added<FlockFormation>,
-        >, // added
+        >,
+        // changed SlottingStrategy
         QueryState<
             (&FlockFormation, &SlottingStrategy, &mut FormationSlots),
             Changed<SlottingStrategy>,
-        >, // added
+        >,
+        // changed slots
+        QueryState<
+            (
+                &SlottingStrategy,
+                &mut FormationSlots,
+                &mut FormationOutputs,
+                &mut FormationState,
+            ),
+            Changed<FormationSlots>,
+        >,
+        // all
         QueryState<(
+            &FlockFormation,
+            &mut FlockChangeEventsReader,
             &SlottingStrategy,
-            &mut FormationState,
             &mut FormationSlots,
-            &mut FormationOutput,
-        )>, // all
+            &mut FormationOutputs,
+            &mut FormationState,
+        )>,
     )>,
-    flocks: Query<&FlockMembers>,
-    crafts: Query<(&GlobalTransform,)>,
-    member_changes: Query<(Entity, &FlockMembers), Changed<FlockMembers>>,
-    mut cache: Local<FormationButlerCache>,
+    flocks: Query<(&FlockMembers, &FlockChangeEvents)>,
+    formants: Query<(&GlobalTransform /* Option<&mut Formant> */,)>,
 ) {
-    // init new formations
-    for (entt, formation, slotting_strategy, mut slots, mut output) in formations.q0().iter_mut() {
-        let members = flocks
-            .get(formation.flock_entt)
-            .expect_or_log("unable to find Flock for Formation");
-
-        for craft_entt in members.iter() {
-            let craft_entt = *craft_entt;
-
-            let (xform,) = crafts
-                .get(craft_entt)
-                .expect_or_log("unable to find craft for flock");
-            output.positions.insert(craft_entt, xform.translation);
-            // *directive = boid::BoidMindDirective::JoinFomation { formation: entt };
+    // serve new formatins
+    // TODO: consider slotting strategy
+    for (
+        entt,
+        formation,
+        center_pivot,
+        mut reader,
+        mut state,
+        mut output,
+        _slotting_strategy,
+        mut slots,
+    ) in formations.q0().iter_mut()
+    {
+        let (members, events) = flocks.get(formation.flock_entt()).unwrap_or_log();
+        // we're not interested in any events before activation
+        let _ = reader.iter(events).skip_while(|_| true);
+        state.shadow_leader_anchor = Some(
+            commands
+                .spawn()
+                .insert_bundle(FormationAnchorBundle::new(
+                    FormationAnchorDirectives::Shadow {
+                        boid: center_pivot.boid_entt,
+                    },
+                    entt,
+                ))
+                .id(),
+        );
+        for member in members.iter().filter(|e| **e != center_pivot.boid_entt) {
+            let (xform,) = formants.get(*member).unwrap_or_log();
+            output.index.insert(
+                *member,
+                FormationOutput {
+                    pos: xform.translation,
+                    ..Default::default()
+                },
+            );
+            slots.slots.insert(
+                *member,
+                FormationSlotDesc {
+                    kind: FormationSlotKind::Boid,
+                },
+            );
         }
-
-        *slots = slotting_strategy.slot(members);
-
         commands.entity(entt).insert(ActiveFlockFormation);
     }
-    // handle slotting strategy changes
-    for (formation, slotting_strategy, mut slots) in formations.q1().iter_mut() {
-        let members = flocks
-            .get(formation.flock_entt)
-            .expect_or_log("unable to find Flock for Formation");
-
-        *slots = slotting_strategy.slot(members);
+    // TODO: serve slotting strategy changes
+    /* for (formation, slotting_strategy, mut slots) in formations.q1().iter_mut() {
+        let (members, ..) = flocks.get(formation.flock_entt()).unwrap_or_log();
+        match slotting_strategy {
+            SlottingStrategy::Simple => {
+                // slots.slots = slots.slots.into_iter().map(|(e, d)| (e, d)).collect()
+                todo!();
+            }
+        }
+    } */
+    // serve slot changes
+    // TODO: consider slotting strategy
+    for (slotting_strategy, mut slots, mut output, mut state) in formations.q2().iter_mut() {
+        // skip early to avoid reslotting
+        if slots.added.is_empty() && slots.removed.is_empty() {
+            continue;
+        }
+        for (removed, _) in slots.removed() {
+            output.index.remove(&removed);
+            state.boid_strategies.remove(&removed);
+        }
+        for added in slots.added() {
+            let (xform,) = formants.get(added).unwrap_or_log();
+            output.index.insert(
+                added,
+                FormationOutput {
+                    pos: xform.translation,
+                    ..Default::default()
+                },
+            );
+        }
+        match slotting_strategy {
+            SlottingStrategy::Simple => todo!(),
+        }
     }
 
-    // handle flock membership changes
-    for (flock_entt, members) in member_changes.iter() {
-        if let Ok((slotting_strategy, mut state, mut slots, mut output)) =
-            formations.q2().get_mut(flock_entt)
-        {
-            std::mem::swap(&mut cache.boid_strategies, &mut state.boid_strategies);
-            std::mem::swap(&mut cache.positions, &mut output.positions);
-            // reset the state while retaining some for pre-existing members
-            for craft_entt in members.iter() {
-                let craft_entt = *craft_entt;
-                if let Some(e) = cache.boid_strategies.remove(&craft_entt) {
-                    state.boid_strategies.insert(craft_entt, e);
-                    output.positions.insert(
-                        craft_entt,
-                        cache
-                            .positions
-                            .remove(&craft_entt)
-                            // .unwrap_or_else(|| Default::default())
-                            .unwrap_or_log(),
+    // serve new foramnts
+    // TODO: leader removal replacement
+    // TODO: consider slotting strategy
+    for (formation, mut reader, _slotting_strategy, mut slots, mut output, mut state) in
+        formations.q3().iter_mut()
+    {
+        let (_, events) = flocks.get(formation.flock_entt()).unwrap_or_log();
+        // we're not interested in any events before the formation's creation
+        for event in reader.iter(events) {
+            match event {
+                FlockChangeEvent::MemberAdded { entt } => {
+                    let entt = *entt;
+                    let (xform,) = formants.get(entt).unwrap_or_log();
+                    // NOTE: avoid triggering change detection by directly accessing the slots
+                    slots.slots.insert(
+                        entt,
+                        FormationSlotDesc {
+                            kind: FormationSlotKind::Boid,
+                        },
                     );
-                } else {
-                    let (xform,) = crafts
-                        .get(craft_entt)
-                        .expect_or_log("unable to find craft for flock");
-                    output.positions.insert(craft_entt, xform.translation);
-                    // *directive = boid::BoidMindDirective::JoinFomation { formation: entt };
+                    output.index.insert(
+                        entt,
+                        FormationOutput {
+                            pos: xform.translation,
+                            ..Default::default()
+                        },
+                    );
+                }
+                FlockChangeEvent::MemberRemoved { entt } => {
+                    let entt = *entt;
+                    // NOTE: avoid triggering change detection by directly accessing the slots
+                    slots.slots.remove(&entt);
+                    output.index.remove(&entt);
+                    state.boid_strategies.remove(&entt);
                 }
             }
-            cache.boid_strategies.clear();
-            cache.positions.clear();
-            *slots = slotting_strategy.slot(members);
         }
     }
 }
@@ -213,37 +330,121 @@ pub fn update(
         (
             &FormationPattern,
             &FormationSlots,
+            &FormationCenterPivot,
             &mut FormationState,
-            &mut FormationOutput,
+            &mut FormationOutputs,
         ),
         With<ActiveFlockFormation>,
     >,
+    anchors: Query<(&FormationAnchorState,)>,
     // flocks: Query<&FlockMembers>,
     // crafts: Query<&GlobalTransform>,
 ) {
-    for (pattern, slots, _state, mut out) in formations.iter_mut() {
-        let member_size = slots.slots.len();
+    for (pattern, slots, center_pivot, state, mut out) in formations.iter_mut() {
+        let member_size = if slots.slots.contains_key(&center_pivot.boid_entt) {
+            slots.slots.len() - 1
+        } else {
+            slots.slots.len()
+        };
         if member_size == 0 {
             continue;
         }
+        let (anchor_state,) = anchors
+            .get(state.shadow_leader_anchor.unwrap_or_log())
+            .unwrap_or_log();
+        let facing = anchor_state.rot * -TVec3::Z;
+        let speed = anchor_state.linvel.length();
         match &pattern {
-            FormationPattern::Sphere { center, radius } => {
-                let center_pivot = match center {
-                    // FormationPivot::Craft { entt } => crafts.get(*entt).unwrap_or_log().into(),
-                    FormationPivot::Craft { .. } => todo!(),
-                    FormationPivot::Anchor { xform } => xform,
-                };
+            FormationPattern::Sphere { radius } => {
+                // TODO: LRU cache the rays
                 let rays = crate::utils::points_on_sphere(member_size);
-                for (craft_entt, ii) in slots.slots.iter() {
-                    out.positions.insert(
-                        *craft_entt,
-                        center_pivot.translation + (rays[*ii] * *radius),
+                for (ii, (boid_entt, _)) in slots
+                    .slots
+                    .iter()
+                    .filter(|(e, _)| **e != center_pivot.boid_entt)
+                    .enumerate()
+                {
+                    out.index.insert(
+                        *boid_entt,
+                        FormationOutput {
+                            pos: anchor_state.pos + (rays[ii] * *radius),
+                            facing,
+                            speed,
+                        },
                     );
                 }
             }
         }
     }
 }
+/*
+#[derive(Debug, Clone, Component)]
+pub enum FormationPivot {
+    Craft { entt: Entity },
+    Anchor { xform: Transform },
+} */
+
+#[derive(Bundle)]
+pub struct FormationAnchorBundle {
+    pub state: FormationAnchorState,
+    pub directive: FormationAnchorDirectives,
+    pub name: Name,
+    pub tag: FormationAnchor,
+    pub parent: Parent,
+}
+
+impl FormationAnchorBundle {
+    pub const DEFAULT_NAME: &'static str = "flock_anchor";
+    pub fn new(directive: FormationAnchorDirectives, formation_entt: Entity) -> Self {
+        Self {
+            directive,
+            tag: FormationAnchor { formation_entt },
+            parent: Parent(formation_entt),
+            name: Self::DEFAULT_NAME.into(),
+            state: Default::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Component)]
+pub struct FormationAnchor {
+    formation_entt: Entity,
+}
+
+#[derive(Debug, Clone, Default, Component)]
+pub struct FormationAnchorState {
+    pos: TVec3,
+    rot: TQuat,
+    linvel: TVec3,
+}
+
+#[derive(Debug, Clone, Component)]
+pub enum FormationAnchorDirectives {
+    Shadow { boid: Entity },
+    // Form { formation: Entity },
+}
+
+pub fn formation_anchor_motion(
+    mut anchors: Query<(&mut FormationAnchorState, &FormationAnchorDirectives)>,
+    boids: Query<(&GlobalTransform, &RigidBodyVelocityComponent)>,
+) {
+    for (mut state, directive) in anchors.iter_mut() {
+        match directive {
+            FormationAnchorDirectives::Shadow { boid } => {
+                let (target_xform, vel) = boids.get(*boid).unwrap_or_log();
+                state.pos = target_xform.translation;
+                state.rot = target_xform.rotation;
+                state.linvel = vel.linvel.into();
+            }
+        }
+    }
+}
+
+/* #[derive(Debug, Clone, Component)]
+#[component(storage = "SparseSet")]
+pub struct Formant {
+    pub formation: Entity,
+} */
 
 /*
 

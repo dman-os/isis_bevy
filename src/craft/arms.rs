@@ -1,6 +1,6 @@
 use deps::*;
 
-use bevy::{ prelude::*};
+use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
 use crate::craft::attire::*;
@@ -35,13 +35,13 @@ where
     pub const DEFAULT_NAME: &'static str = "weapon";
     pub fn new(
         param: P,
-        craft_entt: Entity,
+        boid_entt: Entity,
         class: WeaponClass,
         activation_state: WeaponActivationState,
     ) -> Self {
         Self {
             param,
-            tag: CraftWeapon::new(craft_entt, WeaponKind::of::<P>(), class),
+            tag: CraftWeapon::new(boid_entt, WeaponKind::of::<P>(), class),
             activation_state,
             // name: Self::DEFAULT_NAME.into(),
             name: class.into(),
@@ -55,15 +55,15 @@ pub type WeaponKind = std::any::TypeId;
 /// This tags an entity as a steering routine
 #[derive(Debug, Clone, Copy, Component)]
 pub struct CraftWeapon {
-    craft_entt: Entity,
+    boid_entt: Entity,
     kind: WeaponKind,
     class: WeaponClass,
 }
 
 impl CraftWeapon {
-    pub fn new(craft_entt: Entity, kind: WeaponKind, class: WeaponClass) -> Self {
+    pub fn new(boid_entt: Entity, kind: WeaponKind, class: WeaponClass) -> Self {
         Self {
-            craft_entt,
+            boid_entt,
             kind,
             class,
         }
@@ -71,8 +71,8 @@ impl CraftWeapon {
 
     /// Get a reference to the craft weapon's craft entt.
     #[inline]
-    pub fn craft_entt(&self) -> Entity {
-        self.craft_entt
+    pub fn boid_entt(&self) -> Entity {
+        self.boid_entt
     }
 
     /// Get a reference to the craft weapon's kind.
@@ -184,7 +184,7 @@ fn handle_activate_weapon_events_projectile(
                             ccd_active: true,
                             ccd_thickness: proj_wpn.proj_shape.ccd_thickness(),
                             ccd_max_dist: proj_wpn.proj_shape.ccd_thickness() * 0.5,
-                            ..Default::default()
+                            // ..Default::default()
                         }
                         .into(),
                         position: RigidBodyPosition {

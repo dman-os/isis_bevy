@@ -1,6 +1,6 @@
 use deps::*;
 
-use bevy::{ prelude::*};
+use bevy::prelude::*;
 
 use crate::mind::*;
 

@@ -2,7 +2,7 @@ use deps::*;
 
 use crate::math::*;
 use bevy::prelude::*;
-use bevy_inspector_egui::RegisterInspectable;
+use bevy_inspector_egui::{Inspectable, RegisterInspectable};
 use bevy_rapier3d::prelude::*;
 
 pub mod arms;
@@ -40,6 +40,8 @@ pub struct CraftBundle {
     pub collider: attire::CollisionDamageEnabledColliderBundle,
 
     pub config: engine::EngineConfig,
+    pub derived_config: engine::DerivedEngineConfig,
+    pub dimensions: CraftDimensions,
     pub linear_state: engine::LinearEngineState,
     pub angular_state: engine::AngularEngineState,
     pub linear_pid: engine::LinearDriverPid,
@@ -60,14 +62,14 @@ impl CraftBundle {
             ..Default::default()
         }
     }
-}
-
-impl Default for CraftBundle {
-    fn default() -> Self {
+    pub fn new(engine_config: engine::EngineConfig, dimensions: CraftDimensions) -> Self {
+        let derived_config = engine_config.derive_items(dimensions);
         Self {
             xfrom: Transform::default(),
             global_xform: GlobalTransform::default(),
-            config: Default::default(),
+            config: engine_config,
+            derived_config,
+            dimensions,
             linear_state: Default::default(),
             angular_state: Default::default(),
             linear_pid: engine::LinearDriverPid(crate::utils::PIDControllerVec3::new(
@@ -90,5 +92,16 @@ impl Default for CraftBundle {
             collider: Default::default(),
             name: Self::DEFAULT_NAME.into(),
         }
+    }
+}
+
+/// The dimensions of the craft.
+#[derive(Debug, Clone, Copy, Component, Reflect, Inspectable, educe::Educe)]
+#[educe(Deref, DerefMut)]
+pub struct CraftDimensions(pub TVec3);
+
+impl From<TVec3> for CraftDimensions {
+    fn from(v: TVec3) -> Self {
+        Self(v)
     }
 }

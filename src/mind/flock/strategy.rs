@@ -1,17 +1,17 @@
 use deps::*;
 
-use bevy::{ prelude::*};
+use bevy::prelude::*;
+use bevy_inspector_egui::Inspectable;
 
 pub mod cas;
-pub mod hold;
-pub mod single_formation;
+pub mod form_up;
 
-#[derive(Debug, Clone, Default, Component)]
+#[derive(Debug, Clone, Default, Component, Reflect, Inspectable)]
 pub struct CurrentFlockStrategy {
     pub strategy: Option<Entity>,
 }
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, Default)]
 #[component(storage = "SparseSet")]
 pub struct ActiveFlockStrategy;
 
@@ -22,6 +22,7 @@ where
     P: Component,
 {
     pub param: P,
+    pub name: Name,
     pub tag: FlockStrategy,
     pub parent: Parent,
 }
@@ -30,11 +31,13 @@ impl<P> FlockStrategyBundle<P>
 where
     P: Component,
 {
+    pub const DEFAULT_NAME: &'static str = "flock_strategy";
     pub fn new(param: P, flock_entt: Entity) -> Self {
         Self {
             param,
             tag: FlockStrategy::new(flock_entt, FlockStrategyKind::of::<P>()),
             parent: Parent(flock_entt),
+            name: Self::DEFAULT_NAME.into(),
         }
     }
 }
@@ -48,6 +51,7 @@ where
 {
     pub param: P,
     pub extra: P2,
+    pub name: Name,
     pub tag: FlockStrategy,
     pub parent: Parent,
 }
@@ -57,12 +61,14 @@ where
     P: Component,
     P2: Component,
 {
+    pub const DEFAULT_NAME: &'static str = "flock_strategy";
     pub fn new(param: P, flock_entt: Entity, extra: P2) -> Self {
         Self {
             param,
             extra,
             tag: FlockStrategy::new(flock_entt, FlockStrategyKind::of::<P>()),
             parent: Parent(flock_entt),
+            name: Self::DEFAULT_NAME.into(),
         }
     }
 }
@@ -77,6 +83,7 @@ where
     pub param: P,
     #[bundle]
     pub extra: B,
+    pub name: Name,
     pub tag: FlockStrategy,
     pub parent: Parent,
 }
@@ -86,12 +93,14 @@ where
     P: Component,
     B: Bundle,
 {
+    pub const DEFAULT_NAME: &'static str = "flock_strategy";
     pub fn new(param: P, flock_entt: Entity, extra: B) -> Self {
         Self {
             param,
             extra,
             tag: FlockStrategy::new(flock_entt, FlockStrategyKind::of::<P>()),
             parent: Parent(flock_entt),
+            name: Self::DEFAULT_NAME.into(),
         }
     }
 }
@@ -109,12 +118,10 @@ impl FlockStrategy {
         Self { flock_entt, kind }
     }
 
-    /// Get a reference to the flock strategy's flock entt.
-    pub fn flock_entt(&self) -> &Entity {
-        &self.flock_entt
+    pub fn flock_entt(&self) -> Entity {
+        self.flock_entt
     }
 
-    /// Get a reference to the flock strategy's kind.
     pub fn kind(&self) -> FlockStrategyKind {
         self.kind
     }

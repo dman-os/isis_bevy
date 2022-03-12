@@ -1,9 +1,9 @@
 use deps::*;
 
-use bevy::{ prelude::*};
+use bevy::prelude::*;
 
 use super::{ActiveBoidStrategy, BoidStrategy, BoidStrategyBundle, BoidStrategyOutput};
-use crate::mind::boid::{SteeringRoutineComposer, SteeringRoutineWeight};
+use crate::mind::boid::steering::*;
 
 pub type RoutineSpawner =
     dyn FnOnce(&mut Commands, &BoidStrategy) -> Entity + Sync + 'static + Send;
@@ -14,7 +14,7 @@ pub enum Composition {
     },
     // Linear sum of the routine outputs
     WeightSummed {
-        routines: smallvec::SmallVec<[(SteeringRoutineWeight, Box<RoutineSpawner>); 2]>,
+        routines: smallvec::SmallVec<[(compose::SteeringRoutineWeight, Box<RoutineSpawner>); 2]>,
     },
     /// The first routine that returns a non zero value will be used.
     PriorityOverride {
@@ -46,19 +46,20 @@ pub fn butler(
     >,
 ) {
     for (entt, mut param, strategy, mut out) in added_strategies.iter_mut() {
-        let routine_usage = match param.composition.take().unwrap_or_log() {
+        let composer = match param.composition.take().unwrap_or_log() {
             Composition::Single { routine_spawner } => {
                 let routine = routine_spawner(&mut commands, strategy);
 
-                SteeringRoutineComposer::Single { entt: routine }
+                compose::SteeringRoutineComposer::Single { entt: routine }
             }
             Composition::WeightSummed { routines } => {
-                let routines: smallvec::SmallVec<[(SteeringRoutineWeight, Entity); 2]> = routines
-                    .into_iter()
-                    .map(|(weight, spawner)| (weight, spawner(&mut commands, strategy)))
-                    .collect();
+                let routines: smallvec::SmallVec<[(compose::SteeringRoutineWeight, Entity); 2]> =
+                    routines
+                        .into_iter()
+                        .map(|(weight, spawner)| (weight, spawner(&mut commands, strategy)))
+                        .collect();
 
-                SteeringRoutineComposer::WeightSummed { routines }
+                compose::SteeringRoutineComposer::WeightSummed { routines }
             }
             Composition::PriorityOverride { routines } => {
                 let routines: smallvec::SmallVec<[Entity; 4]> = routines
@@ -66,11 +67,18 @@ pub fn butler(
                     .map(|spawner| spawner(&mut commands, strategy))
                     .collect();
 
-                SteeringRoutineComposer::PriorityOverride { routines }
+                compose::SteeringRoutineComposer::PriorityOverride { routines }
             }
         };
+        let compose = commands
+            .spawn()
+            .insert_bundle(compose::Bundle::new(
+                compose::Compose { composer },
+                strategy.boid_entt(),
+            ))
+            .id();
         *out = BoidStrategyOutput {
-            routine_usage,
+            routine: Some(compose),
             fire_weapons: false,
         };
         commands.entity(entt).insert(ActiveBoidStrategy);
