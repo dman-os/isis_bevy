@@ -129,7 +129,7 @@ pub fn boid_mind(
                                 arrival_tolerance: 5.,
                                 deceleration_radius: None,
                                 linvel_limit,
-                                accel_limit,
+                                avail_accel: accel_limit,
                             },
                             boid_entt,
                         ))

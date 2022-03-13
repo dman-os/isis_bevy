@@ -121,8 +121,16 @@ impl EngineConfig {
         }
     }
 
+    #[inline]
     pub fn actual_acceleration_limit(&self) -> TVec3 {
         self.acceleration_limit * self.acceleration_limit_multiplier
+    }
+
+    /// This doesn't take into account the [`acceleration_limit`]. Clapmp it yourself.
+    #[inline]
+    pub fn avail_lin_accel(&self) -> TVec3 {
+        let max_force = self.linear_thruster_force * self.thruster_force_multiplier;
+        max_force / self.mass
     }
 }
 
@@ -189,35 +197,34 @@ pub fn linear_pid_driver(
             }
         }
 
-        let mut max_force = config.linear_thruster_force * config.thruster_force_multiplier;
-
-        // NOTE: fwd is negative bc rh coord sys
-        let move_fwd = linear_input.z < 0.0;
-        // if input wants to go bacwards
-        if !move_fwd {
-            // only use starfe thrusters force on the z
-            max_force.z = max_force.x.max(max_force.y);
-        }
-
         // calculate max acceleration possible using availaible force
-        let mut acceleration_limit = max_force / config.mass;
+        let acceleration_limit = {
+            let mut acceleration_limit = config.avail_lin_accel();
 
-        if config.limit_acceleration {
-            let artificial_accel_limit =
-                config.acceleration_limit * config.acceleration_limit_multiplier;
+            // NOTE: fwd is negative bc rh coord sys
+            let move_fwd = linear_input.z < 0.0;
 
-            // clamp the actual limit to the artifical limit
-            acceleration_limit =
-                acceleration_limit.clamp(-artificial_accel_limit, artificial_accel_limit);
-        }
+            // if input wants to go bacwards
+            if !move_fwd {
+                // only use starfe thrusters force on the z
+                acceleration_limit.z = acceleration_limit.x.max(acceleration_limit.y);
+            }
+
+            if config.limit_acceleration {
+                let artificial_accel_limit = config.actual_acceleration_limit();
+
+                // clamp the actual limit to the artifical limit
+                acceleration_limit.clamp(-artificial_accel_limit, artificial_accel_limit)
+            } else {
+                acceleration_limit
+            }
+        };
 
         let linear_flame = pid
             .0
             .update(state.velocity, linear_input - state.velocity, 1.);
 
-        let linear_flame = linear_flame.clamp(-acceleration_limit, acceleration_limit);
-
-        state.flame = linear_flame;
+        state.flame = linear_flame.clamp(-acceleration_limit, acceleration_limit);
     }
 }
 
@@ -233,40 +240,45 @@ pub fn angular_pid_driver(
 ) {
     for (mut state, config, derived_config, mut pid, mass_props) in crafts.iter_mut() {
         {
-            let mut angular_input = state.input;
+            let angular_input = if config.limit_angular_v {
+                state.input.clamp(-config.angvel_limit, config.angvel_limit)
+            } else {
+                state.input
+            };
 
-            if config.limit_angular_v {
-                angular_input = angular_input.clamp(-config.angvel_limit, config.angvel_limit);
-            }
-            let max_torque = derived_config.thruster_torque * config.thruster_force_multiplier;
+            let acceleration_limit = {
+                let max_torque = derived_config.thruster_torque * config.thruster_force_multiplier;
 
-            // TODO: work out if this is actually the inertia tensor
-            let local_moi_inv_sqrt = mass_props.local_mprops.inv_principal_inertia_sqrt;
-            // NOTICE: difference here
-            let mut acceleration_limit: TVec3 = [
-                max_torque.x * local_moi_inv_sqrt.x,
-                max_torque.y * local_moi_inv_sqrt.y,
-                max_torque.z * local_moi_inv_sqrt.z,
-            ]
-            .into();
+                // TODO: work out if this is actually the inertia tensor
+                let local_moi_inv_sqrt = mass_props.local_mprops.inv_principal_inertia_sqrt;
 
-            if config.limit_acceleration {
-                let artificial_accel_limit = derived_config.angular_acceleration_limit;
-                pid.0.integrat_max = acceleration_limit.min(artificial_accel_limit);
-                pid.0.integrat_min = -pid.0.integrat_max;
+                // NOTICE: difference here
+                let acceleration_limit: TVec3 = [
+                    max_torque.x * local_moi_inv_sqrt.x,
+                    max_torque.y * local_moi_inv_sqrt.y,
+                    max_torque.z * local_moi_inv_sqrt.z,
+                ]
+                .into();
+                if config.limit_acceleration {
+                    let artificial_accel_limit = derived_config.angular_acceleration_limit;
+                    pid.0.integrat_max = acceleration_limit.min(artificial_accel_limit);
+                    pid.0.integrat_min = -pid.0.integrat_max;
 
-                // clamp the actual limit to the artifical limit
-                acceleration_limit =
-                    acceleration_limit.clamp(-artificial_accel_limit, artificial_accel_limit);
-            }
+                    // clamp the actual limit to the artifical limit
+
+                    acceleration_limit.clamp(-artificial_accel_limit, artificial_accel_limit)
+                } else {
+                    acceleration_limit
+                }
+            };
+
             let angular_flame = pid.0.update(
                 state.velocity,
                 angular_input - state.velocity,
                 time.delta_seconds(),
             );
             // let angular_flame = angular_input * ;
-            let angular_flame = angular_flame.clamp(-acceleration_limit, acceleration_limit);
-            state.flame = angular_flame;
+            state.flame = angular_flame.clamp(-acceleration_limit, acceleration_limit);
         }
     }
 }

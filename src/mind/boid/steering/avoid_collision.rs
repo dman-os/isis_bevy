@@ -26,7 +26,7 @@ impl AvoidCollision {
         Self {
             fwd_prediction_secs: 5.0,
             raycast_exclusion: Default::default(),
-            upheld_dodge_seconds: 1.5,
+            upheld_dodge_seconds: 1.0,
             raycast_toi_modifier,
             cast_shape_radius,
         }

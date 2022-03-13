@@ -23,8 +23,9 @@ pub enum Target {
 pub struct Arrive {
     pub target: Target,
     pub arrival_tolerance: TReal,
+    /// If not given, will be calculated based on accel and linvel_limit
     pub deceleration_radius: Option<TReal>,
-    pub accel_limit: TVec3,
+    pub avail_accel: TVec3,
     pub linvel_limit: TVec3,
 }
 
@@ -60,7 +61,7 @@ pub fn update(
                 // calclulate the radius from the max speed and avail accel
                 let deceleration_radius = param.deceleration_radius.unwrap_or_else(|| {
                     let max_accel = {
-                        let max_accel = param.accel_limit;
+                        let max_accel = param.avail_accel;
                         let mut min_a = max_accel[0];
                         for ii in [1, 2] {
                             let a = max_accel[ii];

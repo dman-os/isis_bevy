@@ -75,6 +75,16 @@ fn delta_angle_radians_test() {
     assert!(delta_angle_radians(-0.2, 0.) - 0.2 <= TReal::EPSILON);
 }
 
+pub trait Vec3Ext {
+    fn move_towards(self, other: Self, max: TReal) -> Self;
+}
+impl Vec3Ext for TVec3 {
+    #[inline]
+    fn move_towards(self, other: Self, max: TReal) -> Self {
+        self + (other - self).clamp_length(-max, max)
+    }
+}
+
 pub trait TransformExt {
     /// Calculate the parent transform from the entity's [`Transform`] and [`GlobalTransform`].
     /// Forget not to check if the entity indeed has a parent first.

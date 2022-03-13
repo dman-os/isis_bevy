@@ -23,7 +23,6 @@
 
 - How are we treating unused/expired steering routines?
 
-
 ## design doc
 
 ### What we want
@@ -288,7 +287,7 @@ What's challenging me:
 - Formation life-cycle.
 
 
-Aaaand, yeah. I can see where I went wrong there but Flocks formations aren't really optional.
+Aaaand, yeah. I can see where I went wrong there. Flocks formations aren't really optional.
 
 Coupling graph:
 
@@ -302,3 +301,7 @@ stateDiagram-v2
   BoidStrategy --> SteeringRoutine : selects
   Formation --> SteeringRoutine : directs
 ```
+
+### BUG: Bevy Debug Lines...
+
+...doesn't draw the lines when the camera's in a certain orientation/position

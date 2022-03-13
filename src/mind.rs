@@ -43,7 +43,10 @@ impl Plugin for MindPlugin {
                 sensors::craft_strategy_index_butler.before(BoidStrategyButler),
             )
             .init_resource::<sensors::SteeringRoutineCrossRefIndex>()
-            .add_system(sensors::craft_routine_index_butler.after(ComposeButler))
+            .add_system_to_stage(
+                CoreStage::PreUpdate,
+                sensors::craft_routine_index_butler.after(ComposeButler),
+            )
             // flock formation systems
             .add_system_to_stage(
                 CoreStage::PreUpdate,
@@ -132,6 +135,7 @@ impl Plugin for MindPlugin {
             .add_system(player::update_ui_markers)
             .insert_resource(player::PlayerMindConfig::default())
             .insert_resource(player::PlayerBoidInput::default())
+            .insert_resource(player::CurrentCraft::default())
             // minds
             .add_system_to_stage(CoreStage::PreUpdate, boid::boid_mind)
             .add_system_to_stage(CoreStage::PreUpdate, flock::flock_mind)

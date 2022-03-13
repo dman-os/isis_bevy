@@ -88,7 +88,7 @@ pub fn butler(
                     arrival_tolerance: 5.,
                     deceleration_radius: None,
                     linvel_limit: engine_config.linvel_limit,
-                    accel_limit: engine_config.actual_acceleration_limit(),
+                    avail_accel: engine_config.actual_acceleration_limit(),
                 },
                 strategy.boid_entt(),
             ))

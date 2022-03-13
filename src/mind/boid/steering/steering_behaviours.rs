@@ -83,10 +83,6 @@ pub fn seek_position(current_pos: TVec3, target_pos: TVec3) -> TVec3 {
     (target_pos - current_pos).normalize()
 }
 
-pub fn do_velocity(current_vel: TVec3, target_vel: TVec3) -> TVec3 {
-    (target_vel - current_vel).normalize()
-}
-
 #[inline]
 pub fn arrive_at_vector(
     current_pos: TVec3,

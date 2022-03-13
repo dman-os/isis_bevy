@@ -20,14 +20,16 @@ pub fn player_mind(
     config: ResMut<PlayerMindConfig>,
     mut crafts: Query<(&mut boid::BoidMindDirective,)>,
 ) {
+    let cur_craft = if let Some(entt) = &cur_craft.entt {
+        *entt
+    } else {
+        return;
+    };
     if config.is_changed() {
         if config.auto_steer {
             todo!()
         } else {
-            let boid_entt = cur_craft.0;
-            let (mut directive,) = crafts
-                .get_mut(boid_entt)
-                .expect_or_log("player's CurrentCraft not found");
+            let (mut directive,) = crafts.get_mut(cur_craft).unwrap_or_log();
             *directive = boid::BoidMindDirective::SlaveToPlayerControl;
         }
     }
@@ -53,11 +55,13 @@ impl PlayerBoidInput {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct CurrentCraft(pub Entity);
+#[derive(Debug, Clone, Default)]
+pub struct CurrentCraft {
+    pub entt: Option<Entity>,
+}
 
-#[derive(Debug, Clone, Copy)]
-pub struct CurrentWeapon(pub Entity);
+// #[derive(Debug, Clone, Copy)]
+// pub struct CurrentWeapon(pub Entity);
 
 /// FIXME: this requires the camera be at the root of the heirarchy
 #[derive(Debug, Component, Reflect, Inspectable)]
@@ -109,10 +113,15 @@ pub fn cam_input(
     mut mouse_wheel_events: EventReader<bevy::input::mouse::MouseWheel>,
     k_input: Res<Input<KeyCode>>,
     time: Res<Time>,
-    cur_craft: Option<Res<CurrentCraft>>,
+    cur_craft: Res<CurrentCraft>,
     // mut cursor_moved_events: EventReader<CursorMoved>,
     // windows: Res<Windows>,
 ) {
+    let cur_craft = if let Some(entt) = &cur_craft.entt {
+        *entt
+    } else {
+        return;
+    };
     let toggle_free_look = k_input.just_released(KeyCode::Grave);
     let disable_mouse_cam = k_input.pressed(KeyCode::LControl);
     let mouse_motion = if !disable_mouse_cam {
@@ -136,12 +145,11 @@ pub fn cam_input(
     };
 
     let (mut cam, mut xform, glob_xform, _bevy_cam) = cameras.single_mut();
-    let target_xform = targets.get(cam.target.unwrap_or_else(|| {
-        cur_craft
-            .as_ref()
-            .expect_or_log("CraftCamera target not set and CurrentCraft res not found")
-            .0
-    }));
+    let target = match &cam.target {
+        Some(e) => *e,
+        None => cur_craft,
+    };
+    let target_xform = targets.get(target);
 
     if target_xform.is_err() {
         tracing::error!("camera target GlobalXform not found");
@@ -255,10 +263,12 @@ pub fn cam_input(
         // pos offset is in the target's basis
         + (target_xform.rotation * cam.position_offset)
         + ((new_rot * TVec3::Z) * cam.distance);
-    // FIXME: this lerp makes very little sense
-    let new_pos = glob_xform
-        .translation
-        .lerp(new_pos, cam.rotation_speed * 4. * time.delta_seconds());
+
+    // const MAX_CAM_DIST: f32 = 10.;
+    // let new_pos = new_pos.move_towards(glob_xform.translation, cam.rotation_speed);
+    // + (glob_xform.translation - new_pos)
+    //     .move_towards(TVec3::ZERO, cam.rotation_speed * 4. * time.delta_seconds())
+    //     .clamp_length(-MAX_CAM_DIST, MAX_CAM_DIST);
     let new_global_xform =
         // base it off the old to preserve scale
         glob_xform
@@ -282,20 +292,25 @@ pub fn cam_input(
 
 pub fn wpn_input(
     k_input: Res<Input<KeyCode>>,
-    cur_wpn: Res<CurrentWeapon>,
+    cur_craft: Res<CurrentCraft>,
+    crafts: Query<(&sensors::CraftWeaponsIndex,)>,
     weapons: Query<&WeaponActivationState>,
     mut activate_wpn_events: EventWriter<ActivateWeaponEvent>,
     time: Res<Time>,
 ) {
-    if k_input.pressed(KeyCode::Space)
-        && weapons
-            .get(cur_wpn.0)
-            .expect_or_log("CurrentWeapon has no WeaponActivationState")
-            .can_activate(&time)
-    {
-        activate_wpn_events.send(ActivateWeaponEvent {
-            weapon_id: cur_wpn.0,
-        });
+    if let Some(entt) = &cur_craft.entt {
+        let (index,) = crafts.get(*entt).unwrap_or_log();
+        if k_input.pressed(KeyCode::Space) {
+            for wpn in index.entt_to_desc.keys() {
+                if weapons
+                    .get(*wpn)
+                    .expect_or_log("CurrentWeapon has no WeaponActivationState")
+                    .can_activate(&time)
+                {
+                    activate_wpn_events.send(ActivateWeaponEvent { weapon_id: *wpn });
+                }
+            }
+        }
     }
 }
 
@@ -309,6 +324,11 @@ pub fn engine_input(
     collider_query: QueryPipelineColliderComponentsQuery,
     // mut pid: Local<RotToVelPid>,
 ) {
+    let cur_craft = if let Some(entt) = &cur_craft.entt {
+        *entt
+    } else {
+        return;
+    };
     let mut linear_input = TVec3::ZERO;
     let mut angular_input = TVec3::ZERO;
 
@@ -357,14 +377,14 @@ pub fn engine_input(
     }
 
     let (xform, craft_colliders) = crafts
-        .get(cur_craft.0)
+        .get(cur_craft)
         .expect_or_log("unable to find current craft entity");
     player_input.engine_lin = xform.rotation * linear_input;
     player_input.engine_ang = angular_input;
 
     if let Some((cam_xform, craft_cam)) = cameras
         .iter()
-        .find(|(_, c)| c.target.is_none() || c.target.unwrap_or_log() == cur_craft.0)
+        .find(|(_, c)| c.target.is_none() || c.target.unwrap_or_log() == cur_craft)
     {
         if !craft_cam.auto_align {
             // Wrap the bevy query so it can be used by the query pipeline.
@@ -494,7 +514,7 @@ pub fn update_ui_markers(
         QueryState<(&mut Style, &mut Visibility, &CalculatedSize), With<FacingMarker>>,
         QueryState<(&mut Style, &mut Visibility, &CalculatedSize), With<Crosshair>>,
     )>,
-    cur_craft: Option<Res<CurrentCraft>>,
+    cur_craft: Res<CurrentCraft>,
     crafts: Query<(
         &GlobalTransform,
         &CraftDimensions,
@@ -509,9 +529,10 @@ pub fn update_ui_markers(
     collider_query: QueryPipelineColliderComponentsQuery,
     weapons: Query<(&GlobalTransform, &CrosshairState)>,
 ) {
-    let cur_craft = match cur_craft.as_ref() {
-        Some(e) => e.0,
-        None => return,
+    let cur_craft = if let Some(entt) = &cur_craft.entt {
+        *entt
+    } else {
+        return;
     };
     let active_cam = match active_cameras
         .get("camera_3d")
@@ -704,7 +725,7 @@ pub struct CrosshairState {
 
 pub fn wpn_raycaster_butler(
     mut commands: Commands,
-    cur_craft: Option<Res<CurrentCraft>>,
+    cur_craft: Res<CurrentCraft>,
     hairy_weapons: Query<Entity, With<CrosshairState>>,
     crafts: Query<
         (
@@ -716,49 +737,58 @@ pub fn wpn_raycaster_butler(
     asset_server: Res<AssetServer>,
     crosshairs: Query<Entity, With<Crosshair>>,
 ) {
-    let (has_changed, cur_craft) = match cur_craft.as_ref() {
-        Some(e) => (e.is_changed() || e.is_added(), e.0),
-        None => return,
-    };
-    let (wpn_index, has_wpns_changed) = crafts
-        .get(cur_craft)
-        .expect_or_log("CurrentCraft has no CraftWeaponsIndex");
-    if !has_changed && !has_wpns_changed.is_changed() {
-        return;
-    }
-    for entt in hairy_weapons.iter() {
-        commands.entity(entt).remove::<CrosshairState>();
-    }
-    for entt in crosshairs.iter() {
-        commands.entity(entt).despawn_recursive();
-    }
-    for (wpn, desc) in wpn_index.entt_to_desc.iter() {
-        let crosshair_entt = commands
-            .spawn()
-            .insert_bundle(TextBundle {
-                text: Text {
-                    sections: vec![TextSection {
-                        value: "(x)".to_string(),
-                        style: TextStyle {
-                            font: asset_server.load("fonts/test_font.ttf"),
-                            font_size: 25.0,
-                            color: Color::rgba(1., 1., 1., 0.9),
-                        }
-                        .clone(),
-                    }],
-                    ..Default::default()
-                },
-                style: Style {
-                    position_type: PositionType::Absolute,
-                    ..Default::default()
-                },
-                ..Default::default()
-            })
-            .insert(Crosshair)
-            .id();
-        commands.entity(*wpn).insert(CrosshairState {
-            crosshair_entt,
-            weapon_range: desc.range,
-        });
+    if let Some(entt) = &cur_craft.entt {
+        let (wpn_index, has_wpns_changed) = crafts.get(*entt).unwrap_or_log();
+        // if something has changed
+        if cur_craft.is_changed() || has_wpns_changed.is_changed() {
+            // clean out everything and reset
+
+            for entt in hairy_weapons.iter() {
+                commands.entity(entt).remove::<CrosshairState>();
+            }
+            for entt in crosshairs.iter() {
+                commands.entity(entt).despawn_recursive();
+            }
+
+            for (wpn, desc) in wpn_index.entt_to_desc.iter() {
+                let crosshair_entt = commands
+                    .spawn()
+                    .insert_bundle(TextBundle {
+                        text: Text {
+                            sections: vec![TextSection {
+                                value: "(x)".to_string(),
+                                style: TextStyle {
+                                    font: asset_server.load("fonts/test_font.ttf"),
+                                    font_size: 25.0,
+                                    color: Color::rgba(1., 1., 1., 0.9),
+                                }
+                                .clone(),
+                            }],
+                            ..Default::default()
+                        },
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    })
+                    .insert(Crosshair)
+                    .id();
+                commands.entity(*wpn).insert(CrosshairState {
+                    crosshair_entt,
+                    weapon_range: desc.range,
+                });
+            }
+        }
+    } else {
+        if cur_craft.is_changed() {
+            // i.e. player has no craft
+            for entt in hairy_weapons.iter() {
+                commands.entity(entt).remove::<CrosshairState>();
+            }
+            for entt in crosshairs.iter() {
+                commands.entity(entt).despawn_recursive();
+            }
+        }
     }
 }

@@ -10,13 +10,7 @@ use dylink;
 
 use deps::*;
 
-use bevy::{
-    diagnostic::*,
-    input::{keyboard::KeyboardInput, ElementState},
-    prelude::*,
-    render::camera::Camera,
-    render::mesh::shape,
-};
+use bevy::{diagnostic::*, prelude::*, render::camera::Camera, render::mesh::shape};
 use bevy_egui::*;
 use bevy_prototype_debug_lines::*;
 use bevy_rapier3d::prelude::*;
@@ -83,7 +77,9 @@ fn main() {
         ui.label(format!("{cmp:#?}",));
         false
     });
+
     let mut app = App::new();
+
     app.add_plugins_with(DefaultPlugins, |group| {
         group.disable::<bevy::log::LogPlugin>()
     })
@@ -91,8 +87,9 @@ fn main() {
         title: "ISIS".to_string(),
         ..Default::default()
     })
-    // .insert_resource(log_output)
     .add_plugin(EguiPlugin)
+    // .insert_resource(log_output)
+    // .add_system(quake_log)
     .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
     .insert_resource(RapierConfiguration {
         gravity: [0.0, 0.0, 0.0].into(),
@@ -120,6 +117,7 @@ fn main() {
     //"{}",
     //bevy_mod_debugdump::schedule_graph::schedule_graph_dot(&app.app.schedule)
     //);
+
     app.run();
 }
 
@@ -131,8 +129,6 @@ impl Plugin for GamePlugin {
             .add_plugin(mind::MindPlugin)
             .add_startup_system(setup_fps_display)
             .add_system(text_update_system)
-            .add_system(move_camera_system)
-            // .add_system(quake_log)
             .insert_resource(CameraMovementSettings {
                 angular_speed: std::f32::consts::PI / 2.,
                 linear_speed: 20.0,
@@ -143,9 +139,11 @@ impl Plugin for GamePlugin {
             .add_startup_system(setup_world)
             .add_system(craft_state_display)
             .add_plugin(DebugLinesPlugin::with_depth_test(true))
+            .add_system(hey_system)
             // .add_system(init_default_routines)
             // .add_startup_system(my_system)
-            .insert_resource(ClearColor(Color::BLACK));
+            .insert_resource(ClearColor(Color::BLACK * 0.9))
+            .add_system(move_camera_system);
     }
 }
 
@@ -240,19 +238,17 @@ fn setup_environment(
             });
         });
 
-    /*
-    // camera
+    /* // camera
     commands
         .spawn_bundle(PerspectiveCameraBundle {
             transform: Transform::from_xyz(-20.0, 25., 20.0).looking_at(TVec3::ZERO, TVec3::Y),
-            perspective_projection: PerspectiveProjection{
-                far: 10_000.,
+            perspective_projection: PerspectiveProjection {
+                far: 20_000.,
                 ..Default::default()
             },
             ..Default::default()
         })
-        .insert(GameCamera);
-    */
+        .insert(GameCamera); */
 }
 
 fn setup_world(
@@ -260,6 +256,7 @@ fn setup_world(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
+    mut cur_craft: ResMut<mind::player::CurrentCraft>,
 ) {
     let mut rng = rand::thread_rng();
     /* // setup the random floating spheres
@@ -343,21 +340,45 @@ fn setup_world(
         }
     } */
 
-    // spawn the single floating sphere
+    // spawn the single floating obstacle
     {
-        let radius = 10.;
-        let pos = TVec3::new(500., 0., 500.);
-        let xform = Transform::from_translation(pos);
-        let mass = 10_000.;
+        let (pos, bevy_shape, rapier_shape, density) = {
+            let pos = TVec3::new(000., 0., 400.);
+            let mass = 10_000.;
+
+            let xtents = TVec3::new(200., 200., 100.);
+            (
+                pos,
+                shape::Box {
+                    max_x: xtents.x * 0.5,
+                    min_x: xtents.x * -0.5,
+                    max_y: xtents.y * 0.5,
+                    min_y: xtents.y * -0.5,
+                    max_z: xtents.z * 0.5,
+                    min_z: xtents.z * -0.5,
+                    ..Default::default()
+                },
+                ColliderShape::cuboid(xtents.x * 0.5, xtents.y * 0.5, xtents.z * 0.5),
+                mass / (200. * 200. * 100.),
+            )
+
+            /* let radius = 10;
+            (
+                pos,
+                shape::Icosphere {
+                    radius,
+                    ..Default::default()
+                },
+                ColliderShape::ball(radius),
+                mass / (4. * math::real::consts::PI * radius * radius),
+            ) */
+        };
         commands
             .spawn()
             .insert(Name::new("single_ball"))
             .insert_bundle(PbrBundle {
-                mesh: meshes.add(Mesh::from(shape::Icosphere {
-                    radius,
-                    ..Default::default()
-                })),
-                transform: xform,
+                /* mesh: meshes.add(Mesh::from()), */
+                mesh: meshes.add(Mesh::from(bevy_shape)),
                 material: materials.add(
                     Color::rgba(
                         rng.gen::<TReal>(),
@@ -369,15 +390,6 @@ fn setup_world(
                 ),
                 ..Default::default()
             })
-            /*
-            .insert_bundle(RigidBodyBundle {
-                body_type: RigidBodyType::Dynamic.into(),
-                activation: RigidBodyActivation::inactive().into(),
-                position: RigidBodyPositionComponent(pos.into()),
-                ..Default::default()
-            })
-            .insert(RigidBodyPositionSync::Discrete)
-            // */
             .insert(ColliderPositionSync::Discrete)
             .insert_bundle(ColliderBundle {
                 material: ColliderMaterial {
@@ -390,13 +402,11 @@ fn setup_world(
                     ..Default::default()
                 }
                 .into(),
-                shape: ColliderShape::ball(radius).into(),
-                mass_properties: ColliderMassProps::Density(
-                    mass / (4. * math::real::consts::PI * radius * radius),
-                )
-                .into(),
+                shape: rapier_shape.into(),
+                mass_properties: ColliderMassProps::Density(density).into(),
                 ..Default::default()
             })
+            // .insert(ColliderDebugRender::default())
             .insert_bundle(bevy_mod_picking::PickableBundle::default());
     }
 
@@ -409,9 +419,9 @@ fn setup_world(
         }));
         #[allow(clippy::unnecessary_cast)]
         let points = [
-            [1000.0, 0., 1000.0 as TReal].into(),
+            [0000.0, 0., 900.0 as TReal].into(),
             //[-1000.0, 0., 1000.0].into(),
-            [-100.0, 0., -100.0].into(),
+            [-000.0, 0., -100.0].into(),
             //[1000.0, 0., -1000.0].into(),
         ];
         let points = points.map(|p| {
@@ -516,6 +526,7 @@ fn setup_world(
                 ..Default::default()
             })
             .with_children(|parent| {
+                let parent_entt = parent.parent_entity();
                 // the model
                 parent
                     .spawn()
@@ -538,14 +549,26 @@ fn setup_world(
                             ..craft::attire::AttireBundle::default_collider_bundle()
                         },
                         ..Default::default()
-                });
+                    });
+
+                // spawn player weapon
+                parent
+                    .spawn()
+                    .insert_bundle(new_kinetic_cannon(parent_entt))
+                    .insert_bundle(PbrBundle {
+                        mesh: meshes.add(shape::Cube { size: 1. }.into()),
+                        transform: Transform::from_translation(TVec3::Y * 0.)
+                            .with_scale([1., 1., 4.].into()),
+                        material: materials.add(Color::WHITE.into()),
+                        ..Default::default()
+                    });
             })
             .id();
         commands
             .spawn()
             .insert_bundle({
                 let mut cam = PerspectiveCameraBundle::default();
-                cam.perspective_projection.far = 10_000.;
+                cam.perspective_projection.far = 20_000.;
                 cam
             })
             .insert_bundle(bevy_mod_picking::PickingCameraBundle::default())
@@ -553,52 +576,10 @@ fn setup_world(
                 // target: Some(player_craft_id),
                 ..mind::player::CraftCamera::default()
             });
-        commands.insert_resource(mind::player::CurrentCraft(player_craft_id));
-        /*
-        // grappling hook line
-        let ball = commands
-        .spawn()
-        .insert_bundle(RigidBodyBundle {
-            position: [0., 0., -70.].into(),
-            body_type: RigidBodyType::Dynamic.into(),
-            ..Default::default()
-        })
-        .insert_bundle(ColliderBundle {
-            shape: ColliderShape::ball(1.).into(),
-            ..Default::default()
-        })
-        .insert(ColliderDebugRender::default())
-        .insert(ColliderPositionSync::Discrete)
-        .id(); */
-        /* commands.spawn().insert(JointBuilderComponent::new(
-            SphericalJoint::new().local_anchor1([0., 0., -10.].into()),
-            player_craft_id,
-            ball,
-        )); */
-        /* commands.spawn().insert(JointBuilderComponent::new(
-            PrismaticJoint::new(nalgebra::Unit::new_normalize((-TVec3::Z).into()))
-                // .motor_position(20., 0.2, 0.1)
-                .motor_velocity(10., 1.),
-            player_craft_id,
-            ball,
-        )); */
-
-        // spawn player weapon
-        let wpn_id = commands
-            .spawn()
-            .insert_bundle(new_kinetic_cannon(player_craft_id))
-            .insert_bundle(PbrBundle {
-                mesh: meshes.add(shape::Cube { size: 1. }.into()),
-                transform: Transform::from_translation(TVec3::Y * 0.)
-                    .with_scale([1., 1., 4.].into()),
-                material: materials.add(Color::WHITE.into()),
-                ..Default::default()
-            })
-            .insert(Parent(player_craft_id))
-            .id();
-        commands.insert_resource(mind::player::CurrentWeapon(wpn_id));
+        cur_craft.entt = Some(player_craft_id);
         player_craft_id
     };
+
     let mut members = flock::FlockMembers::default();
     // spawn the ai craft
     for ii in -7..=7 {
@@ -629,9 +610,9 @@ fn setup_world(
                 )
             })
             .insert_bundle(boid::BoidMindBundle{
-                /* directive: boid::BoidMindDirective::RunCircuit {
+                directive: boid::BoidMindDirective::RunCircuit {
                     param: boid::strategy::run_circuit::RunCircuit { initial_point }
-                }, */
+                },
                 ..Default::default()
             })
             .with_children(|parent| {
@@ -675,13 +656,13 @@ fn setup_world(
             }).id());
     }
 
-    let flock_entt = commands.spawn().insert(Name::new("flock")).id();
+    /* let flock_entt = commands.spawn().insert(Name::new("flock")).id();
     let formation = commands
         .spawn()
         .insert_bundle(flock::formation::FlockFormationBundle::new(
             flock::formation::FormationPattern::Sphere { radius: 150. },
-            // members[0],
-            player_craft_id,
+            members[0],
+            // player_craft_id,
             flock::formation::SlottingStrategy::Simple,
             flock_entt,
         ))
@@ -690,15 +671,13 @@ fn setup_world(
         .entity(flock_entt)
         .insert_bundle(flock::FlockMindBundle {
             directive: flock::FlockMindDirective::FormUp {
-                // leader_directive: Some(
-                //     boid::BoidMindDirective::RunCircuit {
-                //         param: boid::strategy::run_circuit::RunCircuit { initial_point }
-                //     }
-                // ),
-                leader_directive: None,
+                leader_directive: Some(boid::BoidMindDirective::RunCircuit {
+                    param: boid::strategy::run_circuit::RunCircuit { initial_point },
+                }),
+                // leader_directive: None,
             },
             ..flock::FlockMindBundle::new(members, formation)
-        });
+        }); */
 }
 
 #[allow(unreachable_code)]
@@ -714,8 +693,13 @@ fn craft_state_display(
         &mut craft::engine::AngularDriverPid,
     )>,
 ) {
+    let cur_craft = if let Some(entt) = &cur_craft.entt {
+        *entt
+    } else {
+        return;
+    };
     let (craft_xform, lin_state, ang_state, mut lin_pid, mut ang_pid) =
-        crafts.get_mut(cur_craft.0).unwrap_or_log();
+        crafts.get_mut(cur_craft).unwrap_or_log();
     let cam = craft_cameras.single();
     egui::Window::new("Status")
         .collapsible(true)
@@ -815,45 +799,58 @@ pub struct CameraMovementSettings {
 }
 
 fn move_camera_system(
-    mut key_events: EventReader<KeyboardInput>,
+    k_input: Res<Input<KeyCode>>,
+    // mut key_events: EventReader<KeyboardInput>,
     mut cameras: Query<&mut Transform, (With<Camera>, With<GameCamera>)>,
     time: Res<Time>,
     mut cam_settings: ResMut<CameraMovementSettings>,
 ) {
     {
-        let mut linear_input = cam_settings.linear_input;
-        let mut angular_input = cam_settings.angular_input;
-        let mut shift_on = cam_settings.shift_on;
+        let mut linear_input = IVec3::ZERO;
+        let mut angular_input = IVec3::ZERO;
 
-        for event in key_events.iter() {
-            let amount = match event.state {
-                ElementState::Pressed => 1,
-                ElementState::Released => -1,
-            };
-            if let Some(key) = event.key_code {
-                match key {
-                    // inverse z dir since cam faces backward
-                    KeyCode::W => linear_input.z -= amount,
-                    KeyCode::S => linear_input.z += amount,
-                    KeyCode::D => linear_input.x += amount,
-                    KeyCode::A => linear_input.x -= amount,
-                    KeyCode::E => linear_input.y += amount,
-                    KeyCode::Q => linear_input.y -= amount,
-                    KeyCode::Numpad8 => angular_input.x += amount,
-                    KeyCode::Numpad5 => angular_input.x -= amount,
-                    KeyCode::Numpad4 => angular_input.y += amount,
-                    KeyCode::Numpad6 => angular_input.y -= amount,
-                    KeyCode::Numpad7 => angular_input.z += amount,
-                    KeyCode::Numpad9 => angular_input.z -= amount,
-                    KeyCode::LShift => shift_on = !shift_on,
-                    _ => {}
-                }
-            }
+        if k_input.pressed(KeyCode::W) {
+            // inverse z dir since cam faces backward
+            linear_input.z -= 1;
+        }
+        if k_input.pressed(KeyCode::S) {
+            linear_input.z += 1;
+        }
+        if k_input.pressed(KeyCode::D) {
+            linear_input.x += 1;
+        }
+        if k_input.pressed(KeyCode::A) {
+            linear_input.x -= 1;
+        }
+        if k_input.pressed(KeyCode::E) {
+            linear_input.y += 1;
+        }
+        if k_input.pressed(KeyCode::Q) {
+            linear_input.y -= 1;
         }
 
-        cam_settings.linear_input = linear_input.clamp(-IVec3::ONE, IVec3::ONE);
-        cam_settings.angular_input = angular_input.clamp(-IVec3::ONE, IVec3::ONE);
-        cam_settings.shift_on = shift_on;
+        if k_input.pressed(KeyCode::Numpad8) {
+            angular_input.x += 1;
+        }
+        if k_input.pressed(KeyCode::Numpad5) {
+            angular_input.x -= 1;
+        }
+        if k_input.pressed(KeyCode::Numpad4) {
+            angular_input.y += 1;
+        }
+        if k_input.pressed(KeyCode::Numpad6) {
+            angular_input.y -= 1;
+        }
+        if k_input.pressed(KeyCode::Numpad7) {
+            angular_input.z += 1;
+        }
+        if k_input.pressed(KeyCode::Numpad9) {
+            angular_input.z -= 1;
+        }
+
+        cam_settings.linear_input = linear_input;
+        cam_settings.angular_input = angular_input;
+        cam_settings.shift_on = k_input.pressed(KeyCode::LShift)
     }
 
     let mut linear_speed = cam_settings.linear_speed;
@@ -875,6 +872,56 @@ fn move_camera_system(
         camera_xform.rotation *= rotator;
         // tracing::info!("resulting xform: {camera_xform:?}");
     }
+}
+
+fn hey_system(
+    mut lines: ResMut<DebugLines>,
+    cur_craft: Res<mind::player::CurrentCraft>,
+    crafts: Query<(Entity, &GlobalTransform, &craft::engine::LinearEngineState)>,
+) {
+    // let mut draw_count = 0;
+    for (entt, xform, lin_state) in crafts.iter() {
+        if Some(entt) == cur_craft.entt {
+            continue;
+        }
+        // draw_count += 1;
+        lines.line_colored(
+            xform.translation,
+            xform.mul_vec3(lin_state.velocity),
+            0.,
+            Color::LIME_GREEN,
+        );
+    }
+
+    /* const RAY_COUNT: usize = 100;
+    use once_cell::sync::Lazy;
+    static RAY_DIRECTIONS: Lazy<[TVec3; RAY_COUNT]> = Lazy::new(|| {
+        let mut directions = [TVec3::ZERO; RAY_COUNT];
+        #[allow(clippy::unnecessary_cast)]
+        let golden_ratio = (1.0 + (5.0 as TReal).sqrt()) * 0.5;
+        let angle_increment = real::consts::TAU * golden_ratio;
+        #[allow(clippy::needless_range_loop)]
+        for ii in 0..RAY_COUNT {
+            let t = ii as TReal / RAY_COUNT as TReal;
+            let inclination = (1.0 - (2.0 * t)).acos();
+            let azimuth = angle_increment * (ii as TReal);
+            directions[ii] = TVec3::new(
+                inclination.sin() * azimuth.cos(),
+                inclination.sin() * azimuth.sin(),
+                inclination.cos(),
+            )
+            .normalize();
+        }
+        directions
+    });
+
+    for ii in 0..RAY_COUNT {
+        draw_count += 1;
+        let ray = RAY_DIRECTIONS[ii];
+        lines.line_colored(TVec3::ZERO, ray * 10., 0., Color::LIME_GREEN);
+    } */
+
+    // tracing::info!(?draw_count);
 }
 
 #[test]
@@ -926,10 +973,17 @@ fn zmblo() {
 }
 */
 
-/*
-#[derive(Default, Clone)]
+/* #[derive(Clone)]
 pub struct LogOutput {
     vec: std::sync::Arc<parking_lot::RwLock<Vec<String>>>,
+}
+
+impl Default for LogOutput {
+    fn default() -> Self {
+        Self {
+            vec: std::sync::Arc::new(parking_lot::RwLock::new(Vec::with_capacity(10_000))),
+        }
+    }
 }
 
 // pub struct CustomWriter<'a, T>(parking_lot::RwLockWriteGuard<'a, T>);
@@ -941,15 +995,17 @@ pub struct CustomWriter<'a>(parking_lot::RwLockWriteGuard<'a, Vec<String>>);
 // {
 impl std::io::Write for CustomWriter<'_> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        match std::io::stdout().write(buf) {
+        /*  match std::io::stdout().write(buf) {
             Ok(bytes) => {
-                let _ = self
+                self
                     .0
                     .push(String::from_utf8_lossy(&buf[0..bytes]).into_owned());
                 Ok(bytes)
             }
             err => err,
-        }
+        } */
+        self.0.push(String::from_utf8_lossy(buf).into_owned());
+        Ok(buf.len())
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
