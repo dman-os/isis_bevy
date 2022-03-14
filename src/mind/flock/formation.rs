@@ -148,8 +148,9 @@ pub struct FormationState {
 #[derive(Debug, Default)]
 pub struct FormationOutput {
     pub pos: TVec3,
+    pub linvel: TVec3,
+    pub pos_linvel: TVec3,
     pub facing: TVec3,
-    pub speed: TReal,
 }
 
 #[derive(Debug, Default, Component)]
@@ -353,7 +354,6 @@ pub fn update(
             .get(state.shadow_leader_anchor.unwrap_or_log())
             .unwrap_or_log();
         let facing = anchor_state.rot * -TVec3::Z;
-        let speed = anchor_state.linvel.length();
         match &pattern {
             FormationPattern::Sphere { radius } => {
                 // TODO: LRU cache the rays
@@ -369,7 +369,8 @@ pub fn update(
                         FormationOutput {
                             pos: anchor_state.pos + (rays[ii] * *radius),
                             facing,
-                            speed,
+                            linvel: anchor_state.linvel,
+                            pos_linvel: anchor_state.linvel,
                         },
                     );
                 }
@@ -398,7 +399,9 @@ impl FormationAnchorBundle {
     pub fn new(directive: FormationAnchorDirectives, formation_entt: Entity) -> Self {
         Self {
             directive,
-            tag: FormationAnchor { formation_entt },
+            tag: FormationAnchor {
+                _formation_entt: formation_entt,
+            },
             parent: Parent(formation_entt),
             name: Self::DEFAULT_NAME.into(),
             state: Default::default(),
@@ -408,7 +411,7 @@ impl FormationAnchorBundle {
 
 #[derive(Debug, Clone, Component)]
 pub struct FormationAnchor {
-    formation_entt: Entity,
+    _formation_entt: Entity,
 }
 
 #[derive(Debug, Clone, Default, Component)]

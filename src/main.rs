@@ -346,7 +346,7 @@ fn setup_world(
             let pos = TVec3::new(000., 0., 400.);
             let mass = 10_000.;
 
-            let xtents = TVec3::new(200., 200., 100.);
+            /* let xtents = TVec3::new(200., 200., 100.);
             (
                 pos,
                 shape::Box {
@@ -360,9 +360,9 @@ fn setup_world(
                 },
                 ColliderShape::cuboid(xtents.x * 0.5, xtents.y * 0.5, xtents.z * 0.5),
                 mass / (200. * 200. * 100.),
-            )
+            ) */
 
-            /* let radius = 10;
+            let radius = 10.;
             (
                 pos,
                 shape::Icosphere {
@@ -371,7 +371,7 @@ fn setup_world(
                 },
                 ColliderShape::ball(radius),
                 mass / (4. * math::real::consts::PI * radius * radius),
-            ) */
+            )
         };
         commands
             .spawn()
@@ -419,9 +419,9 @@ fn setup_world(
         }));
         #[allow(clippy::unnecessary_cast)]
         let points = [
-            [0000.0, 0., 900.0 as TReal].into(),
+            [1000.0, 0., 400.0 as TReal].into(),
             //[-1000.0, 0., 1000.0].into(),
-            [-000.0, 0., -100.0].into(),
+            [-100.0, 0., -100.0].into(),
             //[1000.0, 0., -1000.0].into(),
         ];
         let points = points.map(|p| {
@@ -500,11 +500,15 @@ fn setup_world(
 
     use mind::*;
     // spawn the player craft
-    let player_craft_id = {
+    let _player_craft_id = {
         let player_craft_id = commands
             .spawn()
             .insert_bundle(craft::CraftBundle {
                 name: Name::new("player"),
+                rigid_body: RigidBodyBundle{
+                    position: [1040., 110., 721.].into(),
+                    ..craft::CraftBundle::default_rb_bundle()
+                },
                 collider: craft::attire::CollisionDamageEnabledColliderBundle {
                     collider: ColliderBundle {
                         shape: ColliderShape::ball(4.).into(),
@@ -610,9 +614,9 @@ fn setup_world(
                 )
             })
             .insert_bundle(boid::BoidMindBundle{
-                directive: boid::BoidMindDirective::RunCircuit {
+                /* directive: boid::BoidMindDirective::RunCircuit {
                     param: boid::strategy::run_circuit::RunCircuit { initial_point }
-                },
+                }, */
                 ..Default::default()
             })
             .with_children(|parent| {
@@ -656,7 +660,7 @@ fn setup_world(
             }).id());
     }
 
-    /* let flock_entt = commands.spawn().insert(Name::new("flock")).id();
+    let flock_entt = commands.spawn().insert(Name::new("flock")).id();
     let formation = commands
         .spawn()
         .insert_bundle(flock::formation::FlockFormationBundle::new(
@@ -677,7 +681,7 @@ fn setup_world(
                 // leader_directive: None,
             },
             ..flock::FlockMindBundle::new(members, formation)
-        }); */
+        });
 }
 
 #[allow(unreachable_code)]

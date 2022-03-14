@@ -125,7 +125,12 @@ pub fn boid_mind(
                         .spawn()
                         .insert_bundle(steering::arrive::Bundle::new(
                             steering::arrive::Arrive {
-                                target: arrive::Target::Position { pos, speed: 0. },
+                                target: arrive::Target::Vector {
+                                    at_pos: pos,
+                                    pos_linvel: Default::default(),
+                                    // with_linvel: Default::default(),
+                                    with_speed: 0.,
+                                },
                                 arrival_tolerance: 5.,
                                 deceleration_radius: None,
                                 linvel_limit,

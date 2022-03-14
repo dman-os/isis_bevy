@@ -78,36 +78,128 @@ pub fn be_ray(
     }
 }
  */
+#[inline]
+pub fn be_ray(
+    at_pos: TVec3,
+    with_linvel: TVec3,
+    pos_linvel: TVec3,
+    current_pos: TVec3,
+    current_lin_vel: TVec3,
+    max_accel: TVec3,
+    linvel_limit: TVec3,
+    cur_rotation: TQuat,
+    debug: &mut dyn FnMut(TVec3, TVec3),
+) -> TVec3 {
+    let vel = current_lin_vel - pos_linvel;
+    let target_vel = with_linvel - pos_linvel;
+    /* let acceleration_radius = {
+        let time_to_change = {
+            let accel = max_accel;
+            let delta = target_vel - vel ;
+            let time: TVec3 = delta / accel;
+            time.abs()
+        };
+        let avg_vel = (vel + target_vel) * 0.5;
+        let dst: TVec3 = avg_vel * time_to_change;
+        // dst.abs().max_element()
+        dst.length()
+    }; */
+    let accel_displacement = {
+        /* let max_vel = if vel.length_squared() > f32::EPSILON {
+            vel.normalize() * linvel_limit
+        } else {
+            cur_rotation * linvel_limit
+        }; */
+        let time_to_change = {
+            let accel = cur_rotation * max_accel;
+            let delta = target_vel - vel;
+            (delta / accel).abs()
+        };
+        let avg_vel = (vel + target_vel) * 0.5;
+        avg_vel * time_to_change
+    };
+    /*  let accel_displacement = {
+        let accel = cur_rotation * max_accel;
+        -((target_vel * target_vel) - (vel * vel)) / (2. * accel)
+    }; */
+
+    const BREATHING_SPACE_MULTIPLIER: TReal = 1.4;
+    // let acceleration_displacement = accel_displacement * BREATHING_SPACE_MULTIPLIER;
+
+    let adjusted_pos = at_pos + pos_linvel;
+    debug(at_pos, adjusted_pos - with_linvel);
+    debug(
+        adjusted_pos - with_linvel,
+        adjusted_pos - with_linvel - accel_displacement * BREATHING_SPACE_MULTIPLIER,
+    );
+
+    /*  let with_linvel = with_linvel / linvel_limit;
+    let to_pos_vel = (adjusted_pos - with_linvel - accel_displacement - current_pos).normalize();
+    let weight = (adjusted_pos - current_pos).length()
+        / (accel_displacement.length() * BREATHING_SPACE_MULTIPLIER);
+    with_linvel + (to_pos_vel - with_linvel) * weight */
+    if (adjusted_pos - with_linvel - current_pos).length()
+        > (accel_displacement.length() * BREATHING_SPACE_MULTIPLIER)
+    {
+        (adjusted_pos - with_linvel - accel_displacement - current_pos).normalize()
+    } else {
+        debug(current_pos, current_pos + with_linvel);
+        // with_linvel.lerp(
+        //     current_lin_vel,
+        //     // current_lin_vel.normalize() * linvel_limit,
+        //     dst / acceleration_radius,
+        // ) / linvel_limit
+        with_linvel / linvel_limit
+    }
+    // let offset = at_pos - current_pos;
+    // let to_pos = offset.normalize();
+    // let to_vel = with_linvel / linvel_limit;
+
+    // to_vel.lerp(to_pos, offset.length() / acceleration_radius)
+
+    /*    // let adjusted_pos = (at_pos + pos_linvel) - with_linvel;
+    // - (with_linvel.normalize() * (acceleration_radius + with_linvel.length()));
+    // let weight = dst / acceleration_radius;
+
+    debug(current_pos, adjusted_pos);
+    // debug(adjusted_pos, adjusted_pos + with_linvel);
+    debug(at_pos, at_pos + (TVec3::Z * acceleration_radius));
+    debug(at_pos, at_pos + (TVec3::Z * -acceleration_radius));
+    debug(at_pos, at_pos + (TVec3::Y * acceleration_radius));
+    debug(at_pos, at_pos + (TVec3::Y * -acceleration_radius));
+    debug(at_pos, at_pos + (TVec3::X * acceleration_radius));
+    debug(at_pos, at_pos + (TVec3::X * -acceleration_radius));
+
+    // (with_linvel / linvel_limit).lerp(
+    //     (adjusted_pos - current_pos).normalize(),
+    //     (at_pos - current_pos).length() / acceleration_radius,
+    // )
+
+    /* let with_linvel = with_linvel / linvel_limit;
+    let to_pos_vel = (adjusted_pos - current_pos).normalize();
+    let weight = (adjusted_pos - current_pos).length() / acceleration_radius;
+    with_linvel + (to_pos_vel - with_linvel) * weight */
+
+    /* let with_linvel = with_linvel / linvel_limit;
+    let to_pos_vel = (at_pos - current_pos).normalize();
+    let weight = (at_pos - current_pos).length() / acceleration_radius;
+    with_linvel + (to_pos_vel - with_linvel) * weight */
+
+    if (at_pos - current_pos).length() > acceleration_radius {
+        (at_pos - current_pos).normalize()
+    } else {
+        // with_linvel.lerp(
+        //     current_lin_vel,
+        //     // current_lin_vel.normalize() * linvel_limit,
+        //     dst / acceleration_radius,
+        // ) / linvel_limit
+        with_linvel / linvel_limit
+    } */
+}
+
 #[inline(always)]
 pub fn seek_position(current_pos: TVec3, target_pos: TVec3) -> TVec3 {
     (target_pos - current_pos).normalize()
-}
-
-#[inline]
-pub fn arrive_at_vector(
-    current_pos: TVec3,
-    target_pos: TVec3,
-    current_vel: TVec3,
-    target_lin_vel: TVec3,
-    acceleration_radius: TReal,
-    linvel_limit: TVec3,
-) -> TVec3 {
-    let target_offset = target_pos - current_pos;
-    // inverse the z to since -z is fwd
-    let dst = target_offset.length();
-
-    const BREATHING_SPACE_MULTIPLIER: TReal = 1.4;
-
-    let acceleration_radius = acceleration_radius * BREATHING_SPACE_MULTIPLIER;
-    if dst > acceleration_radius {
-        target_offset.normalize()
-    } else {
-        target_lin_vel.lerp(
-            current_vel.normalize() * linvel_limit,
-            dst / acceleration_radius,
-        ) / linvel_limit
-        // target_lin_vel
-    }
 }
 
 #[inline]

@@ -41,7 +41,7 @@ pub fn butler(
         ),
         Added<RunCircuit>,
     >,
-    waypoints: Query<(&GlobalTransform,)>,
+    waypoints: Query<(&CircuitWaypoint, &GlobalTransform)>,
     crafts: Query<(
         &sensors::SteeringRoutinesIndex,
         &engine::EngineConfig,
@@ -52,9 +52,8 @@ pub fn butler(
         let (routines, engine_config, dim) = crafts
             .get(strategy.boid_entt())
             .expect_or_log("craft not found for BoidStrategy");
-        let (waypoint1_xform,) = waypoints
-            .get(param.initial_point)
-            .expect_or_log("initial CircuitWaypoint not found");
+        let (_, waypoint1_xform) = waypoints.get(param.initial_point).unwrap_or_log();
+        // let (_, waypoint2_xform) = waypoints.get(waypoint1.next_point).unwrap_or_log();
 
         let raycast_toi_modifier = dim.max_element();
         let cast_shape_radius = raycast_toi_modifier * 0.5;
@@ -78,17 +77,22 @@ pub fn butler(
             .spawn()
             .insert_bundle(arrive::Bundle::new(
                 arrive::Arrive {
-                    target: arrive::Target::Position {
-                        pos: waypoint1_xform.translation,
-                        speed: 80.,
-                        /* lin_vel: (waypoint2_xform.translation - waypoint1_xform.translation)
+                    target: arrive::Target::Vector {
+                        at_pos: waypoint1_xform.translation,
+                        pos_linvel: Default::default(),
+                        // with_linvel: Default::default(),
+                        /* with_linvel: (waypoint2_xform.translation - waypoint1_xform.translation)
                         .normalize()
                         * engine_config.linvel_limit, */
+                        with_speed: 80.,
                     },
                     arrival_tolerance: 5.,
                     deceleration_radius: None,
                     linvel_limit: engine_config.linvel_limit,
-                    avail_accel: engine_config.actual_acceleration_limit(),
+                    avail_accel: engine_config.avail_lin_accel().clamp(
+                        -engine_config.actual_acceleration_limit(),
+                        engine_config.actual_acceleration_limit(),
+                    ),
                 },
                 strategy.boid_entt(),
             ))
@@ -125,7 +129,7 @@ pub fn update(
     parents: Query<&ColliderParentComponent>,
     mut arrive_routines: Query<&mut arrive::Arrive>,
     crafts: Query<(
-        // &CurrentBoidStrategy,
+        // &engine::EngineConfig,
         &sensors::BoidStrategyIndex,
         &CraftDimensions,
         &RigidBodyVelocityComponent,
@@ -152,41 +156,44 @@ pub fn update(
                 // for any acttive RunCircuit strategies on the craft
                 if let Some(entts) = index.kind::<RunCircuit>() {
                     for entt in entts {
-                        let state = strategies.get(*entt).expect_or_log(
-                            "RunCircuitState not found for indexed RunCircuit strategy",
-                        );
+                        // BUG: implement a measure for active strategy check
+                        let state = strategies.get(*entt).unwrap_or_log();
                         let mut arrive_param = arrive_routines
                             .get_mut(state.arrive_routine.unwrap_or_log())
-                            .expect_or_log("Arrive routine not found for RunCircuitState");
+                            .unwrap_or_log();
                         match arrive_param.target {
-                            arrive::Target::Position {
-                                pos: prev_pos,
-                                speed,
+                            arrive::Target::Vector {
+                                at_pos: prev_pos,
+                                with_speed,
+                                ..
                             } => {
                                 if prev_pos.distance_squared(checkopoint_xform.translation)
                                     - (dim.max_element().powi(2))
                                     < 1.
                                 {
-                                    let cur_spd = vel.linvel.magnitude();
+                                    let cur_vel = vel.linvel;
+                                    let cur_spd = cur_vel.magnitude();
                                     // commands.entity(other_collider).despawn_recursive();
                                     tracing::info!(
+                                        ?cur_vel,
                                         ?cur_spd,
                                         "craft arrived at waypoint {prev_pos:?}",
                                     );
-                                    let (_, _, next_waypoint_xform) = waypoints
-                                        .get(waypoint.next_point)
-                                        .expect_or_log("next CircuitWaypoint not found");
-                                    /*
-                                    let (_, _, next_next_waypoint_xform) = waypoints
-                                        .get(next_waypoint.next_point)
-                                        .expect_or_log("next next CircuitWaypoint not found"); */
-                                    arrive_param.target = arrive::Target::Position {
-                                        pos: next_waypoint_xform.translation,
-                                        /* lin_vel: (next_next_waypoint_xform.translation
+                                    let (_, _, next_waypoint_xform) =
+                                        waypoints.get(waypoint.next_point).unwrap_or_log();
+
+                                    /* let (_, _, next_next_waypoint_xform) = waypoints
+                                    .get(next_waypoint.next_point)
+                                    unwrap_or_log(); */
+                                    arrive_param.target = arrive::Target::Vector {
+                                        at_pos: next_waypoint_xform.translation,
+                                        pos_linvel: TVec3::ZERO,
+                                        // with_linvel: TVec3::ZERO,
+                                        /* with_linvel: (next_next_waypoint_xform.translation
                                         - next_waypoint_xform.translation)
                                         .normalize()
                                         * engine_config.linvel_limit, */
-                                        speed,
+                                        with_speed,
                                     }
                                 }
                             }

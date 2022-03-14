@@ -82,9 +82,11 @@ pub fn butler(
             .spawn()
             .insert_bundle(arrive::Bundle::new(
                 arrive::Arrive {
-                    target: arrive::Target::Position {
-                        pos: form_out.pos,
-                        speed: 0.,
+                    target: arrive::Target::Vector {
+                        at_pos: form_out.pos,
+                        // with_linvel: form_out.linvel,
+                        pos_linvel: form_out.pos_linvel,
+                        with_speed: form_out.linvel.length(),
                     },
                     arrival_tolerance: 5.,
                     deceleration_radius: None,
@@ -143,31 +145,35 @@ pub fn update(
 ) {
     // return;
     for (out, formation_state) in formations.iter() {
-        let mut skip_count = 0;
+        let mut _skip_count = 0;
 
         for (boid_entt, strategy) in formation_state.boid_strategies.iter() {
             let (state, is_active) = strategies.get(*strategy).unwrap_or_log();
             if is_active.is_none() {
                 // skip if boid_strategy is not active yet
-                skip_count += 1;
+                _skip_count += 1;
                 continue;
             }
-            let out = out.index.get(boid_entt).unwrap_or_log();
+            let form_out = out.index.get(boid_entt).unwrap_or_log();
 
             let mut arrive_param = arrive_routines
                 .get_mut(state.arrive_routine.unwrap_or_log())
                 .unwrap_or_log();
-            arrive_param.target = arrive::Target::Position {
-                pos: out.pos,
-                speed: out.speed,
+            arrive_param.target = arrive::Target::Vector {
+                at_pos: form_out.pos,
+                // with_linvel: form_out.linvel,
+                pos_linvel: form_out.pos_linvel,
+                with_speed: form_out.linvel.length(),
             };
             let mut face_param = face_routines
                 .get_mut(state.face_routine.unwrap_or_log())
                 .unwrap_or_log();
-            face_param.target = face::Target::Direction { dir: out.facing };
+            face_param.target = face::Target::Direction {
+                dir: form_out.facing,
+            };
         }
         // FIXME: 3 frame gap unless I divvy up the damn PreUpdate stage
-        /* if skip_count == 0 && out.positions.len() != formation_state.boid_strategies.len() {
+        /* if _skip_count == 0 && out.positions.len() != formation_state.boid_strategies.len() {
             let expected = out.positions.len();
             let particpating = formation_state.boid_strategies.len();
             tracing::error!(

@@ -12,12 +12,15 @@
 - [ ] BUG: added implies changed!
 
 - [ ] Surmount technical hurdles
-- [ ] Refine loop
+  - [ ] Arrive with velocity
+    - [ ] Optimal motion planning? Wtf is that?
+- [ ] Refine game loop
+
 
 - crates to check out
- - [ ] bevy polyline
- - [ ] big brain
- - [ ] bevy remote dev tools
+  - [ ] bevy polyline
+  - [ ] big brain
+  - [ ] bevy remote dev tools
 
 - Consider using arc and weak references to improve performance
 
@@ -256,7 +259,7 @@ How about we model this along the axis of independence?
 
 ### Bug: CCD
 
-Projectiles above 500ms aren't handled well, watch out.
+Projectiles above 500m/s aren't handled well, watch out.
 
 ### My Brain Hurts
 
@@ -305,3 +308,19 @@ stateDiagram-v2
 ### BUG: Bevy Debug Lines...
 
 ...doesn't draw the lines when the camera's in a certain orientation/position
+
+### Arrive With Velocity
+
+Well, this feature, as it turns out, is not an simple generalization of arrive with speed to 3D. From what I can make out online, I'll have to dip my toes into Control Theory and get the grips on something called Optimal Control Theory. It sucks having to derail the dev due to a single feature but...learning is fun I guess. Also, this is a major feature. It will power a major feature anyways. Makes you wonder though, did all who implemented decent formations have to go through this? Maybe there's a simple steering behavior solution I'm missing? 
+
+---
+
+Tried to look up how Homeworld implements formations and even though the question lies unanswered it, the following references should come in handy:
+
+- [Ship class reference][1]
+- Seems to be using [waypoints][2] for those fancy maneuvers. They do look look gorgeous, gotta respect the artist.
+
+[1]: https://github.com/HWRM/KarosGraveyard/wiki/Variable;-Ship
+[2]: https://github.com/HWRM/KarosGraveyard/wiki/Variable;-Ship
+
+Also, now that I think about it, I don't think the Homewolrd games are newtonian. They don't appear to be so anyways. Not saying it makes their job trivial but yeah.

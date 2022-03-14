@@ -4,7 +4,7 @@ use bevy::prelude::*;
 
 use crate::math::*;
 
-#[derive(Debug, Component)]
+#[derive(Debug, Clone)]
 pub struct PIDControllerVec3 {
     last_state: Vec3,
     integrat_err: Vec3,
