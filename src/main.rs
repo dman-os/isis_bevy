@@ -259,7 +259,7 @@ fn setup_world(
     mut cur_craft: ResMut<mind::player::CurrentCraft>,
 ) {
     let mut rng = rand::thread_rng();
-    /* // setup the random floating spheres
+    // setup the random floating spheres
     {
         const SIZE_RANGE: TReal = 100.;
         const MASS_RANGE: TReal = 1000.;
@@ -338,7 +338,7 @@ fn setup_world(
                     ..Default::default()
                 });
         }
-    } */
+    }
 
     // spawn the single floating obstacle
     {
@@ -346,7 +346,7 @@ fn setup_world(
             let pos = TVec3::new(000., 0., 400.);
             let mass = 10_000.;
 
-            /* let xtents = TVec3::new(200., 200., 100.);
+            let xtents = TVec3::new(200., 200., 100.);
             (
                 pos,
                 shape::Box {
@@ -360,9 +360,9 @@ fn setup_world(
                 },
                 ColliderShape::cuboid(xtents.x * 0.5, xtents.y * 0.5, xtents.z * 0.5),
                 mass / (200. * 200. * 100.),
-            ) */
+            )
 
-            let radius = 10.;
+            /* let radius = 10.;
             (
                 pos,
                 shape::Icosphere {
@@ -371,7 +371,7 @@ fn setup_world(
                 },
                 ColliderShape::ball(radius),
                 mass / (4. * math::real::consts::PI * radius * radius),
-            )
+            ) */
         };
         commands
             .spawn()
@@ -411,7 +411,7 @@ fn setup_world(
     }
 
     // setup the test circuit
-    let initial_point = {
+    let _initial_point = {
         let material = materials.add(Color::PINK.into());
         let mesh = meshes.add(Mesh::from(shape::Icosphere {
             radius: 10.0,
@@ -419,9 +419,9 @@ fn setup_world(
         }));
         #[allow(clippy::unnecessary_cast)]
         let points = [
-            [1000.0, 0., 400.0 as TReal].into(),
+            [000.0, 0., 1000.0 as TReal].into(),
             //[-1000.0, 0., 1000.0].into(),
-            [-100.0, 0., -100.0].into(),
+            [-000.0, 0., -1000.0].into(),
             //[1000.0, 0., -1000.0].into(),
         ];
         let points = points.map(|p| {
@@ -617,6 +617,12 @@ fn setup_world(
                 /* directive: boid::BoidMindDirective::RunCircuit {
                     param: boid::strategy::run_circuit::RunCircuit { initial_point }
                 }, */
+                directive: boid::BoidMindDirective::AttackPresue {
+                    param: boid::strategy::attack_persue::AttackPersue {
+                        attacking_range: 300.,
+                        quarry_rb: _player_craft_id.handle()
+                    }
+                },
                 ..Default::default()
             })
             .with_children(|parent| {
@@ -660,7 +666,7 @@ fn setup_world(
             }).id());
     }
 
-    let flock_entt = commands.spawn().insert(Name::new("flock")).id();
+    /* let flock_entt = commands.spawn().insert(Name::new("flock")).id();
     let formation = commands
         .spawn()
         .insert_bundle(flock::formation::FlockFormationBundle::new(
@@ -681,7 +687,7 @@ fn setup_world(
                 // leader_directive: None,
             },
             ..flock::FlockMindBundle::new(members, formation)
-        });
+        }); */
 }
 
 #[allow(unreachable_code)]

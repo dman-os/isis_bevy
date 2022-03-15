@@ -439,7 +439,7 @@ pub(super) fn handle_collision_damage_events(
 
     // FIXME: premature optimization
     // FIXME: is this even an optimization?
-    cd_events.send_batch(generated_events.drain(0..));
+    cd_events.send_batch(generated_events.drain(..));
 
     #[inline]
     fn inner(
@@ -504,7 +504,7 @@ pub(super) fn handle_collision_damage_events(
             }
         }
         if let Some((attire_entt, dist)) = closest_attire {
-            // TODO: fixme
+            // FIXME: this is being emitted to frequently at eye raising distances
             tracing::debug!(
                 "CollisonDamageEnabledRb collided but no attires covered deepest contact point, damaging closest attire with at diastance {dist:?}",
             );

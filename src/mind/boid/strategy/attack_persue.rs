@@ -117,7 +117,7 @@ pub fn butler(
         state.composer_routine = Some(compose);
 
         *out = BoidStrategyOutput {
-            routine: Some(compose),
+            steering_routine: Some(compose),
             fire_weapons: false,
         };
         commands.entity(entt).insert(ActiveBoidStrategy);

@@ -48,7 +48,7 @@ opt-level = 3
 [patch.crates-io]
 # bevy = { path = "../bevy" }
 # bevy_egui = { path = "../bevy_egui" }
-bevy_rapier3d = { path = "../bevy_rapier/bevy_rapier3d" }
+# bevy_rapier3d = { path = "../bevy_rapier/bevy_rapier3d" } # 27c945faa735cef641b3bc12851
 # bevy-inspector-egui = { path = "../bevy-inspector-egui" }
 
 # bytemuck = { path = "../../../bytemuck", features  = ["derive", "proc-macro-crate"] }

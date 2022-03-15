@@ -196,6 +196,7 @@ fn handle_activate_weapon_events_projectile(
                             ..Default::default()
                         }
                         .into(),
+                        // TODO: inherit craft velocity too
                         velocity: RigidBodyVelocity {
                             linvel: <[TReal; 3]>::from(xform.rotation * proj_wpn.proj_velocity)
                                 .into(),

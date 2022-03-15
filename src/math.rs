@@ -102,7 +102,11 @@ pub trait TransformExt {
     ///
     /// let calc_parent_xform = calc_parent_xform(&xform, &glob_xform.into());
     ///
-    /// assert!(parent_xform == calc_parent_xform);
+    /// assert!(
+    ///     (parent_xform.translation - calc_parent_xform.translation).length_squared() < f32::EPSILON,
+    /// );
+    /// assert!((parent_xform.rotation - calc_parent_xform.rotation).length_squared() < f32::EPSILON);
+    /// assert!((parent_xform.scale - calc_parent_xform.scale).length_squared() < f32::EPSILON);
     /// ```
     fn calc_parent_xform(&self, glob_xform: &GlobalTransform) -> GlobalTransform;
     fn is_nan(&self) -> bool;

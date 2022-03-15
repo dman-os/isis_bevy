@@ -57,6 +57,9 @@ pub enum BoidMindDirective {
     RunCircuit {
         param: strategy::run_circuit::RunCircuit,
     },
+    AttackPresue {
+        param: strategy::attack_persue::AttackPersue,
+    },
 }
 
 pub fn boid_mind(
@@ -212,6 +215,16 @@ pub fn boid_mind(
                 commands
                     .spawn()
                     .insert_bundle(strategy::run_circuit::Bundle::new(
+                        param.clone(),
+                        boid_entt,
+                        Default::default(),
+                    ))
+                    .id(),
+            ),
+            BoidMindDirective::AttackPresue { param } => Some(
+                commands
+                    .spawn()
+                    .insert_bundle(strategy::attack_persue::Bundle::new(
                         param.clone(),
                         boid_entt,
                         Default::default(),

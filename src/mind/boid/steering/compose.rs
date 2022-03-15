@@ -17,6 +17,7 @@ pub struct Compose {
 
 pub type Bundle = LinAngRoutineBundle<Compose>;
 
+// TODO: run a similar ActiveRoutine tagging for `CurrentSteeringRoutine`s
 pub fn butler(
     mut commands: Commands,
     changed: Query<(&Compose, &SteeringRoutine), Changed<Compose>>,
@@ -223,6 +224,7 @@ pub fn update(
             BoidSteeringSystemOutput::LinOnly { lin } => {
                 // TODO: parameterize this
                 let (xform,) = boids.get(routine.boid_entt()).unwrap_or_log();
+                // Look at the direction you want to go by default
                 (lin, super::look_to(xform.rotation.inverse() * lin))
             }
             BoidSteeringSystemOutput::AngOnly { ang } => (TVec3::ZERO, ang),
@@ -330,6 +332,7 @@ impl SteeringRoutineComposer {
 /// Contains the engine inputs.
 /// Decopling layer between the engine and the minds.
 // FIXME: over engineering
+// FIXME: this has accured more overengineering somehow
 #[derive(Debug, Clone, Copy, educe::Educe)]
 #[educe(Default)]
 enum BoidSteeringSystemOutput {

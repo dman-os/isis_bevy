@@ -34,7 +34,7 @@ pub struct AngularEngineState {
     pub flame: TVec3,
 }
 
-// TODO: break this up to multiple components
+// TODO: break this up to multiple components. Maybe along the line of what's likely to mutate?
 #[derive(Debug, Clone, Component, Reflect, Inspectable)]
 pub struct EngineConfig {
     ///  Speed to travel at when there is no input i.e. how fast to travel when idle.
@@ -44,8 +44,6 @@ pub struct EngineConfig {
     /// In KG.
     pub mass: TReal,
 
-    // TODO: rename this to soft_acceleration_limit and calculate actual
-    // limit from it andconsidering the availaible force and mass
     /// Maximum acceleration allowed to the craft.
     /// In m/s.
     pub acceleration_limit: TVec3,

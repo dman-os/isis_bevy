@@ -112,8 +112,7 @@ where
 
 #[derive(Debug, Clone, Default, Inspectable, Component)]
 pub struct BoidStrategyOutput {
-    #[inspectable(ignore)]
-    pub routine: Option<Entity>,
+    pub steering_routine: Option<Entity>,
     pub fire_weapons: bool,
 }
 
@@ -166,7 +165,7 @@ pub fn craft_boid_strategy_output_mgr(
         let output = strategies
             .get(strategy)
             .expect_or_log("active BoidStrategy not found");
-        cur_routine.routine = output.routine;
+        cur_routine.routine = output.steering_routine;
 
         if output.fire_weapons {
             for wpn in wpn_index.entt_to_desc.keys() {

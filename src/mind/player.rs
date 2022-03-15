@@ -94,7 +94,7 @@ impl Default for CraftCamera {
             position_offset: TVec3::Y,
             distance: 22.,
             rotation_speed: 5.,
-            auto_align: true,
+            auto_align: false,
             align_delay: 1.5,
             // align_smooth_range: 45.,
             facing_direction: -TVec3::Z,
@@ -106,6 +106,7 @@ impl Default for CraftCamera {
     }
 }
 
+// FIXME: I suspect whatver's going on here is beaking bevy_debug_lines
 pub fn cam_input(
     targets: Query<&GlobalTransform>,
     mut cameras: Query<(&mut CraftCamera, &mut Transform, &GlobalTransform, &Camera)>,
@@ -292,6 +293,7 @@ pub fn cam_input(
 
 pub fn wpn_input(
     k_input: Res<Input<KeyCode>>,
+    m_button_input: Res<Input<MouseButton>>,
     cur_craft: Res<CurrentCraft>,
     crafts: Query<(&sensors::CraftWeaponsIndex,)>,
     weapons: Query<&WeaponActivationState>,
@@ -300,7 +302,7 @@ pub fn wpn_input(
 ) {
     if let Some(entt) = &cur_craft.entt {
         let (index,) = crafts.get(*entt).unwrap_or_log();
-        if k_input.pressed(KeyCode::Space) {
+        if k_input.pressed(KeyCode::Space) || m_button_input.pressed(MouseButton::Left) {
             for wpn in index.entt_to_desc.keys() {
                 if weapons
                     .get(*wpn)
@@ -379,7 +381,7 @@ pub fn engine_input(
     let (xform, craft_colliders) = crafts
         .get(cur_craft)
         .expect_or_log("unable to find current craft entity");
-    player_input.engine_lin = xform.rotation * linear_input;
+    player_input.engine_lin = (xform.rotation * linear_input) * 10_000.;
     player_input.engine_ang = angular_input;
 
     if let Some((cam_xform, craft_cam)) = cameras

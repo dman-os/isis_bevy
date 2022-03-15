@@ -113,7 +113,7 @@ pub fn butler(
         state.avoid_collision_routine = Some(avoid_collision);
         state.composer_routine = Some(compose);
         *out = BoidStrategyOutput {
-            routine: Some(compose),
+            steering_routine: Some(compose),
             fire_weapons: false,
         };
 

@@ -1,4 +1,6 @@
 // FIXME: this layer's just overhead, get rid of it
+//        - well, flock strategies shouldn't be allowed to touch boid strategies
+//          for some reason. I guess it's staying?
 
 use deps::*;
 
@@ -129,7 +131,7 @@ pub fn butler(
         state.face_routine = Some(face);
 
         *out = BoidStrategyOutput {
-            routine: Some(compose),
+            steering_routine: Some(compose),
             fire_weapons: false,
         };
 
