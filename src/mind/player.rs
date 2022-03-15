@@ -438,7 +438,7 @@ pub fn setup_markers(
     // mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let text_style = TextStyle {
-        font: asset_server.load("fonts/test_font.ttf"),
+        font: asset_server.load("fonts/BrassMono/regular_cozy.otf"),
         font_size: 25.0,
         color: Color::rgba(1., 1., 1., 0.9),
     };
@@ -760,7 +760,7 @@ pub fn wpn_raycaster_butler(
                             sections: vec![TextSection {
                                 value: "(x)".to_string(),
                                 style: TextStyle {
-                                    font: asset_server.load("fonts/test_font.ttf"),
+                                    font: asset_server.load("fonts/BrassMono/regular_cozy.otf"),
                                     font_size: 25.0,
                                     color: Color::rgba(1., 1., 1., 0.9),
                                 }

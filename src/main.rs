@@ -168,7 +168,7 @@ fn setup_fps_display(mut commands: Commands, asset_server: Res<AssetServer>) {
                     TextSection {
                         value: "FPS: ".to_string(),
                         style: TextStyle {
-                            font: asset_server.load("fonts/test_font.ttf"),
+                            font: asset_server.load("fonts/BrassMono/regular_cozy.otf"),
                             font_size: 25.0,
                             color: Color::WHITE,
                         },
@@ -176,7 +176,7 @@ fn setup_fps_display(mut commands: Commands, asset_server: Res<AssetServer>) {
                     TextSection {
                         value: "".to_string(),
                         style: TextStyle {
-                            font: asset_server.load("fonts/test_font.ttf"),
+                            font: asset_server.load("fonts/BrassMono/regular_cozy.otf"),
                             font_size: 25.0,
                             color: Color::GOLD,
                         },
