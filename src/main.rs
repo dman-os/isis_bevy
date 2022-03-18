@@ -16,7 +16,7 @@ use bevy_prototype_debug_lines::*;
 use bevy_rapier3d::prelude::*;
 use rand::prelude::*;
 
-use math::{TReal, TVec3, *};
+use math::*;
 
 pub mod craft;
 pub mod math;
@@ -260,7 +260,7 @@ fn setup_world(
 ) {
     let mut rng = rand::thread_rng();
     // setup the random floating spheres
-    {
+    /* {
         const SIZE_RANGE: TReal = 100.;
         const MASS_RANGE: TReal = 1000.;
         //const LOCATION_RANGE: [TReal; 3]= [500.; 3];
@@ -338,7 +338,7 @@ fn setup_world(
                     ..Default::default()
                 });
         }
-    }
+    } */
 
     // spawn the single floating obstacle
     {
@@ -410,8 +410,72 @@ fn setup_world(
             .insert_bundle(bevy_mod_picking::PickableBundle::default());
     }
 
+    // spawn the box cage
+    {
+        for (xform, bevy_shape, rapier_shape, density) in [
+            (TVec3::X, -TVec3::X, TVec3::Y),
+            (-TVec3::X, TVec3::X, TVec3::Y),
+            (TVec3::Y, -TVec3::Y, -TVec3::Z),
+            (-TVec3::Y, TVec3::Y, -TVec3::Z),
+            (TVec3::Z, -TVec3::Z, TVec3::Y),
+            (-TVec3::Z, TVec3::Z, TVec3::Y),
+        ]
+        .map(|(pos, dir, up)| {
+            const SIZE: TReal = 1000.;
+            let mass = 10_000.;
+
+            let pos = pos * SIZE * 0.5;
+
+            (
+                Transform::from_translation(pos).looking_at(dir, up),
+                shape::Plane {
+                    size: SIZE,
+                    // ..Default::default()
+                },
+                ColliderShape::cuboid(SIZE * 0.5, SIZE * 0.5, 0.5),
+                mass / (SIZE * SIZE * 0.5),
+            )
+        }) {
+            commands
+                .spawn()
+                .insert(Name::new(format!("plane {}", xform.translation)))
+                /* .insert_bundle(PbrBundle {
+                    /* mesh: meshes.add(Mesh::from()), */
+                    mesh: meshes.add(Mesh::from(bevy_shape)),
+                    material: materials.add(
+                        Color::rgba(
+                            rng.gen::<TReal>(),
+                            rng.gen::<TReal>(),
+                            rng.gen::<TReal>(),
+                            1.,
+                        )
+                        .into(),
+                    ),
+                    ..Default::default()
+                }) */
+                .insert(ColliderPositionSync::Discrete)
+                .insert_bundle(ColliderBundle {
+                    material: ColliderMaterial {
+                        ..Default::default()
+                    }
+                    .into(),
+                    position: (xform.translation, xform.rotation).into(),
+                    flags: ColliderFlags {
+                        collision_groups: *craft::attire::OBSTACLE_COLLIDER_IGROUP,
+                        ..Default::default()
+                    }
+                    .into(),
+                    shape: rapier_shape.into(),
+                    mass_properties: ColliderMassProps::Density(density).into(),
+                    ..Default::default()
+                })
+                // .insert(ColliderDebugRender::default())
+                .insert_bundle(bevy_mod_picking::PickableBundle::default());
+        }
+    }
+
     // setup the test circuit
-    let _initial_point = {
+    /* let _initial_point = {
         let material = materials.add(Color::PINK.into());
         let mesh = meshes.add(Mesh::from(shape::Icosphere {
             radius: 10.0,
@@ -457,7 +521,7 @@ fn setup_world(
                 });
         }
         points[0]
-    };
+    }; */
 
     let ball_fighter_model = asset_server.load("models/ball_fighter.gltf#Scene0");
     let new_kinetic_cannon: &dyn Fn(_) -> _ = {
@@ -587,7 +651,7 @@ fn setup_world(
     let mut members = flock::FlockMembers::default();
     // spawn the ai craft
     for ii in -7..=7 {
-        // for ii in 0..1 {
+    // for ii in 0..1 {
         members.push(commands
             .spawn()
             .insert_bundle(craft::CraftBundle {
@@ -617,12 +681,13 @@ fn setup_world(
                 /* directive: boid::BoidMindDirective::RunCircuit {
                     param: boid::strategy::run_circuit::RunCircuit { initial_point }
                 }, */
-                directive: boid::BoidMindDirective::AttackPresue {
+                directive: boid::BoidMindDirective::KeepGoingForward,
+                /*directive: boid::BoidMindDirective::AttackPresue {
                     param: boid::strategy::attack_persue::AttackPersue {
                         attacking_range: 300.,
                         quarry_rb: _player_craft_id.handle()
                     }
-                },
+                },*/
                 ..Default::default()
             })
             .with_children(|parent| {

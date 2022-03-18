@@ -9,6 +9,7 @@ use crate::mind::*;
 
 pub mod arrive;
 pub mod avoid_collision;
+pub mod closure;
 pub mod compose;
 pub mod face;
 pub mod fly_with_flock;

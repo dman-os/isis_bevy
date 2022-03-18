@@ -39,11 +39,12 @@ pub struct BoidMindBundle {
     pub strategy_index: BoidStrategyIndex,
 }
 
-#[derive(Debug, Clone, Component, Educe)]
-#[educe(Default)]
+#[derive(Clone, Component, Educe)]
+#[educe(Debug, Default)]
 pub enum BoidMindDirective {
     #[educe(Default)]
     None,
+    KeepGoingForward,
     SlaveToPlayerControl,
     HoldPosition {
         pos: TVec3,
@@ -81,6 +82,61 @@ pub fn boid_mind(
         }
         cur_stg.strategy = match directive {
             BoidMindDirective::None => None,
+            BoidMindDirective::KeepGoingForward => {
+                let raycast_toi_modifier = dim.max_element();
+                let cast_shape_radius = raycast_toi_modifier * 0.5;
+                let avoid_collision: Box<strategy::custom::RoutineSpawner> =
+                    Box::new(move |commands, _| {
+                        commands
+                            .spawn()
+                            .insert_bundle(steering::avoid_collision::Bundle::new(
+                                steering::avoid_collision::AvoidCollision::new(
+                                    cast_shape_radius,
+                                    raycast_toi_modifier,
+                                ),
+                                boid_entt,
+                                Default::default(),
+                            ))
+                            .id()
+                    });
+                let closure: Box<strategy::custom::RoutineSpawner> = Box::new(move |commands, strategy| {
+                    commands
+                        .spawn()
+                        .insert_bundle(steering::closure::Bundle::new(
+                            steering::closure::Closure {
+                                closure: Box::new(
+                                    |xform|{
+                                        (xform.forward().into(), steering::look_to(-TVec3::Z).into())
+                                    }
+                                )
+                            },
+                            strategy.boid_entt(),
+                        ))
+                        .id()
+                });
+                Some(
+                    commands
+                        .spawn()
+                        .insert_bundle(strategy::custom::Bundle::new(
+                            strategy::custom::Custom::new(
+                                strategy::custom::Composition::PriorityOverride {
+                                    routines: smallvec::smallvec![avoid_collision, closure],
+                                },
+                            ),
+                            boid_entt,
+                        ))
+                        .id(),
+                )
+            },
+            /* BoidMindDirective::Custom { composition } => Some(
+                commands
+                    .spawn()
+                    .insert_bundle(strategy::custom::Bundle::new(
+                        strategy::custom::Custom::new(composition.take().unwrap_or_log()),
+                        boid_entt,
+                    ))
+                    .id(),
+            ), */
             BoidMindDirective::SlaveToPlayerControl => {
                 let player: Box<strategy::custom::RoutineSpawner> = Box::new(move |commands, _| {
                     commands

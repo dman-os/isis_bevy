@@ -140,6 +140,8 @@ pub fn be_ray(
     with_linvel + (to_pos_vel - with_linvel) * weight */
     if (adjusted_pos - with_linvel - current_pos).length()
         > (accel_displacement.length() * BREATHING_SPACE_MULTIPLIER)
+        || (adjusted_pos - current_pos).length()
+            < (accel_displacement.length() * BREATHING_SPACE_MULTIPLIER)
     {
         (adjusted_pos - with_linvel - accel_displacement - current_pos).normalize()
     } else {
@@ -354,7 +356,7 @@ pub fn avoid_obstacle_seblague(
         }
     }
     // TVec3::ZERO
-    cast_root
+    -cast_root
 }
 
 #[inline]

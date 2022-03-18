@@ -118,6 +118,7 @@ impl Plugin for MindPlugin {
                     .with_system(boid::steering::arrive::update)
                     .with_system(boid::steering::player::update)
                     .with_system(boid::steering::face::update)
+                    .with_system(boid::steering::closure::update)
                     .with_system(boid::steering::seek::update),
             )
             .add_system(

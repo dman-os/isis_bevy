@@ -40,7 +40,7 @@ bevy_rapier3d = { version = "0.12", features = ["render"]}
 bevy_prototype_debug_lines = { git = "https://github.com/Toqozz/bevy_debug_lines", rev = "69bf4dd", features = ["3d"] }
 bevy-inspector-egui = { version = "0.8.2", features =  [] }
 educe = "0.4.18"
-bevy_polyline = "0.1.1"
+bevy_polyline = "0.1.4"
 big-brain = "0.10.0"
 # bevy_mod_debugdump = "0.2.1"
 # bevy_config_cam = "0.1.2"

@@ -24,7 +24,7 @@ pub struct AvoidCollision {
 impl AvoidCollision {
     pub fn new(cast_shape_radius: TReal, raycast_toi_modifier: TReal) -> Self {
         Self {
-            fwd_prediction_secs: 5.0,
+            fwd_prediction_secs: 3.0,
             raycast_exclusion: Default::default(),
             upheld_dodge_seconds: 1.0,
             raycast_toi_modifier,
@@ -133,12 +133,12 @@ pub fn update(
                     && !param.raycast_exclusion.contains(&handle)
             }),
         ) {
-            lines.line_colored(xform.translation, state.cast_dir * hit.toi, 0., Color::RED);
+            lines.line_colored(xform.translation, xform.translation + state.cast_dir * hit.toi, 0., Color::RED);
             // use behavior to avoid it
             *lin_out = steering_behaviours::avoid_obstacle_seblague(
                 state.cast_dir,
                 &mut |cast_dir| {
-                    lines.line_colored(xform.translation, cast_dir * toi, 0., Color::BLUE);
+                    lines.line_colored(xform.translation, xform.translation + cast_dir * toi, 0., Color::BLUE);
                     avoid_collision_raycast_ctr += 1;
                     query_pipeline
                         .cast_shape(
@@ -162,7 +162,7 @@ pub fn update(
             .into();
             // *lin_out = xform.left().into();
 
-            lines.line_colored(xform.translation, lin_out.0 * toi, 0., Color::GREEN);
+            lines.line_colored(xform.translation, xform.translation + lin_out.0 * toi, 0., Color::GREEN);
 
             // cache avoidance vector
             state.last_dodge_timestamp = time.seconds_since_startup();
@@ -182,6 +182,7 @@ pub fn update(
             && time.seconds_since_startup()
                 < (state.last_dodge_timestamp + param.upheld_dodge_seconds)
         {
+            lines.line_colored(xform.translation, xform.translation + state.last_dodge_dir * state.linvel.length(), 0., Color::GREEN);
             // stick to it until upheld time expires
             *lin_out = state.last_dodge_dir.into();
         }
