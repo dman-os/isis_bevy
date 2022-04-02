@@ -88,10 +88,10 @@ pub fn butler(
                     },
                     arrival_tolerance: 5.,
                     deceleration_radius: None,
-                    linvel_limit: engine_config.linvel_limit,
+                    // linvel_limit: engine_config.linvel_limit,
                     avail_accel: engine_config.avail_lin_accel().clamp(
-                        -engine_config.actual_acceleration_limit(),
-                        engine_config.actual_acceleration_limit(),
+                        -engine_config.actual_accel_limit(),
+                        engine_config.actual_accel_limit(),
                     ),
                 },
                 strategy.boid_entt(),

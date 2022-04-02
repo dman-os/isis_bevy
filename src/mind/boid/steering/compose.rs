@@ -1,13 +1,15 @@
 use deps::*;
 
 use bevy::prelude::*;
+use bevy_rapier3d::prelude::*;
 
+use crate::craft::*;
 use crate::math::*;
 use crate::mind::*;
 
 use super::{
-    ActiveSteeringRoutine, AngularRoutineOutput, LinAngRoutineBundle, LinearRoutineOutput,
-    SteeringRoutine,
+    ActiveSteeringRoutine, AngularRoutineOutput, CraftControllerConsts, LinAngRoutineBundle,
+    LinearRoutineOutput, SteeringRoutine,
 };
 
 #[derive(Debug, Clone, Component)]
@@ -63,17 +65,28 @@ pub fn update(
         (Option<&LinearRoutineOutput>, Option<&AngularRoutineOutput>),
         (With<SteeringRoutine>, Without<Compose>),
     >,
-    boids: Query<(&GlobalTransform,)>,
+    boids: Query<(
+        &GlobalTransform,
+        &RigidBodyVelocityComponent,
+        &engine::EngineConfig,
+        &CraftControllerConsts,
+    )>,
 ) {
     for (param, routine, mut lin_out, mut ang_out) in composer_routines.iter_mut() {
+        let (xform, vel, engine_config, consts) = boids.get(routine.boid_entt()).unwrap_or_log();
         // FIXME: i hate this code
         let active_res = match &param.composer {
             SteeringRoutineComposer::None => Default::default(),
             SteeringRoutineComposer::Single { entt: routine_entt } => {
-                match other_routines
-                    .get(*routine_entt)
-                    .map(|(lin, ang)| BoidSteeringSystemOutput::get_active_res(lin, ang))
-                {
+                match other_routines.get(*routine_entt).map(|(lin, ang)| {
+                    BoidSteeringSystemOutput::get_active_res(
+                        lin,
+                        ang,
+                        vel.linvel.into(),
+                        engine_config,
+                        consts,
+                    )
+                }) {
                     Ok(Some(res)) => res,
                     Ok(None) => {
                         tracing::error!(
@@ -96,10 +109,15 @@ pub fn update(
                 // zero it out first
                 let mut sum = Default::default();
                 for (weight, routine_entt) in summed {
-                    match other_routines
-                        .get(*routine_entt)
-                        .map(|(lin, ang)| BoidSteeringSystemOutput::get_active_res(lin, ang))
-                    {
+                    match other_routines.get(*routine_entt).map(|(lin, ang)| {
+                        BoidSteeringSystemOutput::get_active_res(
+                            lin,
+                            ang,
+                            vel.linvel.into(),
+                            engine_config,
+                            consts,
+                        )
+                    }) {
                         Ok(Some(res)) => {
                             sum = sum + (*weight * res);
                         }
@@ -128,11 +146,18 @@ pub fn update(
                 // zero it out first
                 let mut pick = Default::default();
                 'priority_loop: for routine_entt in priority {
-                    match other_routines
-                        .get(*routine_entt)
-                        .map(|(lin, ang)| BoidSteeringSystemOutput::get_active_res(lin, ang))
-                    {
+                    match other_routines.get(*routine_entt).map(|(lin, ang)| {
+                        BoidSteeringSystemOutput::get_active_res(
+                            lin,
+                            ang,
+                            vel.linvel.into(),
+                            engine_config,
+                            consts,
+                        )
+                    }) {
                         Ok(Some(res)) => {
+                            // FIXME: this bugs out when we get with some zero values due to
+                            // precission issues when converted to accel
                             if !res.is_zero() {
                                 // tracing::info!(?res, ?routine_entt, "wasn't zero");
                                 pick = res;
@@ -164,10 +189,15 @@ pub fn update(
                 avoid_collision,
                 routines: summed,
             } => {
-                let avoid_coll_out = match other_routines
-                    .get(*avoid_collision)
-                    .map(|(lin, ang)| BoidSteeringSystemOutput::get_active_res(lin, ang))
-                {
+                let avoid_coll_out = match other_routines.get(*avoid_collision).map(|(lin, ang)| {
+                    BoidSteeringSystemOutput::get_active_res(
+                        lin,
+                        ang,
+                        vel.linvel.into(),
+                        engine_config,
+                        consts,
+                    )
+                }) {
                     Ok(Some(res)) => res,
                     Ok(None) => {
                         tracing::error!(
@@ -188,10 +218,15 @@ pub fn update(
                 if avoid_coll_out.is_zero() {
                     let mut sum = Default::default();
                     for (weight, routine_entt) in summed {
-                        match other_routines
-                            .get(*routine_entt)
-                            .map(|(lin, ang)| BoidSteeringSystemOutput::get_active_res(lin, ang))
-                        {
+                        match other_routines.get(*routine_entt).map(|(lin, ang)| {
+                            BoidSteeringSystemOutput::get_active_res(
+                                lin,
+                                ang,
+                                vel.linvel.into(),
+                                engine_config,
+                                consts,
+                            )
+                        }) {
                             Ok(Some(res)) => {
                                 sum = sum + (*weight * res);
                             }
@@ -222,14 +257,13 @@ pub fn update(
         let (lin, ang) = match active_res {
             BoidSteeringSystemOutput::Both { lin, ang } => (lin, ang),
             BoidSteeringSystemOutput::LinOnly { lin } => {
+                // Look at the direction you want to accelerate
                 // TODO: parameterize this
-                let (xform,) = boids.get(routine.boid_entt()).unwrap_or_log();
-                // Look at the direction you want to go by default
                 (lin, super::look_to(xform.rotation.inverse() * lin))
             }
             BoidSteeringSystemOutput::AngOnly { ang } => (TVec3::ZERO, ang),
         };
-        *lin_out = lin.into();
+        *lin_out = LinearRoutineOutput::Accel(lin);
         *ang_out = ang.into();
     }
 }
@@ -338,17 +372,15 @@ impl SteeringRoutineComposer {
 enum BoidSteeringSystemOutput {
     #[educe(Default)]
     Both {
-        /// local space
+        /// world space accel
         lin: TVec3,
-        /// local space
         ang: TVec3,
     },
     LinOnly {
-        /// local space
+        /// world space accel
         lin: TVec3,
     },
     AngOnly {
-        /// local space
         ang: TVec3,
     },
 }
@@ -428,14 +460,17 @@ impl BoidSteeringSystemOutput {
     fn get_active_res(
         lin_res: Option<&LinearRoutineOutput>,
         ang_res: Option<&AngularRoutineOutput>,
+        linvel: TVec3,
+        config: &engine::EngineConfig,
+        consts: &CraftControllerConsts,
     ) -> Option<Self> {
         match (lin_res, ang_res) {
             (Some(lin_res), Some(ang_res)) => Some(Self::Both {
-                lin: lin_res.0,
+                lin: lin_res.to_accel(linvel, config, consts),
                 ang: ang_res.0,
             }),
             (Some(lin_res), None) => {
-                let lin = lin_res.0;
+                let lin = lin_res.to_accel(linvel, config, consts);
                 Some(Self::LinOnly { lin })
             }
             (None, Some(ang_res)) => Some(Self::AngOnly { ang: ang_res.0 }),

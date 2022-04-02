@@ -7,6 +7,9 @@ use deps::*;
 use bevy::prelude::*;
 
 use crate::math::*;
+
+use super::LinearRoutineOutput;
+
 /*
 /// All parameters should be in world space.
 /// `target_facing` is assumed to be normalized
@@ -199,26 +202,30 @@ pub fn be_ray(
     } */
 }
 
+/// Outputs the direction to move towards.
 #[inline(always)]
-pub fn seek_position(current_pos: TVec3, target_pos: TVec3) -> TVec3 {
-    (target_pos - current_pos).normalize()
+pub fn seek_position(current_pos: TVec3, target_pos: TVec3) -> LinearRoutineOutput {
+    LinearRoutineOutput::Dir((target_pos - current_pos).normalize_or_zero())
 }
 
+/// max_accel ought to be in the world basis
 #[inline]
 pub fn arrive_at_position(
     current_pos: TVec3,
     target_pos: TVec3,
+    current_vel: TVec3,
     target_speed: TReal,
     max_speed: TReal,
     arrival_tolerance: TReal,
     deceleration_radius: TReal,
-) -> TVec3 {
+    max_accel: TVec3,
+) -> LinearRoutineOutput {
     let target_offset = target_pos - current_pos;
     let dst = target_offset.length_squared();
     // if we've arrived according to the tolerance
     if dst < arrival_tolerance * arrival_tolerance {
         // stop
-        return TVec3::ZERO;
+        Default::default()
     }
     let dst = dst.sqrt();
     // let deceleration_radius = dst_to_change(speed_to_target, 0., max_accel);
@@ -227,9 +234,13 @@ pub fn arrive_at_position(
     let deceleration_radius = deceleration_radius * BREATHING_SPACE_MULTIPLIER;
     // let speed_to_target = current_vel.dot(target_offset) / dst;
     let weight = (dst - arrival_tolerance) / deceleration_radius;
-    target_offset.normalize() * ((target_speed + (max_speed - target_speed) * weight) / max_speed)
+    let target_vel =
+        target_offset.normalize() * (target_speed + (max_speed - target_speed) * weight);
+    LinearRoutineOutput::Accel((target_vel - current_vel) / max_accel)
 }
 
+// FIXME: consider factoring in the interceptor's velocity?
+//     Nah, I don't think that's necessary
 #[inline]
 pub fn find_intercept_pos(
     current_pos: TVec3,
@@ -243,22 +254,28 @@ pub fn find_intercept_pos(
     target_pos + (time_to_target_pos * target_vel)
 }
 
+/// Outputs the direction to move towards.
 #[inline]
 pub fn intercept_target(
     current_pos: TVec3,
     travel_speed: TReal,
     target_pos: TVec3,
     target_vel: TVec3,
-) -> TVec3 {
+) -> LinearRoutineOutput {
     seek_position(
         current_pos,
         find_intercept_pos(current_pos, travel_speed, target_pos, target_vel),
     )
 }
 
+/// Outputs the direction to move towards.
 /// Assumes the current craft's in the flock.
 #[inline]
-pub fn cohesion(current_pos: TVec3, flock_size: usize, flock_center_sum: TVec3) -> TVec3 {
+pub fn cohesion(
+    current_pos: TVec3,
+    flock_size: usize,
+    flock_center_sum: TVec3,
+) -> LinearRoutineOutput {
     if flock_size > 1 {
         // subtract current position since flock includes current craft
         // and we didn'exclude it when it was orginally summed
@@ -268,13 +285,18 @@ pub fn cohesion(current_pos: TVec3, flock_size: usize, flock_center_sum: TVec3) 
 
         seek_position(current_pos, flock_average_center)
     } else {
-        TVec3::ZERO
+        Default::default()
     }
 }
 
+/// Outputs the direction to move towards.
 /// Assumes the current craft's in the flock.
 #[inline]
-pub fn allignment(current_vel: TVec3, flock_size: usize, flock_vel_sum: TVec3) -> TVec3 {
+pub fn allignment(
+    current_vel: TVec3,
+    flock_size: usize,
+    flock_vel_sum: TVec3,
+) -> LinearRoutineOutput {
     if flock_size > 1 {
         // subtract current vel since flock includes current craft
         // and we didn'exclude it when it was orginally summed
@@ -282,15 +304,16 @@ pub fn allignment(current_vel: TVec3, flock_size: usize, flock_vel_sum: TVec3) -
         // subtract from count by one to exclude current craft
         let flock_average_vel = exculidng_heading_sum / (flock_size - 1) as TReal;
 
-        flock_average_vel.normalize()
+        LinearRoutineOutput::Dir(flock_average_vel)
     } else {
-        TVec3::ZERO
+        Default::default()
     }
 }
 
+/// Outputs the direction to move towards.
 /// Based on Craig Reynold's OpenSteer
 #[inline]
-pub fn separation(current_pos: TVec3, flock_positions: &[TVec3]) -> TVec3 {
+pub fn separation(current_pos: TVec3, flock_positions: &[TVec3]) -> LinearRoutineOutput {
     let mut steering = TVec3::ZERO;
     if flock_positions.len() > 1 {
         for craft_pos in flock_positions {
@@ -306,10 +329,12 @@ pub fn separation(current_pos: TVec3, flock_positions: &[TVec3]) -> TVec3 {
         }
         // steering /= flock_positions.len() as TReal;
     }
-    steering
+    LinearRoutineOutput::Dir(steering)
 }
 
-/// Based on Craig Reynold's OpenSteer
+/// Based on Sebastian Lague's boid code
+/// <https://github.com/SebLague/Boids>
+/// Outputs the direction to dodge.
 #[inline]
 pub fn avoid_obstacle_seblague(
     cast_root: TVec3,
@@ -317,7 +342,7 @@ pub fn avoid_obstacle_seblague(
     // direction and checks for obstruction.
     is_dir_obstructed: &mut dyn FnMut(TVec3) -> bool,
     xform: &GlobalTransform,
-) -> TVec3 {
+) -> LinearRoutineOutput {
     const RAY_COUNT: usize = 30;
     use once_cell::sync::Lazy;
     static RAY_DIRECTIONS: Lazy<[TVec3; RAY_COUNT]> = Lazy::new(|| {
@@ -342,8 +367,9 @@ pub fn avoid_obstacle_seblague(
 
     // since we'll be testing from the cast_root vector outwards (not the forward vector)
     // we can't use the object's transform
-
     // also, we have to negate it since fwd is -Z or something, I'm really confused too
+    //    could it be this works because the rays reversed?
+    //    that would make a lot of sense actually. The origin of the ray code has +Z as fwd
     let transformer = Transform::identity().looking_at(-cast_root, xform.local_y());
 
     // skip the first option which is directly ahead
@@ -352,11 +378,11 @@ pub fn avoid_obstacle_seblague(
         // in world space
         let dir = transformer.rotation.mul_vec3(dir);
         if !is_dir_obstructed(dir) {
-            return dir;
+            return LinearRoutineOutput::FracVel(dir * 1.);
         }
     }
     // TVec3::ZERO
-    -cast_root
+    LinearRoutineOutput::Dir(-cast_root)
 }
 
 #[inline]

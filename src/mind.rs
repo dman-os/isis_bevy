@@ -137,6 +137,9 @@ impl Plugin for MindPlugin {
             .insert_resource(player::PlayerMindConfig::default())
             .insert_resource(player::PlayerBoidInput::default())
             .insert_resource(player::CurrentCraft::default())
+            .add_plugin(bevy_inspector_egui::InspectorPlugin::<
+                player::PlayerEngineConfig,
+            >::new())
             // minds
             .add_system_to_stage(CoreStage::PreUpdate, boid::boid_mind)
             .add_system_to_stage(CoreStage::PreUpdate, flock::flock_mind)

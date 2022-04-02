@@ -26,7 +26,7 @@ impl AvoidCollision {
         Self {
             fwd_prediction_secs: 3.0,
             raycast_exclusion: Default::default(),
-            upheld_dodge_seconds: 1.0,
+            upheld_dodge_seconds: 1.5,
             raycast_toi_modifier,
             cast_shape_radius,
         }
@@ -38,7 +38,7 @@ pub struct AvoidCollisionState {
     /// in world space
     pub cast_dir: TVec3,
     pub linvel: TVec3,
-    pub last_dodge_dir: TVec3,
+    pub last_dodge_out: LinearRoutineOutput,
     pub last_dodge_timestamp: f64,
     pub craft_colliders: HashSet<ColliderHandle>,
 }
@@ -69,8 +69,10 @@ pub fn butler(
             .expect_or_log("craft entt not found for routine");
 
         state.linvel = vel.linvel.into();
-        // use last frame's desired vel dir to cast for obstruction
-        state.cast_dir = xform.rotation * lin_state.input.normalize();
+        // use last frame's desired accel dir to cast for obstruction
+        state.cast_dir = (xform.rotation * lin_state.flame + state.linvel).normalize_or_zero();
+        // state.cast_dir = (state.cast_dir + state.linvel.normalize_or_zero()) * 0.5;
+        // state.cast_dir = state.linvel.normalize_or_zero();
         if routine_change.is_added() || colliders_change.is_changed() {
             state.craft_colliders.clear();
             state.craft_colliders.extend(colliders.0 .0.iter());
@@ -133,12 +135,22 @@ pub fn update(
                     && !param.raycast_exclusion.contains(&handle)
             }),
         ) {
-            lines.line_colored(xform.translation, xform.translation + state.cast_dir * hit.toi, 0., Color::RED);
+            lines.line_colored(
+                xform.translation,
+                xform.translation + state.cast_dir * hit.toi,
+                0.,
+                Color::RED,
+            );
             // use behavior to avoid it
             *lin_out = steering_behaviours::avoid_obstacle_seblague(
                 state.cast_dir,
                 &mut |cast_dir| {
-                    lines.line_colored(xform.translation, xform.translation + cast_dir * toi, 0., Color::BLUE);
+                    lines.line_colored(
+                        xform.translation,
+                        xform.translation + cast_dir * toi,
+                        0.,
+                        Color::BLUE,
+                    );
                     avoid_collision_raycast_ctr += 1;
                     query_pipeline
                         .cast_shape(
@@ -158,15 +170,20 @@ pub fn update(
                         .is_some()
                 },
                 xform,
-            )
-            .into();
-            // *lin_out = xform.left().into();
+            );
+            let dodge_dir = lin_out.get_dir();
+            // *lin_out = (dodge_dir - state.linvel.normalize_or_zero()).normalize_or_zero().into();
 
-            lines.line_colored(xform.translation, xform.translation + lin_out.0 * toi, 0., Color::GREEN);
+            lines.line_colored(
+                xform.translation,
+                xform.translation + dodge_dir * toi,
+                0.,
+                Color::GREEN,
+            );
 
             // cache avoidance vector
             state.last_dodge_timestamp = time.seconds_since_startup();
-            state.last_dodge_dir = lin_out.0;
+            state.last_dodge_out = lin_out.clone();
             tracing::trace!(
                 ?state.cast_dir,
                 ?lin_out,
@@ -174,7 +191,7 @@ pub fn update(
                 "collision predicted with {handle:?}\n{:?} meters away\n{:?} seconds away\ncorrecting {:?} degrees away",
                 hit.toi,
                 hit.toi / speed,
-                state.cast_dir.angle_between(lin_out.0) * (180. / crate::math::real::consts::PI)
+                state.cast_dir.angle_between(dodge_dir) * (180. / crate::math::real::consts::PI)
             );
         }
         // if recently had avoided collision
@@ -182,9 +199,22 @@ pub fn update(
             && time.seconds_since_startup()
                 < (state.last_dodge_timestamp + param.upheld_dodge_seconds)
         {
-            lines.line_colored(xform.translation, xform.translation + state.last_dodge_dir * state.linvel.length(), 0., Color::GREEN);
+            let dodge_dir = state.last_dodge_out.get_dir();
+            lines.line_colored(
+                xform.translation,
+                xform.translation + dodge_dir * state.linvel.length(),
+                0.,
+                Color::GREEN,
+            );
             // stick to it until upheld time expires
-            *lin_out = state.last_dodge_dir.into();
+            *lin_out = state.last_dodge_out;
+            // *lin_out = (state.last_dodge_dir - state.linvel.normalize_or_zero()).try_normalize().unwrap_or(state.last_dodge_dir).into();
+            lines.line_colored(
+                xform.translation,
+                xform.translation + dodge_dir * state.linvel.length(),
+                0.,
+                Color::ORANGE,
+            );
         }
     }
     tracing::trace!(avoid_collision_raycast_ctr);

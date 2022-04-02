@@ -21,23 +21,22 @@ pub fn update(
         (&Intercept, &SteeringRoutine, &mut LinearRoutineOutput),
         With<ActiveSteeringRoutine>,
     >,
-    boids: Query<(&GlobalTransform,)>,
-    quarries: Query<(&GlobalTransform, &RigidBodyVelocityComponent)>,
+    boids: Query<(&GlobalTransform, &RigidBodyVelocityComponent)>,
 ) {
     for (param, routine, mut output) in routines.iter_mut() {
-        let (xform,) = boids
+        let (xform, _) = boids
             .get(routine.boid_entt)
             .expect_or_log("craft entt not found for routine");
-        let (quarry_xform, quarry_vel) = quarries
+        let (quarry_xform, quarry_vel) = boids
             .get(param.quarry_rb.entity())
             .expect_or_log("quarry rigid body not found for on Intercept routine");
-        let speed = param.speed.unwrap_or(param.linvel_limit.z);
+        let travel_speed = param.speed.unwrap_or(param.linvel_limit.z);
         *output = super::steering_behaviours::intercept_target(
             xform.translation,
-            speed,
+            travel_speed,
             quarry_xform.translation,
             quarry_vel.linvel.into(),
-        )
-        .into();
+        );
+        // *output = (dir - TVec3::from(vel.linvel)).normalize_or_zero().into();
     }
 }

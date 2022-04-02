@@ -83,6 +83,7 @@ pub struct CurrentFlockFormation {
 pub enum FlockMindDirective {
     #[educe(Default)]
     None,
+    CAS,
     FormUp {
         leader_directive: Option<boid::BoidMindDirective>,
     },
@@ -116,10 +117,20 @@ pub fn flock_mind(
                     ))
                     .id(),
             ),
+            FlockMindDirective::CAS => Some(
+                commands
+                    .spawn()
+                    .insert_bundle(strategy::cas::Bundle::new(
+                        strategy::cas::CAS {},
+                        flock_entt,
+                        Default::default(),
+                    ))
+                    .id(),
+            ),
             FlockMindDirective::JoinFomation { .. } => {
                 todo!()
             }
-        }
+        };
     }
 }
 /*

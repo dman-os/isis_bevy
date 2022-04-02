@@ -1,15 +1,22 @@
 use deps::*;
 
+use bevy::prelude::*;
+
+use crate::craft::*;
+
 use super::{
     ActiveSteeringRoutine, AngularRoutineOutput, LinAngRoutineBundle, LinearRoutineOutput,
     SteeringRoutine,
 };
-use bevy::prelude::*;
 
 #[derive(Component)]
 pub struct Closure {
     pub closure: Box<
-        dyn FnMut(&GlobalTransform) -> (LinearRoutineOutput, AngularRoutineOutput)
+        dyn FnMut(
+                &GlobalTransform,
+                &engine::LinearEngineState,
+                &engine::AngularEngineState,
+            ) -> (LinearRoutineOutput, AngularRoutineOutput)
             + 'static
             + Send
             + Sync,
@@ -28,13 +35,17 @@ pub fn update(
         ),
         With<ActiveSteeringRoutine>,
     >,
-    objects: Query<&GlobalTransform>,
+    crafts: Query<(
+        &GlobalTransform,
+        &engine::LinearEngineState,
+        &engine::AngularEngineState,
+    )>,
 ) {
     for (mut param, routine, mut lin_out, mut ang_out) in routines.iter_mut() {
-        let xform = objects
+        let (xform, lin_state, ang_state) = crafts
             .get(routine.boid_entt)
             .expect_or_log("craft entt not found for routine");
-        let (lin, ang) = (param.closure)(xform);
+        let (lin, ang) = (param.closure)(xform, lin_state, ang_state);
         *lin_out = lin;
         *ang_out = ang;
     }

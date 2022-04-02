@@ -22,7 +22,7 @@ pub fn update(
     >,
 ) {
     for (mut lin_out, mut ang_out) in routines.iter_mut() {
-        *lin_out = player_input.engine_lin().into();
-        *ang_out = player_input.engine_ang().into();
+        *lin_out = player_input.engine_lin();
+        *ang_out = player_input.engine_ang();
     }
 }

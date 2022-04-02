@@ -4,6 +4,16 @@ use bevy::prelude::*;
 
 use crate::math::*;
 
+#[inline]
+pub fn p_controller_vec3xf32(error: Vec3, p_gain: f32) -> Vec3 {
+    p_gain * error
+}
+
+#[inline]
+pub fn p_controller_vec3(error: Vec3, p_gain: Vec3) -> Vec3 {
+    p_gain * error
+}
+
 #[derive(Debug, Clone)]
 pub struct PIDControllerVec3 {
     last_state: Vec3,

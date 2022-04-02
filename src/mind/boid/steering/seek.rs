@@ -1,11 +1,13 @@
 use deps::*;
 
+use bevy::prelude::*;
+// use bevy_rapier3d::prelude::*;
+
 use super::{
     steering_behaviours, ActiveSteeringRoutine, LinOnlyRoutineBundle, LinearRoutineOutput,
     SteeringRoutine,
 };
 use crate::math::*;
-use bevy::prelude::*;
 
 #[derive(Debug, Clone, Component)]
 pub enum Target {
@@ -27,16 +29,16 @@ pub fn update(
         (&Seek, &SteeringRoutine, &mut LinearRoutineOutput),
         With<ActiveSteeringRoutine>,
     >,
+    boids: Query<(&GlobalTransform,)>,
     objects: Query<&GlobalTransform>,
 ) {
     for (param, routine, mut output) in routines.iter_mut() {
-        let xform = objects
-            .get(routine.boid_entt)
-            .expect_or_log("craft entt not found for routine");
+        let (xform,) = boids.get(routine.boid_entt()).unwrap_or_log();
         let pos = match param.target {
             Target::Object { entt } => objects.get(entt).unwrap_or_log().translation,
             Target::Position { pos } => pos,
         };
-        *output = steering_behaviours::seek_position(xform.translation, pos).into();
+        *output = steering_behaviours::seek_position(xform.translation, pos);
+        // *output = (dir - (TVec3::from(vel.linvel))).normalize_or_zero().into();
     }
 }

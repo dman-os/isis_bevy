@@ -35,26 +35,6 @@ pub fn player_mind(
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct PlayerBoidInput {
-    /// In world space.
-    engine_lin: TVec3,
-    /// In world space.
-    engine_ang: TVec3,
-}
-
-impl PlayerBoidInput {
-    /// Get a reference to the player boid input's engine ang.
-    pub fn engine_ang(&self) -> Vec3 {
-        self.engine_ang
-    }
-
-    /// Get a reference to the player boid input's engine lin.
-    pub fn engine_lin(&self) -> Vec3 {
-        self.engine_lin
-    }
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct CurrentCraft {
     pub entt: Option<Entity>,
@@ -316,15 +296,76 @@ pub fn wpn_input(
     }
 }
 
+#[derive(Debug, Clone, Reflect, Inspectable)]
+pub struct PlayerEngineConfig {
+    /// In local basis.
+    pub set_vel: TVec3,
+    pub adjust_rate: TReal,
+}
+
+impl Default for PlayerEngineConfig {
+    fn default() -> Self {
+        Self {
+            set_vel: TVec3::ZERO,
+            adjust_rate: 10.,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PlayerBoidInput {
+    engine_lin: boid::steering::LinearRoutineOutput,
+    engine_ang: boid::steering::AngularRoutineOutput,
+}
+
+impl PlayerBoidInput {
+
+    /// Get the player boid input's engine lin.
+    pub fn engine_lin(&self) -> boid::steering::LinearRoutineOutput {
+        self.engine_lin
+    }
+
+    /// Get the player boid input's engine ang.
+    pub fn engine_ang(&self) -> boid::steering::AngularRoutineOutput {
+        self.engine_ang
+    }
+}
+
+/* #[derive(Debug, educe::Educe)]
+#[educe(Deref, DerefMut)]
+pub struct LinVelPid(crate::utils::PIDControllerVec3);
+
+impl Default for LinVelPid
+{
+    fn default() -> Self {
+        Self(
+            crate::utils::PIDControllerVec3::new(
+                TVec3::ONE * 30.0,
+                TVec3::ONE * 0.0,
+                TVec3::ONE,
+                TVec3::ONE,
+                TVec3::ONE * -0.,
+            )
+        )
+    }
+} */
+
 pub fn engine_input(
     mut player_input: ResMut<PlayerBoidInput>,
+    mut player_eng_conf: ResMut<PlayerEngineConfig>,
     k_input: Res<Input<KeyCode>>,
     cur_craft: Res<CurrentCraft>,
-    crafts: Query<(&GlobalTransform, &RigidBodyCollidersComponent)>,
+    crafts: Query<(
+        &GlobalTransform,
+        &engine::LinearEngineState,
+        &RigidBodyCollidersComponent,
+        &boid::steering::CraftControllerConsts,
+    )>,
     cameras: Query<(&GlobalTransform, &CraftCamera)>,
     query_pipeline: Res<QueryPipeline>,
     collider_query: QueryPipelineColliderComponentsQuery,
     // mut pid: Local<RotToVelPid>,
+    // mut pid: Local<LinVelPid>,
 ) {
     let cur_craft = if let Some(entt) = &cur_craft.entt {
         *entt
@@ -334,12 +375,20 @@ pub fn engine_input(
     let mut linear_input = TVec3::ZERO;
     let mut angular_input = TVec3::ZERO;
 
+    let shift_pressed = k_input.pressed(KeyCode::LShift);
+
     if k_input.pressed(KeyCode::W) {
         // inverse z dir since cam faces backward
         linear_input.z -= 1.;
+        if shift_pressed {
+            player_eng_conf.set_vel.z -= player_eng_conf.adjust_rate;
+        }
     }
     if k_input.pressed(KeyCode::S) {
         linear_input.z += 1.;
+        if shift_pressed {
+            player_eng_conf.set_vel.z += player_eng_conf.adjust_rate;
+        }
     }
     if k_input.pressed(KeyCode::D) {
         linear_input.x += 1.;
@@ -348,10 +397,18 @@ pub fn engine_input(
         linear_input.x -= 1.;
     }
     if k_input.pressed(KeyCode::E) {
-        linear_input.y += 1.;
+        if shift_pressed {
+            angular_input.z -= 1.;
+        } else {
+            linear_input.y += 1.;
+        }
     }
     if k_input.pressed(KeyCode::Q) {
-        linear_input.y -= 1.;
+        if shift_pressed {
+            angular_input.z += 1.;
+        } else {
+            linear_input.y -= 1.;
+        }
     }
 
     if k_input.pressed(KeyCode::Numpad8) {
@@ -372,17 +429,27 @@ pub fn engine_input(
     if k_input.pressed(KeyCode::Numpad9) {
         angular_input.z -= 1.;
     }
-    if k_input.pressed(KeyCode::LShift) {
+    if k_input.pressed(KeyCode::LAlt) {
         angular_input *= 0.1;
     } else {
         angular_input *= 10.;
     }
 
-    let (xform, craft_colliders) = crafts
+    let (xform, lin_state, craft_colliders, consts) = crafts
         .get(cur_craft)
         .expect_or_log("unable to find current craft entity");
-    player_input.engine_lin = (xform.rotation * linear_input) * 10_000.;
-    player_input.engine_ang = angular_input;
+    player_input.engine_lin = if linear_input.length_squared() > TReal::EPSILON {
+        boid::steering::LinearRoutineOutput::FracAccel(xform.rotation * linear_input)
+    } else {
+        boid::steering::LinearRoutineOutput::Accel(
+            xform.rotation
+                * crate::utils::p_controller_vec3(
+                    player_eng_conf.set_vel - lin_state.velocity,
+                    consts.kp_vel_to_accel_lin,
+                ),
+        )
+    };
+    player_input.engine_ang = angular_input.into();
 
     if let Some((cam_xform, craft_cam)) = cameras
         .iter()
@@ -415,7 +482,7 @@ pub fn engine_input(
                 None => 5_000.,
             };
             let hit: TVec3 = ray.point_at(toi).into();
-            player_input.engine_ang += boid::steering::look_to(
+            player_input.engine_ang.0 += boid::steering::look_to(
                 xform.rotation.inverse() * (hit - xform.translation).normalize(),
             );
         }

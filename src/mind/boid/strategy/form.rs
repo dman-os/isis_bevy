@@ -48,9 +48,7 @@ pub fn butler(
     )>,
 ) {
     for (entt, param, strategy, mut state, mut out) in added_strategies.iter_mut() {
-        let (routines, engine_config, dim) = crafts
-            .get(strategy.boid_entt())
-            .expect_or_log("craft not found for BoidStrategy");
+        let (routines, engine_config, dim) = crafts.get(strategy.boid_entt()).unwrap_or_log();
 
         let raycast_toi_modifier = dim.max_element();
         let cast_shape_radius = raycast_toi_modifier * 0.5;
@@ -92,8 +90,7 @@ pub fn butler(
                     },
                     arrival_tolerance: 5.,
                     deceleration_radius: None,
-                    linvel_limit: engine_config.linvel_limit,
-                    avail_accel: engine_config.actual_acceleration_limit(),
+                    avail_accel: engine_config.actual_accel_limit(),
                 },
                 strategy.boid_entt(),
             ))

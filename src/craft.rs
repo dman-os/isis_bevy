@@ -44,7 +44,7 @@ pub struct CraftBundle {
     pub dimensions: CraftDimensions,
     pub linear_state: engine::LinearEngineState,
     pub angular_state: engine::AngularEngineState,
-    pub linear_pid: engine::LinearDriverPid,
+    // pub linear_pid: engine::LinearDriverPid,
     pub angular_pid: engine::AngularDriverPid,
 
     pub name: Name,
@@ -72,15 +72,15 @@ impl CraftBundle {
             dimensions,
             linear_state: Default::default(),
             angular_state: Default::default(),
-            linear_pid: engine::LinearDriverPid(crate::utils::PIDControllerVec3::new(
+            /* linear_pid: engine::LinearDriverPid(crate::utils::PIDControllerVec3::new(
                 TVec3::ONE * 30.,
                 TVec3::ZERO,
                 TVec3::ZERO,
                 TVec3::ZERO,
                 TVec3::ZERO,
-            )),
+            )), */
             angular_pid: engine::AngularDriverPid(crate::utils::PIDControllerVec3::new(
-                TVec3::ONE * 10_000.0,
+                TVec3::ONE * 8000.0,
                 TVec3::ONE * 0.0,
                 TVec3::ONE,
                 TVec3::ONE,

@@ -539,14 +539,19 @@ fn handle_projectile_xin_evenns(
     mut attires: Query<(Entity, &mut AttireProfile, &ColliderParentComponent)>,
     mut proj_ixn_events: EventReader<ProjectileIxnEvent>,
     mut pd_events: EventWriter<ProjectileDamageEvent>,
+    names: Query<Option<&Name>>,
 ) {
     for event in proj_ixn_events.iter() {
         if let Ok((attire_entt, mut attire, parent)) = attires.get_mut(event.collider.entity()) {
             if attire.damage(event.projectile.damage).is_some() {
-                tracing::info!(
-                    "Craft {:?} destroyed by Projectile damage",
-                    parent.handle.entity()
-                );
+                if let Some(name) = names.get(parent.handle.entity()).unwrap_or_log() {
+                    tracing::info!("Craft {} destroyed by Projectile damage", name.as_str());
+                } else {
+                    tracing::info!(
+                        "Craft {:?} destroyed by Projectile damage",
+                        parent.handle.entity()
+                    );
+                }
                 // reset health
                 for member in attire.members.iter_mut() {
                     member.remaining_integrity = member.factory_integrity;
@@ -565,9 +570,14 @@ fn handle_projectile_xin_evenns(
 fn log_damage_events(
     mut coll_dmg_events: EventReader<CollisionDamageEvent>,
     mut proj_dmg_events: EventReader<ProjectileDamageEvent>,
+    names: Query<Option<&Name>>,
 ) {
     for event in coll_dmg_events.iter() {
-        tracing::trace!("Collision {:?} | Craft: {:?}", event.damage, event.rb_entt);
+        if let Some(name) = names.get(event.rb_entt).unwrap_or_log() {
+            tracing::info!("Collision {:?} | Craft: {:?}", event.damage, name.as_str());
+        } else {
+            tracing::info!("Collision {:?} | Craft: {:?}", event.damage, event.rb_entt);
+        }
     }
     for event in proj_dmg_events.iter() {
         tracing::info!(

@@ -25,18 +25,17 @@ pub fn update(
         With<ActiveSteeringRoutine>,
     >,
     objects: Query<&GlobalTransform>,
+    boids: Query<(&GlobalTransform,)>,
 ) {
     for (param, routine, mut output) in routines.iter_mut() {
-        let xform = objects
-            .get(routine.boid_entt)
-            .expect_or_log("craft entt not found for routine");
-        let pos = match param.target {
+        let (xform,) = boids.get(routine.boid_entt()).unwrap_or_log();
+        let dir = match param.target {
             Target::Object { entt } => {
                 let target_pos = objects.get(entt).unwrap_or_log().translation;
                 (target_pos - xform.translation).normalize()
             }
             Target::Direction { dir } => dir,
         };
-        *output = super::look_to(xform.rotation.inverse() * pos).into();
+        *output = super::look_to(xform.rotation.inverse() * dir).into();
     }
 }

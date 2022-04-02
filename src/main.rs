@@ -38,6 +38,7 @@ fn main() {
     }
 
     // let log_output = LogOutput::default();
+    color_eyre::install().unwrap_or_log();
     tracing_subscriber::fmt()
         .pretty()
         // .compact()
@@ -74,6 +75,10 @@ fn main() {
         false
     });
     inspect_registry.register_raw::<mind::flock::FlockMembers, _>(|cmp, ui, _ctx| {
+        ui.label(format!("{cmp:#?}",));
+        false
+    });
+    inspect_registry.register_raw::<mind::boid::steering::compose::Compose, _>(|cmp, ui, _ctx| {
         ui.label(format!("{cmp:#?}",));
         false
     });
@@ -412,7 +417,7 @@ fn setup_world(
 
     // spawn the box cage
     {
-        for (xform, bevy_shape, rapier_shape, density) in [
+        for (xform, _bevy_shape, rapier_shape, density) in [
             (TVec3::X, -TVec3::X, TVec3::Y),
             (-TVec3::X, TVec3::X, TVec3::Y),
             (TVec3::Y, -TVec3::Y, -TVec3::Z),
@@ -651,7 +656,7 @@ fn setup_world(
     let mut members = flock::FlockMembers::default();
     // spawn the ai craft
     for ii in -7..=7 {
-    // for ii in 0..1 {
+        // for ii in 0..1 {
         members.push(commands
             .spawn()
             .insert_bundle(craft::CraftBundle {
@@ -745,12 +750,13 @@ fn setup_world(
     commands
         .entity(flock_entt)
         .insert_bundle(flock::FlockMindBundle {
-            directive: flock::FlockMindDirective::FormUp {
+            directive: flock::FlockMindDirective::CAS,
+            /* directive: flock::FlockMindDirective::FormUp {
                 leader_directive: Some(boid::BoidMindDirective::RunCircuit {
                     param: boid::strategy::run_circuit::RunCircuit { initial_point },
                 }),
                 // leader_directive: None,
-            },
+            }, */
             ..flock::FlockMindBundle::new(members, formation)
         }); */
 }
@@ -764,7 +770,7 @@ fn craft_state_display(
         &GlobalTransform,
         &craft::engine::LinearEngineState,
         &craft::engine::AngularEngineState,
-        &mut craft::engine::LinearDriverPid,
+        // &mut craft::engine::LinearDriverPid,
         &mut craft::engine::AngularDriverPid,
     )>,
 ) {
@@ -773,7 +779,7 @@ fn craft_state_display(
     } else {
         return;
     };
-    let (craft_xform, lin_state, ang_state, mut lin_pid, mut ang_pid) =
+    let (craft_xform, lin_state, ang_state, mut ang_pid) =
         crafts.get_mut(cur_craft).unwrap_or_log();
     let cam = craft_cameras.single();
     egui::Window::new("Status")
@@ -791,9 +797,9 @@ fn craft_state_display(
             ui.label(format!("cam facing dir: {:+03.1?}", cam.facing_direction));
             ui.label(format!("craft forward: {:+03.1?}", craft_xform.forward()));
 
-            return;
+            // return;
             ui.separator();
-            ui.label("linear pid tune");
+            /* ui.label("linear pid tune");
             {
                 let mut proportional_gain = lin_pid.0.proportional_gain.x;
                 ui.add(
@@ -822,7 +828,7 @@ fn craft_state_display(
                         .text("d gain"),
                 );
                 lin_pid.0.differntial_gain = [differntial_gain; 3].into();
-            }
+            } */
 
             ui.separator();
             ui.label("angular pid tune");

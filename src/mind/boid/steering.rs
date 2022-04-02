@@ -2,7 +2,9 @@ use deps::*;
 
 use bevy::prelude::*;
 use bevy_inspector_egui::prelude::*;
+use bevy_rapier3d::prelude::*;
 
+use crate::craft::engine::EngineConfig;
 use crate::craft::*;
 use crate::math::*;
 use crate::mind::*;
@@ -52,6 +54,126 @@ impl SteeringRoutine {
     }
 }
 
+#[derive(Debug, Clone, Inspectable, Component)]
+pub struct CraftControllerConsts {
+    pub kp_vel_to_accel_lin: TVec3,
+}
+
+impl Default for CraftControllerConsts {
+    fn default() -> Self {
+        Self {
+            kp_vel_to_accel_lin: TVec3::ONE * 30.,
+        }
+    }
+}
+
+/// Output of linear steering routines which is currently linear accel desired next frame in
+#[derive(Debug, Clone, Copy, Inspectable, Component, educe::Educe)]
+#[educe(Default)]
+// pub struct LinearRoutineOutput(pub TVec3);
+pub enum LinearRoutineOutput {
+    /// I.e. equivalent to FracVelocity since dir, being an unit dir, is length of 1
+    Dir(TVec3),
+    /// In fraction of [`EngineConfig::linvel_limit`] in world space.
+    FracVel(TVec3),
+    Vel(TVec3),
+    /// In  fraction of [`EngineConfig::actual_accel_limit`] in world space.
+    FracAccel(TVec3),
+    #[educe(Default)]
+    Accel(TVec3),
+}
+
+impl LinearRoutineOutput {
+    #[inline]
+    pub fn get_dir(self) -> TVec3 {
+        match self {
+            LinearRoutineOutput::Dir(v) => v,
+            LinearRoutineOutput::FracVel(v) => v.normalize_or_zero(),
+            LinearRoutineOutput::Vel(v) => v.normalize_or_zero(),
+            // FIXME: consider considering the resulting velocity's direction instead
+            LinearRoutineOutput::FracAccel(v) => v.normalize_or_zero(),
+            LinearRoutineOutput::Accel(v) => v.normalize_or_zero(),
+        }
+    }
+    #[inline]
+    pub fn to_accel(
+        self,
+        linvel: TVec3,
+        config: &EngineConfig,
+        consts: &CraftControllerConsts,
+    ) -> TVec3 {
+        match self {
+            LinearRoutineOutput::FracVel(v) | LinearRoutineOutput::Dir(v) => {
+                Self::Vel(v * config.linvel_limit).to_accel(linvel, config, consts)
+            }
+            LinearRoutineOutput::Vel(v) => Self::Accel(crate::utils::p_controller_vec3(
+                v - linvel,
+                consts.kp_vel_to_accel_lin,
+            ))
+            .to_accel(linvel, config, consts),
+            LinearRoutineOutput::FracAccel(v) => v * config.actual_accel_limit(),
+            LinearRoutineOutput::Accel(v) => v,
+        }
+    }
+}
+
+/// Output of angular steering routines which is currently angular velocity desired next frame in local space.
+#[derive(Debug, Clone, Copy, Default, Inspectable, Component)]
+pub struct AngularRoutineOutput(pub TVec3);
+
+impl From<TVec3> for AngularRoutineOutput {
+    fn from(v: TVec3) -> Self {
+        Self(v)
+    }
+}
+
+pub fn steering_output_to_engine(
+    mut crafts: Query<(
+        &GlobalTransform,
+        &CurrentSteeringRoutine,
+        &boid::BoidMindConfig,
+        &mut engine::LinearEngineState,
+        &mut engine::AngularEngineState,
+        &engine::EngineConfig,
+        &CraftControllerConsts,
+        &RigidBodyVelocityComponent,
+    )>,
+    routines: Query<(&LinearRoutineOutput, &AngularRoutineOutput), With<SteeringRoutine>>,
+    // routines: Query<&LinearRoutineResult, With<steering_systems::Intercept>>,
+    //egui_context: ResMut<bevy_egui::EguiContext>,
+) {
+    for (
+        xform,
+        cur_routine,
+        mind_config,
+        mut lin_state,
+        mut ang_state,
+        engine_config,
+        consts,
+        vel,
+    ) in crafts.iter_mut()
+    {
+        let (lin_out, ang_out) = if let Some(cur_routine) = cur_routine.routine.as_ref() {
+            // TODO: use a different componet to get the final outputs
+            let (lin_out, ang_out) = routines.get(*cur_routine)
+            .expect_or_log("CurrentSteeringRoutine's routine not located in world. \
+            Use a routine with both Linear and Angular outputs or wrap whatever you're using now with a Compose routine");
+            (
+                lin_out.to_accel(vel.linvel.into(), engine_config, consts),
+                ang_out.0,
+            )
+        } else {
+            (TVec3::ZERO, TVec3::ZERO)
+        };
+        lin_state.input = xform.rotation.inverse() * lin_out;
+        // if ang_out is coming from a look_at call, it'll be the error betweein the set direction
+        // and current direction.
+        // We'll apply the multiplier to that error as oppposed to the velocity error which would have been
+        // the case if we'd used the multiplier fter the sub operation.
+        ang_state.input = (ang_out * mind_config.angular_input_multiplier) - ang_state.velocity;
+    }
+}
+
 /// A generic bundle for steering routines that only have linear ouptuts.
 #[derive(Bundle)]
 pub struct LinOnlyRoutineBundle<P>
@@ -76,6 +198,7 @@ where
             output: Default::default(),
             tag: SteeringRoutine::new(boid_entt, RoutineKind::of::<P>()),
             name: Self::DEFAULT_NAME.into(),
+            // FIXME: parent to strategies instead
             parent: Parent(boid_entt),
         }
     }
@@ -207,43 +330,6 @@ where
         }
     }
 }
-/*
-   #[derive(Debug, Clone, Copy, Inspectable, Component)]
-   pub enum SteeringRoutineOutpt {
-       Linear(TVec3),
-       Angular(TVec3),
-       LinAng(TVec3, TVec3),
-   }
-*/
-
-pub fn steering_output_to_engine(
-    mut crafts: Query<(
-        &GlobalTransform,
-        &CurrentSteeringRoutine,
-        &boid::BoidMindConfig,
-        &mut engine::LinearEngineState,
-        &mut engine::AngularEngineState,
-        &engine::EngineConfig,
-    )>,
-    routines: Query<(&LinearRoutineOutput, &AngularRoutineOutput), With<SteeringRoutine>>,
-    // routines: Query<&LinearRoutineResult, With<steering_systems::Intercept>>,
-    //egui_context: ResMut<bevy_egui::EguiContext>,
-) {
-    for (xform, cur_routine, config, mut lin_state, mut ang_state, engine_config) in
-        crafts.iter_mut()
-    {
-        let (lin_out, ang_out) = if let Some(cur_routine) = cur_routine.routine.as_ref() {
-            let (lin_out, ang_out) = routines.get(*cur_routine)
-            .expect_or_log("CurrentSteeringRoutine's routine not located in world. \
-            Use a routine with both Linear and Angular outputs or wrap whatever you're using now with a Compose routine");
-            (lin_out.0, ang_out.0)
-        } else {
-            (TVec3::ZERO, TVec3::ZERO)
-        };
-        lin_state.input = (xform.rotation.inverse() * lin_out) * engine_config.linvel_limit.abs();
-        ang_state.input = ang_out * config.angular_input_multiplier;
-    }
-}
 
 /* fn routine_garbage_collector(
     mut commands: Commands,
@@ -278,27 +364,6 @@ pub fn steering_output_to_engine(
     }
 }
  */
-
-/// Output of linear steering routines which is usually linear velocity desired next frame in
-/// fraction of [`EngineConfig:.linvel_limit`] in world space.
-#[derive(Debug, Clone, Copy, Default, Inspectable, Component)]
-pub struct LinearRoutineOutput(pub TVec3);
-
-impl From<TVec3> for LinearRoutineOutput {
-    fn from(v: TVec3) -> Self {
-        Self(v)
-    }
-}
-
-/// Output of angular steering routines which is usually angular velocity desired next frame in local space.
-#[derive(Debug, Clone, Copy, Default, Inspectable, Component)]
-pub struct AngularRoutineOutput(pub TVec3);
-
-impl From<TVec3> for AngularRoutineOutput {
-    fn from(v: TVec3) -> Self {
-        Self(v)
-    }
-}
 
 /*
 #[inline]

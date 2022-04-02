@@ -2,7 +2,7 @@ use deps::*;
 
 use bevy::prelude::*;
 // use bevy_prototype_debug_lines::*;
-// use bevy_rapier3d::prelude::*;
+use bevy_rapier3d::prelude::*;
 
 use super::{ActiveSteeringRoutine, LinOnlyRoutineBundle, LinearRoutineOutput, SteeringRoutine};
 use crate::math::*;
@@ -27,7 +27,6 @@ pub struct Arrive {
     /// If not given, will be calculated based on accel and linvel_limit
     pub deceleration_radius: Option<TReal>,
     pub avail_accel: TVec3,
-    pub linvel_limit: TVec3,
 }
 
 /*
@@ -59,6 +58,7 @@ pub fn update(
             &SteeringRoutine,
             &Arrive,
             // &mut ArriveState,
+            &RigidBodyVelocityComponent,
             &mut LinearRoutineOutput,
         ),
         With<ActiveSteeringRoutine>,
@@ -67,7 +67,7 @@ pub fn update(
                                        // objects: Query<&GlobalTransform>,
                                        // mut lines: ResMut<DebugLines>,
 ) {
-    for (routine, param, mut output) in routines.iter_mut() {
+    for (routine, param, vel, mut output) in routines.iter_mut() {
         let (xform,) = boids
             .get(routine.boid_entt)
             .expect_or_log("craft entt not found for routine");
@@ -86,25 +86,28 @@ pub fn update(
                 pos_linvel,
                 with_speed,
             } => {
+                let max_accel = xform.rotation * param.avail_accel;
+                let vel: TVec3 = vel.linvel.into();
+                let target_offset = (at_pos + pos_linvel) - xform.translation;
+                let accel = max_accel.project_onto(target_offset).length();
+                let speed_to_target = vel.project_onto(target_offset).length();
+
                 super::steering_behaviours::arrive_at_position(
                     xform.translation,
                     at_pos + pos_linvel,
+                    vel,
                     with_speed,
-                    param.linvel_limit.z,
+                    speed_to_target,
                     param.arrival_tolerance,
                     {
-                        let accel = xform.rotation * param.avail_accel;
-                        let target_offset = (at_pos + pos_linvel) - xform.translation;
-                        let accel = accel.project_onto(target_offset).length();
-
                         super::steering_behaviours::dst_to_change(
-                            param.linvel_limit.z,
+                            speed_to_target,
                             with_speed,
                             accel,
                         )
                     },
+                    max_accel,
                 )
-                .into()
                 /*  super::steering_behaviours::be_ray(
                     at_pos,
                     // with_linvel,

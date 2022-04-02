@@ -28,6 +28,7 @@ impl Default for BoidMindConfig {
 #[derive(Bundle, Default)]
 pub struct BoidMindBundle {
     pub config: BoidMindConfig,
+    pub consts: steering::CraftControllerConsts,
     // smarts layer coordination
     pub active_strategy: CurrentBoidStrategy,
     pub cur_routine: CurrentSteeringRoutine,
@@ -99,21 +100,24 @@ pub fn boid_mind(
                             ))
                             .id()
                     });
-                let closure: Box<strategy::custom::RoutineSpawner> = Box::new(move |commands, strategy| {
-                    commands
-                        .spawn()
-                        .insert_bundle(steering::closure::Bundle::new(
-                            steering::closure::Closure {
-                                closure: Box::new(
-                                    |xform|{
-                                        (xform.forward().into(), steering::look_to(-TVec3::Z).into())
-                                    }
-                                )
-                            },
-                            strategy.boid_entt(),
-                        ))
-                        .id()
-                });
+                let closure: Box<strategy::custom::RoutineSpawner> =
+                    Box::new(move |commands, strategy| {
+                        commands
+                            .spawn()
+                            .insert_bundle(steering::closure::Bundle::new(
+                                steering::closure::Closure {
+                                    closure: Box::new(|xform, _, _| {
+                                        (
+                                            LinearRoutineOutput::Dir(xform.forward()),
+                                            // LinearRoutineOutput::Dir(TVec3::Z),
+                                            steering::look_to(-TVec3::Z).into(),
+                                        )
+                                    }),
+                                },
+                                strategy.boid_entt(),
+                            ))
+                            .id()
+                    });
                 Some(
                     commands
                         .spawn()
@@ -127,7 +131,7 @@ pub fn boid_mind(
                         ))
                         .id(),
                 )
-            },
+            }
             /* BoidMindDirective::Custom { composition } => Some(
                 commands
                     .spawn()
@@ -161,8 +165,7 @@ pub fn boid_mind(
             }
             BoidMindDirective::HoldPosition { pos } => {
                 let pos = *pos;
-                let linvel_limit = engine_config.linvel_limit;
-                let accel_limit = engine_config.actual_acceleration_limit();
+                let accel_limit = engine_config.actual_accel_limit();
                 let raycast_toi_modifier = dim.max_element();
                 let cast_shape_radius = raycast_toi_modifier * 0.5;
                 let avoid_collision: Box<strategy::custom::RoutineSpawner> =
@@ -192,7 +195,6 @@ pub fn boid_mind(
                                 },
                                 arrival_tolerance: 5.,
                                 deceleration_radius: None,
-                                linvel_limit,
                                 avail_accel: accel_limit,
                             },
                             boid_entt,

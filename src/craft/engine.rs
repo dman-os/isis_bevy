@@ -18,7 +18,7 @@ pub struct LinearEngineState {
     pub input: TVec3,
 
     /// Vector output of driver and input vector of a motor. Meaning depends on implementation.
-    /// e.g. forve to apply
+    /// e.g. acceleration to apply
     pub flame: TVec3,
 }
 
@@ -27,9 +27,11 @@ pub struct AngularEngineState {
     /// Angular velocity in local-space
     /// In rad/s.
     pub velocity: TVec3,
+
     /// Input vector for driver. Meaning depends on driver implementation.
     /// e.g. target velocity to attain
     pub input: TVec3,
+
     /// Vector output of driver and input vector of a motor. Meaning depends on implementation.
     pub flame: TVec3,
 }
@@ -37,9 +39,6 @@ pub struct AngularEngineState {
 // TODO: break this up to multiple components. Maybe along the line of what's likely to mutate?
 #[derive(Debug, Clone, Component, Reflect, Inspectable)]
 pub struct EngineConfig {
-    ///  Speed to travel at when there is no input i.e. how fast to travel when idle.
-    pub set_speed: TVec3,
-
     /// Total mass of the craft.
     /// In KG.
     pub mass: TReal,
@@ -62,12 +61,15 @@ pub struct EngineConfig {
     /// In Newtons.
     pub linear_thruster_force: TVec3,
 
+    // FIXME: move this to the mind layer
     /// Whether or not to respect linvel_limit in the z axis.
     pub limit_forward_v: bool,
 
+    // FIXME: move this to the mind layer
     /// Whether or not to respect linvel_limit in in the X or Y axis.
     pub limit_strafe_v: bool,
 
+    // FIXME: move this to the mind layer
     /// Whether or not to respect angvel_limit.
     pub limit_angular_v: bool,
 
@@ -85,7 +87,6 @@ impl Default for EngineConfig {
     fn default() -> Self {
         Self {
             mass: 15_000.,
-            set_speed: TVec3::ZERO,
             acceleration_limit: [6., 6., 6.].into(),
             acceleration_limit_multiplier: 9.81,
             // matters not if v_limit.z is negative since this's a limit
@@ -114,13 +115,14 @@ impl EngineConfig {
         .into();
 
         DerivedEngineConfig {
+            // TODO: proper angular accel limits
             angular_acceleration_limit: [TReal::INFINITY; 3].into(),
             thruster_torque: axes_diameter * self.angular_thruster_force,
         }
     }
 
     #[inline]
-    pub fn actual_acceleration_limit(&self) -> TVec3 {
+    pub fn actual_accel_limit(&self) -> TVec3 {
         self.acceleration_limit * self.acceleration_limit_multiplier
     }
 
@@ -155,9 +157,11 @@ pub struct DerivedEngineConfig {
     //pub moment_of_inertia: Vector3,
 }
 
-#[derive(Debug, Component)]
-pub struct LinearDriverPid(pub crate::utils::PIDControllerVec3);
-#[derive(Debug, Component)]
+/* #[derive(Debug, Component, educe::Educe)]
+#[educe(Deref, DerefMut)]
+pub struct LinearDriverPid(pub crate::utils::PIDControllerVec3); */
+#[derive(Debug, Component, educe::Educe)]
+#[educe(Deref, DerefMut)]
 pub struct AngularDriverPid(pub crate::utils::PIDControllerVec3);
 
 pub fn sync_craft_state_velocities(
@@ -171,61 +175,70 @@ pub fn sync_craft_state_velocities(
     for (mut angular_state, mut linear_state, g_xform, rb_velocity) in crafts.iter_mut() {
         // convert it to local space first
         let rotator = g_xform.rotation.inverse();
-        angular_state.velocity = rotator * TVec3::from(rb_velocity.angvel);
         linear_state.velocity = rotator * TVec3::from(rb_velocity.linvel);
+        angular_state.velocity = rotator * TVec3::from(rb_velocity.angvel);
     }
 }
 
+// Currently assumes the inputs are acceleration
 pub fn linear_pid_driver(
-    mut crafts: Query<(&mut LinearEngineState, &EngineConfig, &mut LinearDriverPid)>,
+    mut crafts: Query<(&mut LinearEngineState, &EngineConfig)>,
     //time: Time,
 ) {
-    for (mut state, config, mut pid) in crafts.iter_mut() {
-        let mut linear_input = state.input;
-
-        // if dampeners are on
-        if config.limit_strafe_v {
-            let v_limit = config.linvel_limit;
-
-            // clamp the input to the limit
-            linear_input = linear_input.clamp(-v_limit, v_limit);
-
-            if !config.limit_forward_v {
-                linear_input.z = state.input.z;
-            }
-        }
+    for (mut state, config) in crafts.iter_mut() {
+        let desired_accel = state.input;
 
         // calculate max acceleration possible using availaible force
-        let acceleration_limit = {
-            let mut acceleration_limit = config.avail_lin_accel();
+        let accel_limit = {
+            let mut accel_limit = config.avail_lin_accel();
 
             // NOTE: fwd is negative bc rh coord sys
-            let move_fwd = linear_input.z < 0.0;
+            let move_fwd = desired_accel.z < 0.0;
 
             // if input wants to go bacwards
             if !move_fwd {
                 // only use starfe thrusters force on the z
-                acceleration_limit.z = acceleration_limit.x.max(acceleration_limit.y);
+                accel_limit.z = accel_limit.x.max(accel_limit.y);
             }
 
+            // FIXME: move this to the mind layer
             if config.limit_acceleration {
-                let artificial_accel_limit = config.actual_acceleration_limit();
+                let artificial_accel_limit = config.actual_accel_limit();
 
                 // clamp the actual limit to the artifical limit
-                acceleration_limit.clamp(-artificial_accel_limit, artificial_accel_limit)
+                accel_limit.clamp(-artificial_accel_limit, artificial_accel_limit)
             } else {
-                acceleration_limit
+                accel_limit
             }
         };
 
-        let linear_flame = pid
-            .0
-            .update(state.velocity, linear_input - state.velocity, 1.);
+        let desired_accel = desired_accel.clamp(-accel_limit, accel_limit);
+        state.flame = desired_accel;
 
-        state.flame = linear_flame.clamp(-acceleration_limit, acceleration_limit);
+        /* let desired_vel = state.velocity + desired_accel;
+
+        // if dampeners are on
+        let desired_vel = if config.limit_strafe_v {
+            let v_limit = config.linvel_limit;
+
+            // clamp the input to the limit
+            let mut clamped_v = desired_vel.clamp(-v_limit, v_limit);
+
+            if !config.limit_forward_v {
+                clamped_v.z = desired_vel.z;
+            }
+            clamped_v
+        } else {
+            desired_vel
+        };
+
+        let linear_flame = pid.update(state.velocity, desired_vel - state.velocity, 1.);
+
+        state.flame = linear_flame.clamp(-accel_limit, accel_limit); */
     }
 }
 
+// Currently assumes the inputs are acceleration
 pub fn angular_pid_driver(
     mut crafts: Query<(
         &mut AngularEngineState,
@@ -234,24 +247,18 @@ pub fn angular_pid_driver(
         &mut AngularDriverPid,
         &RigidBodyMassPropsComponent,
     )>,
-    time: Res<Time>,
+    // time: Res<Time>,
 ) {
     for (mut state, config, derived_config, mut pid, mass_props) in crafts.iter_mut() {
         {
-            let angular_input = if config.limit_angular_v {
-                state.input.clamp(-config.angvel_limit, config.angvel_limit)
-            } else {
-                state.input
-            };
-
-            let acceleration_limit = {
+            let accel_limit = {
                 let max_torque = derived_config.thruster_torque * config.thruster_force_multiplier;
 
                 // TODO: work out if this is actually the inertia tensor
                 let local_moi_inv_sqrt = mass_props.local_mprops.inv_principal_inertia_sqrt;
 
                 // NOTICE: difference here
-                let acceleration_limit: TVec3 = [
+                let accel_limit: TVec3 = [
                     max_torque.x * local_moi_inv_sqrt.x,
                     max_torque.y * local_moi_inv_sqrt.y,
                     max_torque.z * local_moi_inv_sqrt.z,
@@ -259,28 +266,39 @@ pub fn angular_pid_driver(
                 .into();
                 if config.limit_acceleration {
                     let artificial_accel_limit = derived_config.angular_acceleration_limit;
-                    pid.0.integrat_max = acceleration_limit.min(artificial_accel_limit);
+                    pid.0.integrat_max = accel_limit.min(artificial_accel_limit);
                     pid.0.integrat_min = -pid.0.integrat_max;
 
                     // clamp the actual limit to the artifical limit
 
-                    acceleration_limit.clamp(-artificial_accel_limit, artificial_accel_limit)
+                    accel_limit.clamp(-artificial_accel_limit, artificial_accel_limit)
                 } else {
-                    acceleration_limit
+                    accel_limit
                 }
             };
 
-            let angular_flame = pid.0.update(
+            let desired_accel = state.input.clamp(-accel_limit, accel_limit);
+
+            let desired_vel = state.velocity + desired_accel;
+
+            let desired_vel = if config.limit_angular_v {
+                desired_vel.clamp(-config.angvel_limit, config.angvel_limit)
+            } else {
+                desired_vel
+            };
+
+            let angular_flame = pid.update(
                 state.velocity,
-                angular_input - state.velocity,
-                time.delta_seconds(),
+                desired_vel - state.velocity,
+                1.0, // time.delta_seconds(),
             );
-            // let angular_flame = angular_input * ;
-            state.flame = angular_flame.clamp(-acceleration_limit, acceleration_limit);
+
+            state.flame = angular_flame.clamp(-accel_limit, accel_limit);
         }
     }
 }
 
+/// Currenlty assumes the flames are acceleration
 pub fn apply_flames_simple_accel(
     mut crafts: Query<(
         &GlobalTransform,
