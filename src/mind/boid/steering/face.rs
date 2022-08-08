@@ -25,13 +25,13 @@ pub fn update(
         With<ActiveSteeringRoutine>,
     >,
     objects: Query<&GlobalTransform>,
-    boids: Query<(&GlobalTransform,)>,
+    boids: Query<(&Transform,)>,
 ) {
     for (param, routine, mut output) in routines.iter_mut() {
         let (xform,) = boids.get(routine.boid_entt()).unwrap_or_log();
         let dir = match param.target {
             Target::Object { entt } => {
-                let target_pos = objects.get(entt).unwrap_or_log().translation;
+                let target_pos = objects.get(entt).unwrap_or_log().translation();
                 (target_pos - xform.translation).normalize()
             }
             Target::Direction { dir } => dir,

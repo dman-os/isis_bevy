@@ -25,7 +25,7 @@ where
     pub output: BoidStrategyOutput,
     pub tag: BoidStrategy,
     pub name: Name,
-    pub parent: Parent,
+    // pub parent: Parent,
 }
 
 impl<P> BoidStrategyBundle<P>
@@ -37,10 +37,10 @@ where
     pub fn new(param: P, boid_entt: Entity) -> Self {
         Self {
             param,
-            output: Default::default(),
+            output: default(),
             tag: BoidStrategy::new(boid_entt, BoidStrategyKind::of::<P>()),
             name: Self::DEFAULT_NAME.into(),
-            parent: Parent(boid_entt),
+            // parent: Parent(boid_entt),
         }
     }
 }
@@ -57,7 +57,7 @@ where
     pub output: BoidStrategyOutput,
     pub tag: BoidStrategy,
     pub name: Name,
-    pub parent: Parent,
+    // pub parent: Parent,
 }
 
 impl<P, P2> BoidStrategyBundleExtra<P, P2>
@@ -68,11 +68,11 @@ where
     pub fn new(param: P, boid_entt: Entity, extra: P2) -> Self {
         Self {
             param,
-            output: Default::default(),
+            output: default(),
             extra,
             tag: BoidStrategy::new(boid_entt, BoidStrategyKind::of::<P>()),
             name: BoidStrategyBundle::<P>::DEFAULT_NAME.into(),
-            parent: Parent(boid_entt),
+            // parent: Parent(boid_entt),
         }
     }
 }
@@ -90,7 +90,7 @@ where
     pub output: BoidStrategyOutput,
     pub tag: BoidStrategy,
     pub name: Name,
-    pub parent: Parent,
+    // pub parent: Parent,
 }
 
 impl<P, B> BoidStrategyBundleJumbo<P, B>
@@ -101,11 +101,11 @@ where
     pub fn new(param: P, boid_entt: Entity, extra: B) -> Self {
         Self {
             param,
-            output: Default::default(),
+            output: default(),
             extra,
             tag: BoidStrategy::new(boid_entt, BoidStrategyKind::of::<P>()),
             name: BoidStrategyBundle::<P>::DEFAULT_NAME.into(),
-            parent: Parent(boid_entt),
+            // parent: Parent(boid_entt),
         }
     }
 }

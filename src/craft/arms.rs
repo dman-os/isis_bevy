@@ -2,6 +2,7 @@ use deps::*;
 
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
+use bevy_rapier3d::rapier::prelude::SharedShape;
 
 use crate::craft::attire::*;
 use crate::math::*;
@@ -122,8 +123,8 @@ pub struct ProjectileWeapon {
     pub proj_mesh: Handle<Mesh>,
     pub proj_mtr: Handle<StandardMaterial>,
     pub proj_velocity: TVec3, // TODO: replace with speed
-    pub proj_shape: ColliderShape,
-    pub proj_mass: ColliderMassProps,
+    pub proj_shape: SharedShape,
+    pub proj_mass: ColliderMassProperties,
     pub proj_lifespan_secs: f64,
     pub proj_spawn_offset: TVec3,
 }
@@ -151,6 +152,7 @@ fn handle_activate_weapon_events_projectile(
     for event in fire_events.iter() {
         match weapons.get_mut(event.weapon_id) {
             Ok((proj_wpn, mut firing_state, xform)) => {
+                let xform = xform.compute_transform();
                 /* tracing::info!(
                     "\n{:?}\n{:?}",
                     xform.forward(),
@@ -166,6 +168,7 @@ fn handle_activate_weapon_events_projectile(
                 }
                 commands
                     .spawn()
+                    .insert(Name::new("projectile"))
                     .insert(Projectile {
                         damage: proj_wpn.proj_damage,
                         lifespan_secs: proj_wpn.proj_lifespan_secs,
@@ -175,50 +178,30 @@ fn handle_activate_weapon_events_projectile(
                     .insert_bundle(PbrBundle {
                         mesh: proj_wpn.proj_mesh.clone(),
                         material: proj_wpn.proj_mtr.clone(),
-                        ..Default::default()
+                        transform: Transform::from_translation(
+                            xform.translation + (xform.rotation * proj_wpn.proj_spawn_offset),
+                        )
+                        .with_rotation(xform.rotation),
+                        ..default()
                     })
-                    .insert_bundle(RigidBodyBundle {
-                        //body_type: RigidBodyType::KinematicVelocityBased,
-                        ccd: RigidBodyCcd {
-                            ccd_enabled: true,
-                            ccd_active: true,
-                            ccd_thickness: proj_wpn.proj_shape.ccd_thickness(),
-                            ccd_max_dist: proj_wpn.proj_shape.ccd_thickness() * 0.5,
-                            // ..Default::default()
-                        }
-                        .into(),
-                        position: RigidBodyPosition {
-                            position: (
-                                xform.translation + (xform.rotation * proj_wpn.proj_spawn_offset),
-                                xform.rotation,
-                            )
-                                .into(),
-                            ..Default::default()
-                        }
-                        .into(),
+                    .insert(RigidBody::Dynamic)
+                    .insert(
                         // TODO: inherit craft velocity too
-                        velocity: RigidBodyVelocity {
-                            linvel: <[TReal; 3]>::from(xform.rotation * proj_wpn.proj_velocity)
-                                .into(),
-                            ..Default::default()
-                        }
-                        .into(),
-                        ..Default::default()
-                    })
-                    .insert(RigidBodyPositionSync::Interpolated { prev_pos: None })
-                    .insert_bundle(ColliderBundle {
-                        shape: ColliderShapeComponent(proj_wpn.proj_shape.clone()),
-                        collider_type: ColliderType::Sensor.into(),
-                        // TODO: massive projectiles
-                        // mass_properties: proj_wpn.proj_mass.clone(),
-                        flags: ColliderFlags {
-                            active_events: ActiveEvents::INTERSECTION_EVENTS,
-                            collision_groups: *PROJECTILE_COLLIDER_IGROUP,
-                            ..Default::default()
-                        }
-                        .into(),
-                        ..Default::default()
-                    });
+                        Velocity {
+                            linvel: (xform.rotation * proj_wpn.proj_velocity),
+                            ..default()
+                        },
+                    )
+                    .insert(Ccd::enabled())
+                    .insert(TransformInterpolation::default())
+                    /* ccd_thickness: proj_wpn.proj_shape.ccd_thickness(),
+                    ccd_max_dist: proj_wpn.proj_shape.ccd_thickness() * 0.5, */
+                    .insert(Collider::from(proj_wpn.proj_shape.clone()))
+                    .insert(Sensor)
+                    .insert(ActiveEvents::COLLISION_EVENTS)
+                    // TODO: massive projectiles
+                    // .insert(proj_wpn.proj_mass);
+                    .insert(*PROJECTILE_COLLIDER_IGROUP);
             }
             Err(err) => {
                 tracing::warn!(
@@ -233,36 +216,42 @@ fn handle_activate_weapon_events_projectile(
 #[derive(Debug, Clone)]
 pub struct ProjectileIxnEvent {
     pub projectile: Projectile,
-    pub collider: ColliderHandle,
+    pub collider: Entity,
 }
 
 fn cull_old_colliding_projectiles(
     mut commands: Commands,
     projectiles: Query<(Entity, &Projectile)>,
-    narrow_phase: Res<NarrowPhase>,
+    // FIXME: consider using RapierCtx
+    mut collision_events: EventReader<CollisionEvent>,
     time: Res<Time>,
     mut ixn_events: EventWriter<ProjectileIxnEvent>,
+    mut despawn_set: Local<bevy::utils::HashSet<Entity>>,
 ) {
-    for (entity, proj) in projectiles.iter() {
-        let mut despawn = false;
-        // if our projectile is intersecting with anything
-        for (collider1, collider2, ixning) in narrow_phase.intersections_with(entity.handle()) {
-            if ixning {
+    for collision_event in collision_events.iter() {
+        if let CollisionEvent::Started(coll1, coll2, _) = *collision_event {
+            // if flags == CollisionEventFlags::SENSOR {}
+
+            // if any of our collider is a projectile
+            if let Ok((proj_coll, proj)) =
+                projectiles.get(coll1).or_else(|_| projectiles.get(coll2))
+            {
                 ixn_events.send(ProjectileIxnEvent {
                     projectile: proj.clone(),
-                    collider: if collider1 != entity.handle() {
-                        collider1
-                    } else {
-                        collider2
-                    },
+                    collider: if proj_coll == coll1 { coll2 } else { coll1 },
                 });
-                despawn = true;
+                despawn_set.insert(proj_coll);
             }
+        };
+    }
+    for (entt, proj) in projectiles.iter() {
+        // test expired items
+        if (time.seconds_since_startup() - proj.emit_instant_secs) > proj.lifespan_secs {
+            despawn_set.insert(entt);
         }
-        // or if it's expired
-        if despawn || (time.seconds_since_startup() - proj.emit_instant_secs) > proj.lifespan_secs {
-            commands.entity(entity).despawn_recursive();
-            tracing::trace!("projectile {:?} despawned", entity);
-        }
+    }
+    for entt in despawn_set.drain() {
+        tracing::trace!("projectile {:?} despawned", entt);
+        commands.entity(entt).despawn_recursive();
     }
 }

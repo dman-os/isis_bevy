@@ -27,13 +27,17 @@ impl Plugin for CraftsPlugin {
 
 #[derive(Bundle)]
 pub struct CraftBundle {
-    pub xfrom: Transform,
-    pub global_xform: GlobalTransform,
-
     #[bundle]
-    pub rigid_body: RigidBodyBundle,
+    pub spatial: SpatialBundle,
 
-    pub rigid_body_sync: RigidBodyPositionSync,
+    pub rigid_body: RigidBody,
+    pub velocity: Velocity,
+    pub colliders: crate::Colliders,
+    pub read_mass_props: ReadMassProperties,
+    pub external_force: ExternalForce,
+    pub ccd: Ccd,
+    /* #[bundle]
+    pub rigid_body_sync: RigidBodyPositionSync, */
     pub collision_damage_tag: attire::CollisionDamageEnabledRb,
 
     #[bundle]
@@ -52,26 +56,16 @@ pub struct CraftBundle {
 
 impl CraftBundle {
     pub const DEFAULT_NAME: &'static str = "craft";
-    pub fn default_rb_bundle() -> RigidBodyBundle {
-        RigidBodyBundle {
-            ccd: RigidBodyCcd {
-                ccd_active: true,
-                ..Default::default()
-            }
-            .into(),
-            ..Default::default()
-        }
-    }
+
     pub fn new(engine_config: engine::EngineConfig, dimensions: CraftDimensions) -> Self {
         let derived_config = engine_config.derive_items(dimensions);
         Self {
-            xfrom: Transform::default(),
-            global_xform: GlobalTransform::default(),
+            spatial: default(),
             config: engine_config,
             derived_config,
             dimensions,
-            linear_state: Default::default(),
-            angular_state: Default::default(),
+            linear_state: default(),
+            angular_state: default(),
             /* linear_pid: engine::LinearDriverPid(crate::utils::PIDControllerVec3::new(
                 TVec3::ONE * 30.,
                 TVec3::ZERO,
@@ -80,17 +74,21 @@ impl CraftBundle {
                 TVec3::ZERO,
             )), */
             angular_pid: engine::AngularDriverPid(crate::utils::PIDControllerVec3::new(
-                TVec3::ONE * 8000.0,
+                TVec3::ONE * 20.0,
                 TVec3::ONE * 0.0,
                 TVec3::ONE,
                 TVec3::ONE,
                 TVec3::ONE * -0.,
             )),
-            rigid_body: Self::default_rb_bundle(),
-            rigid_body_sync: RigidBodyPositionSync::Discrete,
+            rigid_body: RigidBody::Dynamic,
+            ccd: Ccd::enabled(),
+            collider: default(),
             collision_damage_tag: attire::CollisionDamageEnabledRb,
-            collider: Default::default(),
             name: Self::DEFAULT_NAME.into(),
+            colliders: default(),
+            velocity: default(),
+            read_mass_props: default(),
+            external_force: default(),
         }
     }
 }

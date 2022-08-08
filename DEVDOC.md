@@ -12,6 +12,9 @@
 - [ ] BUG: added implies changed!
 
 - [ ] Surmount technical hurdles
+  - [ ] Avoid collision
+    - Adding stateful behavior seems to improve it a lot but they still crash
+    - Look into waypoint based heavy duty solutions. I.e. non steering behavior based
   - [ ] Arrive with velocity
     - [ ] Optimal motion planning? Wtf is that?
 - [ ] Refine game loop
@@ -21,6 +24,7 @@
   - [ ] bevy polyline
   - [ ] big brain
   - [ ] bevy remote dev tools
+  - [ ] [pretty-please](https://lib.rs/crates/prettyplease)
 
 - Consider using arc and weak references to improve performance
 
@@ -141,6 +145,7 @@ We'll also need someform of scheduling to distribute work across frames.
   - [x] Cohesion
   - [x] Separation
   - [x] Alignment
+  - [ ] AvoidCollision
   - [ ] Arrive
     - [x] Arrive with speed
     - [ ] Arrive with velocity

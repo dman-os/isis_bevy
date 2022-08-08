@@ -14,11 +14,11 @@ pub enum Composition {
     },
     // Linear sum of the routine outputs
     WeightSummed {
-        routines: smallvec::SmallVec<[(compose::SteeringRoutineWeight, Box<RoutineSpawner>); 2]>,
+        routines: SVec<[(compose::SteeringRoutineWeight, Box<RoutineSpawner>); 2]>,
     },
     /// The first routine that returns a non zero value will be used.
     PriorityOverride {
-        routines: smallvec::SmallVec<[Box<RoutineSpawner>; 4]>,
+        routines: SVec<[Box<RoutineSpawner>; 4]>,
     },
 }
 
@@ -53,16 +53,15 @@ pub fn butler(
                 compose::SteeringRoutineComposer::Single { entt: routine }
             }
             Composition::WeightSummed { routines } => {
-                let routines: smallvec::SmallVec<[(compose::SteeringRoutineWeight, Entity); 2]> =
-                    routines
-                        .into_iter()
-                        .map(|(weight, spawner)| (weight, spawner(&mut commands, strategy)))
-                        .collect();
+                let routines: SVec<[(compose::SteeringRoutineWeight, Entity); 2]> = routines
+                    .into_iter()
+                    .map(|(weight, spawner)| (weight, spawner(&mut commands, strategy)))
+                    .collect();
 
                 compose::SteeringRoutineComposer::WeightSummed { routines }
             }
             Composition::PriorityOverride { routines } => {
-                let routines: smallvec::SmallVec<[Entity; 4]> = routines
+                let routines: SVec<[Entity; 4]> = routines
                     .into_iter()
                     .map(|spawner| spawner(&mut commands, strategy))
                     .collect();
@@ -70,13 +69,14 @@ pub fn butler(
                 compose::SteeringRoutineComposer::PriorityOverride { routines }
             }
         };
-        let compose = commands
-            .spawn()
-            .insert_bundle(compose::Bundle::new(
-                compose::Compose { composer },
-                strategy.boid_entt(),
-            ))
-            .id();
+        let compose = commands.entity(strategy.boid_entt()).add_children(|p| {
+            p.spawn()
+                .insert_bundle(compose::Bundle::new(
+                    compose::Compose { composer },
+                    strategy.boid_entt(),
+                ))
+                .id()
+        });
         *out = BoidStrategyOutput {
             steering_routine: Some(compose),
             fire_weapons: false,

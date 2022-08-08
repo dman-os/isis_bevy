@@ -88,39 +88,40 @@ pub fn boid_mind(
                 let cast_shape_radius = raycast_toi_modifier * 0.5;
                 let avoid_collision: Box<strategy::custom::RoutineSpawner> =
                     Box::new(move |commands, _| {
-                        commands
-                            .spawn()
-                            .insert_bundle(steering::avoid_collision::Bundle::new(
-                                steering::avoid_collision::AvoidCollision::new(
-                                    cast_shape_radius,
-                                    raycast_toi_modifier,
-                                ),
-                                boid_entt,
-                                Default::default(),
-                            ))
-                            .id()
+                        commands.entity(boid_entt).add_children(|p| {
+                            p.spawn()
+                                .insert_bundle(steering::avoid_collision::Bundle::new(
+                                    steering::avoid_collision::AvoidCollision::new(
+                                        cast_shape_radius,
+                                        raycast_toi_modifier,
+                                    ),
+                                    boid_entt,
+                                    default(),
+                                ))
+                                .id()
+                        })
                     });
                 let closure: Box<strategy::custom::RoutineSpawner> =
                     Box::new(move |commands, strategy| {
-                        commands
-                            .spawn()
-                            .insert_bundle(steering::closure::Bundle::new(
-                                steering::closure::Closure {
-                                    closure: Box::new(|xform, _, _| {
-                                        (
-                                            LinearRoutineOutput::Dir(xform.forward()),
-                                            // LinearRoutineOutput::Dir(TVec3::Z),
-                                            steering::look_to(-TVec3::Z).into(),
-                                        )
-                                    }),
-                                },
-                                strategy.boid_entt(),
-                            ))
-                            .id()
+                        commands.entity(boid_entt).add_children(|p| {
+                            p.spawn()
+                                .insert_bundle(steering::closure::Bundle::new(
+                                    steering::closure::Closure {
+                                        closure: Box::new(|xform, _, _| {
+                                            (
+                                                LinearRoutineOutput::Dir(xform.forward()),
+                                                // LinearRoutineOutput::Dir(TVec3::Z),
+                                                steering::look_to(-TVec3::Z).into(),
+                                            )
+                                        }),
+                                    },
+                                    strategy.boid_entt(),
+                                ))
+                                .id()
+                        })
                     });
-                Some(
-                    commands
-                        .spawn()
+                Some(commands.entity(boid_entt).add_children(|p| {
+                    p.spawn()
                         .insert_bundle(strategy::custom::Bundle::new(
                             strategy::custom::Custom::new(
                                 strategy::custom::Composition::PriorityOverride {
@@ -129,39 +130,41 @@ pub fn boid_mind(
                             ),
                             boid_entt,
                         ))
-                        .id(),
-                )
+                        .id()
+                }))
             }
             /* BoidMindDirective::Custom { composition } => Some(
-                commands
+                commands.entity(boid_entt).add_children(|p|
+                    p
                     .spawn()
                     .insert_bundle(strategy::custom::Bundle::new(
                         strategy::custom::Custom::new(composition.take().unwrap_or_log()),
                         boid_entt,
                     ))
                     .id(),
+            )
             ), */
             BoidMindDirective::SlaveToPlayerControl => {
                 let player: Box<strategy::custom::RoutineSpawner> = Box::new(move |commands, _| {
-                    commands
-                        .spawn()
-                        .insert_bundle(steering::player::Bundle::new(
-                            steering::player::Player,
-                            boid_entt,
-                        ))
-                        .id()
+                    commands.entity(boid_entt).add_children(|p| {
+                        p.spawn()
+                            .insert_bundle(steering::player::Bundle::new(
+                                steering::player::Player,
+                                boid_entt,
+                            ))
+                            .id()
+                    })
                 });
-                Some(
-                    commands
-                        .spawn()
+                Some(commands.entity(boid_entt).add_children(|p| {
+                    p.spawn()
                         .insert_bundle(strategy::custom::Bundle::new(
                             strategy::custom::Custom::new(strategy::custom::Composition::Single {
                                 routine_spawner: player,
                             }),
                             boid_entt,
                         ))
-                        .id(),
-                )
+                        .id()
+                }))
             }
             BoidMindDirective::HoldPosition { pos } => {
                 let pos = *pos;
@@ -170,41 +173,42 @@ pub fn boid_mind(
                 let cast_shape_radius = raycast_toi_modifier * 0.5;
                 let avoid_collision: Box<strategy::custom::RoutineSpawner> =
                     Box::new(move |commands, _| {
-                        commands
-                            .spawn()
-                            .insert_bundle(steering::avoid_collision::Bundle::new(
-                                steering::avoid_collision::AvoidCollision::new(
-                                    cast_shape_radius,
-                                    raycast_toi_modifier,
-                                ),
-                                boid_entt,
-                                Default::default(),
-                            ))
-                            .id()
+                        commands.entity(boid_entt).add_children(|p| {
+                            p.spawn()
+                                .insert_bundle(steering::avoid_collision::Bundle::new(
+                                    steering::avoid_collision::AvoidCollision::new(
+                                        cast_shape_radius,
+                                        raycast_toi_modifier,
+                                    ),
+                                    boid_entt,
+                                    default(),
+                                ))
+                                .id()
+                        })
                     });
                 let arrive: Box<strategy::custom::RoutineSpawner> = Box::new(move |commands, _| {
-                    commands
-                        .spawn()
-                        .insert_bundle(steering::arrive::Bundle::new(
-                            steering::arrive::Arrive {
-                                target: arrive::Target::Vector {
-                                    at_pos: pos,
-                                    pos_linvel: Default::default(),
-                                    // with_linvel: Default::default(),
-                                    with_speed: 0.,
+                    commands.entity(boid_entt).add_children(|p| {
+                        p.spawn()
+                            .insert_bundle(steering::arrive::Bundle::new(
+                                steering::arrive::Arrive {
+                                    target: arrive::Target::Vector {
+                                        at_pos: pos,
+                                        pos_linvel: default(),
+                                        // with_linvel: default(),
+                                        with_speed: 0.,
+                                    },
+                                    arrival_tolerance: 5.,
+                                    deceleration_radius: None,
+                                    avail_accel: accel_limit,
                                 },
-                                arrival_tolerance: 5.,
-                                deceleration_radius: None,
-                                avail_accel: accel_limit,
-                            },
-                            boid_entt,
-                        ))
-                        .id()
+                                boid_entt,
+                            ))
+                            .id()
+                    })
                 });
 
-                Some(
-                    commands
-                        .spawn()
+                Some(commands.entity(boid_entt).add_children(|p| {
+                    p.spawn()
                         .insert_bundle(strategy::custom::Bundle::new(
                             strategy::custom::Custom::new(
                                 strategy::custom::Composition::PriorityOverride {
@@ -213,21 +217,20 @@ pub fn boid_mind(
                             ),
                             boid_entt,
                         ))
-                        .id(),
-                )
+                        .id()
+                }))
             }
             BoidMindDirective::JoinFomation { formation } => {
                 let formation = *formation;
-                Some(
-                    commands
-                        .spawn()
+                Some(commands.entity(boid_entt).add_children(|p| {
+                    p.spawn()
                         .insert_bundle(strategy::form::Bundle::new(
                             strategy::form::Form { formation },
                             boid_entt,
-                            Default::default(),
+                            default(),
                         ))
-                        .id(),
-                )
+                        .id()
+                }))
             }
             BoidMindDirective::FlyWithFlockCAS { param } => {
                 let param = param.clone();
@@ -235,29 +238,32 @@ pub fn boid_mind(
                 let cast_shape_radius = raycast_toi_modifier * 0.5;
                 let avoid_collision: Box<strategy::custom::RoutineSpawner> =
                     Box::new(move |commands, _| {
-                        commands
-                            .spawn()
-                            .insert_bundle(steering::avoid_collision::Bundle::new(
-                                steering::avoid_collision::AvoidCollision::new(
-                                    cast_shape_radius,
-                                    raycast_toi_modifier,
-                                ),
-                                boid_entt,
-                                Default::default(),
-                            ))
-                            .id()
+                        commands.entity(boid_entt).add_children(|p| {
+                            p.spawn()
+                                .insert_bundle(steering::avoid_collision::Bundle::new(
+                                    steering::avoid_collision::AvoidCollision::new(
+                                        cast_shape_radius,
+                                        raycast_toi_modifier,
+                                    ),
+                                    boid_entt,
+                                    default(),
+                                ))
+                                .id()
+                        })
                     });
                 let fly_with_flock: Box<strategy::custom::RoutineSpawner> =
                     Box::new(move |commands, _| {
-                        commands
-                            .spawn()
-                            .insert_bundle(steering::fly_with_flock::Bundle::new(param, boid_entt))
-                            .id()
+                        commands.entity(boid_entt).add_children(|p| {
+                            p.spawn()
+                                .insert_bundle(steering::fly_with_flock::Bundle::new(
+                                    param, boid_entt,
+                                ))
+                                .id()
+                        })
                     });
 
-                Some(
-                    commands
-                        .spawn()
+                Some(commands.entity(boid_entt).add_children(|p| {
+                    p.spawn()
                         .insert_bundle(strategy::custom::Bundle::new(
                             strategy::custom::Custom::new(
                                 strategy::custom::Composition::PriorityOverride {
@@ -266,29 +272,31 @@ pub fn boid_mind(
                             ),
                             boid_entt,
                         ))
-                        .id(),
-                )
+                        .id()
+                }))
             }
-            BoidMindDirective::RunCircuit { param } => Some(
-                commands
-                    .spawn()
-                    .insert_bundle(strategy::run_circuit::Bundle::new(
-                        param.clone(),
-                        boid_entt,
-                        Default::default(),
-                    ))
-                    .id(),
-            ),
-            BoidMindDirective::AttackPresue { param } => Some(
-                commands
-                    .spawn()
-                    .insert_bundle(strategy::attack_persue::Bundle::new(
-                        param.clone(),
-                        boid_entt,
-                        Default::default(),
-                    ))
-                    .id(),
-            ),
+            BoidMindDirective::RunCircuit { param } => {
+                Some(commands.entity(boid_entt).add_children(|p| {
+                    p.spawn()
+                        .insert_bundle(strategy::run_circuit::Bundle::new(
+                            param.clone(),
+                            boid_entt,
+                            default(),
+                        ))
+                        .id()
+                }))
+            }
+            BoidMindDirective::AttackPresue { param } => {
+                Some(commands.entity(boid_entt).add_children(|p| {
+                    p.spawn()
+                        .insert_bundle(strategy::attack_persue::Bundle::new(
+                            param.clone(),
+                            boid_entt,
+                            default(),
+                        ))
+                        .id()
+                }))
+            }
         }
     }
 }

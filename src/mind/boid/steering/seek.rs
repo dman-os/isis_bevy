@@ -29,13 +29,13 @@ pub fn update(
         (&Seek, &SteeringRoutine, &mut LinearRoutineOutput),
         With<ActiveSteeringRoutine>,
     >,
-    boids: Query<(&GlobalTransform,)>,
+    boids: Query<(&Transform,)>,
     objects: Query<&GlobalTransform>,
 ) {
     for (param, routine, mut output) in routines.iter_mut() {
         let (xform,) = boids.get(routine.boid_entt()).unwrap_or_log();
         let pos = match param.target {
-            Target::Object { entt } => objects.get(entt).unwrap_or_log().translation,
+            Target::Object { entt } => objects.get(entt).unwrap_or_log().translation(),
             Target::Position { pos } => pos,
         };
         *output = steering_behaviours::seek_position(xform.translation, pos);

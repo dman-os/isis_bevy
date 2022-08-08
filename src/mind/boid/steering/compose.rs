@@ -66,8 +66,8 @@ pub fn update(
         (With<SteeringRoutine>, Without<Compose>),
     >,
     boids: Query<(
-        &GlobalTransform,
-        &RigidBodyVelocityComponent,
+        &Transform,
+        &Velocity,
         &engine::EngineConfig,
         &CraftControllerConsts,
     )>,
@@ -76,13 +76,13 @@ pub fn update(
         let (xform, vel, engine_config, consts) = boids.get(routine.boid_entt()).unwrap_or_log();
         // FIXME: i hate this code
         let active_res = match &param.composer {
-            SteeringRoutineComposer::None => Default::default(),
+            SteeringRoutineComposer::None => default(),
             SteeringRoutineComposer::Single { entt: routine_entt } => {
                 match other_routines.get(*routine_entt).map(|(lin, ang)| {
                     BoidSteeringSystemOutput::get_active_res(
                         lin,
                         ang,
-                        vel.linvel.into(),
+                        vel.linvel,
                         engine_config,
                         consts,
                     )
@@ -93,7 +93,7 @@ pub fn update(
                             ?routine_entt,
                             "Routine doesn't have linear or angular results"
                         );
-                        Default::default()
+                        default()
                     }
                     Err(err) => {
                         tracing::error!(
@@ -101,19 +101,19 @@ pub fn update(
                             ?routine_entt,
                             "routine not found for ActiveRoutines::Single"
                         );
-                        Default::default()
+                        default()
                     }
                 }
             }
             SteeringRoutineComposer::WeightSummed { routines: summed } => {
                 // zero it out first
-                let mut sum = Default::default();
+                let mut sum = default();
                 for (weight, routine_entt) in summed {
                     match other_routines.get(*routine_entt).map(|(lin, ang)| {
                         BoidSteeringSystemOutput::get_active_res(
                             lin,
                             ang,
-                            vel.linvel.into(),
+                            vel.linvel,
                             engine_config,
                             consts,
                         )
@@ -126,7 +126,7 @@ pub fn update(
                                 ?routine_entt,
                                 "Routine doesn't have linear or angular results"
                             );
-                            sum = Default::default();
+                            sum = default();
                             break;
                         }
                         Err(_) => {
@@ -134,7 +134,7 @@ pub fn update(
                                 ?routine_entt,
                                 "routine not found for ActiveRoutines::WeightSummed"
                             );
-                            sum = Default::default();
+                            sum = default();
                             break;
                         }
                     }
@@ -144,13 +144,13 @@ pub fn update(
             // FIXME: CLEAN ME UP
             SteeringRoutineComposer::PriorityOverride { routines: priority } => {
                 // zero it out first
-                let mut pick = Default::default();
+                let mut pick = default();
                 'priority_loop: for routine_entt in priority {
                     match other_routines.get(*routine_entt).map(|(lin, ang)| {
                         BoidSteeringSystemOutput::get_active_res(
                             lin,
                             ang,
-                            vel.linvel.into(),
+                            vel.linvel,
                             engine_config,
                             consts,
                         )
@@ -169,7 +169,7 @@ pub fn update(
                                 ?routine_entt,
                                 "Routine doesn't have linear or angular results"
                             );
-                            pick = Default::default();
+                            pick = default();
                             break 'priority_loop;
                         }
                         Err(_) => {
@@ -177,7 +177,7 @@ pub fn update(
                                 ?routine_entt,
                                 "routine not found for ActiveRoutines::PriorityOverride"
                             );
-                            pick = Default::default();
+                            pick = default();
                             break 'priority_loop;
                         }
                     }
@@ -193,7 +193,7 @@ pub fn update(
                     BoidSteeringSystemOutput::get_active_res(
                         lin,
                         ang,
-                        vel.linvel.into(),
+                        vel.linvel,
                         engine_config,
                         consts,
                     )
@@ -204,7 +204,7 @@ pub fn update(
                             ?avoid_collision,
                             "Routine doesn't have linear or angular results"
                         );
-                        Default::default()
+                        default()
                     }
                     Err(err) => {
                         tracing::error!(
@@ -212,17 +212,17 @@ pub fn update(
                             ?avoid_collision,
                             "routine not found for ActiveRoutines::AvoidCollisionHelper"
                         );
-                        Default::default()
+                        default()
                     }
                 };
                 if avoid_coll_out.is_zero() {
-                    let mut sum = Default::default();
+                    let mut sum = default();
                     for (weight, routine_entt) in summed {
                         match other_routines.get(*routine_entt).map(|(lin, ang)| {
                             BoidSteeringSystemOutput::get_active_res(
                                 lin,
                                 ang,
-                                vel.linvel.into(),
+                                vel.linvel,
                                 engine_config,
                                 consts,
                             )
@@ -235,7 +235,7 @@ pub fn update(
                                     ?routine_entt,
                                     "Routine doesn't have linear or angular results"
                                 );
-                                sum = Default::default();
+                                sum = default();
                                 break;
                             }
                             Err(_) => {
@@ -243,7 +243,7 @@ pub fn update(
                                     ?routine_entt,
                                     "routine not found for ActiveRoutines::AvoidCollisionHelper"
                                 );
-                                sum = Default::default();
+                                sum = default();
                                 break;
                             }
                         }
@@ -321,17 +321,17 @@ pub enum SteeringRoutineComposer {
     },
     // Linear sum of the routine outputs
     WeightSummed {
-        routines: smallvec::SmallVec<[(SteeringRoutineWeight, Entity); 2]>,
+        routines: SVec<[(SteeringRoutineWeight, Entity); 2]>,
     },
     /// The first routine that returns a non zero value will be used.
     PriorityOverride {
-        routines: smallvec::SmallVec<[Entity; 4]>,
+        routines: SVec<[Entity; 4]>,
     },
     /// A variant of WeightSummed except with a single priority checked routine that goes first
     /// In order to avoid making a second composition layer for the common avoid collision case
     AvoidCollisionHelper {
         avoid_collision: Entity,
-        routines: smallvec::SmallVec<[(SteeringRoutineWeight, Entity); 2]>,
+        routines: SVec<[(SteeringRoutineWeight, Entity); 2]>,
     },
 }
 
@@ -343,9 +343,9 @@ impl Default for SteeringRoutineComposer {
 
 impl SteeringRoutineComposer {
     /// This returns a vector of all the routines currently being composed.
-    pub fn all_routines(&self) -> smallvec::SmallVec<[Entity; 4]> {
+    pub fn all_routines(&self) -> SVec<[Entity; 4]> {
         match self {
-            SteeringRoutineComposer::None => Default::default(),
+            SteeringRoutineComposer::None => default(),
             SteeringRoutineComposer::Single { entt } => smallvec::smallvec![*entt],
             SteeringRoutineComposer::WeightSummed { routines } => {
                 routines.iter().map(|(_, entt)| *entt).collect()
@@ -386,6 +386,7 @@ enum BoidSteeringSystemOutput {
 }
 
 impl BoidSteeringSystemOutput {
+    #[inline]
     fn lin(&self) -> TVec3 {
         match self {
             Self::Both { lin, .. } => *lin,
@@ -393,6 +394,7 @@ impl BoidSteeringSystemOutput {
             Self::AngOnly { .. } => TVec3::ZERO,
         }
     }
+    #[inline]
     fn ang(&self) -> TVec3 {
         match self {
             Self::Both { ang, .. } => *ang,

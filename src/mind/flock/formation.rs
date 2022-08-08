@@ -18,7 +18,7 @@ pub struct FlockFormationBundle {
     pub output: FormationOutputs,
     pub name: Name,
     pub tag: FlockFormation,
-    pub parent: Parent,
+    // pub parent: Parent,
 }
 
 impl FlockFormationBundle {
@@ -35,11 +35,11 @@ impl FlockFormationBundle {
                 boid_entt: center_pivot,
             },
             slotting_strategy,
-            slots: Default::default(),
-            state: Default::default(),
-            output: Default::default(),
+            slots: default(),
+            state: default(),
+            output: default(),
             tag: FlockFormation::new(flock_entt),
-            parent: Parent(flock_entt),
+            // parent: Parent(flock_entt),
             name: Self::DEFAULT_NAME.into(),
             flock_change_reader: FlockChangeEventsReader::default(),
         }
@@ -101,8 +101,8 @@ pub struct FormationSlotDesc {
 #[derive(Debug, Default, Component)]
 pub struct FormationSlots {
     slots: HashMap<Entity, FormationSlotDesc>,
-    added: smallvec::SmallVec<[Entity; 4]>,
-    removed: smallvec::SmallVec<[(Entity, FormationSlotDesc); 2]>,
+    added: SVec<[Entity; 4]>,
+    removed: SVec<[(Entity, FormationSlotDesc); 2]>,
 }
 
 impl FormationSlots {
@@ -162,9 +162,9 @@ pub struct FormationOutputs {
 // TODO: formation dissolution
 pub fn butler(
     mut commands: Commands,
-    mut formations: QuerySet<(
+    mut formations: ParamSet<(
         // new
-        QueryState<
+        Query<
             (
                 Entity,
                 &FlockFormation,
@@ -178,12 +178,9 @@ pub fn butler(
             Added<FlockFormation>,
         >,
         // changed SlottingStrategy
-        QueryState<
-            (&FlockFormation, &SlottingStrategy, &mut FormationSlots),
-            Changed<SlottingStrategy>,
-        >,
+        Query<(&FlockFormation, &SlottingStrategy, &mut FormationSlots), Changed<SlottingStrategy>>,
         // changed slots
-        QueryState<
+        Query<
             (
                 &SlottingStrategy,
                 &mut FormationSlots,
@@ -193,7 +190,7 @@ pub fn butler(
             Changed<FormationSlots>,
         >,
         // all
-        QueryState<(
+        Query<(
             &FlockFormation,
             &mut FlockChangeEventsReader,
             &SlottingStrategy,
@@ -216,29 +213,28 @@ pub fn butler(
         mut output,
         _slotting_strategy,
         mut slots,
-    ) in formations.q0().iter_mut()
+    ) in formations.p0().iter_mut()
     {
         let (members, events) = flocks.get(formation.flock_entt()).unwrap_or_log();
         // we're not interested in any events before activation
         let _ = reader.iter(events).skip_while(|_| true);
-        state.shadow_leader_anchor = Some(
-            commands
-                .spawn()
+        state.shadow_leader_anchor = Some(commands.entity(entt).add_children(|p| {
+            p.spawn()
                 .insert_bundle(FormationAnchorBundle::new(
                     FormationAnchorDirectives::Shadow {
                         boid: center_pivot.boid_entt,
                     },
                     entt,
                 ))
-                .id(),
-        );
+                .id()
+        }));
         for member in members.iter().filter(|e| **e != center_pivot.boid_entt) {
             let (xform,) = formants.get(*member).unwrap_or_log();
             output.index.insert(
                 *member,
                 FormationOutput {
-                    pos: xform.translation,
-                    ..Default::default()
+                    pos: xform.translation(),
+                    ..default()
                 },
             );
             slots.slots.insert(
@@ -262,7 +258,7 @@ pub fn butler(
     } */
     // serve slot changes
     // TODO: consider slotting strategy
-    for (slotting_strategy, mut slots, mut output, mut state) in formations.q2().iter_mut() {
+    for (slotting_strategy, mut slots, mut output, mut state) in formations.p2().iter_mut() {
         // skip early to avoid reslotting
         if slots.added.is_empty() && slots.removed.is_empty() {
             continue;
@@ -276,8 +272,8 @@ pub fn butler(
             output.index.insert(
                 added,
                 FormationOutput {
-                    pos: xform.translation,
-                    ..Default::default()
+                    pos: xform.translation(),
+                    ..default()
                 },
             );
         }
@@ -290,7 +286,7 @@ pub fn butler(
     // TODO: leader removal replacement
     // TODO: consider slotting strategy
     for (formation, mut reader, _slotting_strategy, mut slots, mut output, mut state) in
-        formations.q3().iter_mut()
+        formations.p3().iter_mut()
     {
         let (_, events) = flocks.get(formation.flock_entt()).unwrap_or_log();
         // we're not interested in any events before the formation's creation
@@ -309,8 +305,8 @@ pub fn butler(
                     output.index.insert(
                         entt,
                         FormationOutput {
-                            pos: xform.translation,
-                            ..Default::default()
+                            pos: xform.translation(),
+                            ..default()
                         },
                     );
                 }
@@ -391,7 +387,7 @@ pub struct FormationAnchorBundle {
     pub directive: FormationAnchorDirectives,
     pub name: Name,
     pub tag: FormationAnchor,
-    pub parent: Parent,
+    // pub parent: Parent,
 }
 
 impl FormationAnchorBundle {
@@ -402,9 +398,9 @@ impl FormationAnchorBundle {
             tag: FormationAnchor {
                 _formation_entt: formation_entt,
             },
-            parent: Parent(formation_entt),
+            // parent: Parent(formation_entt),
             name: Self::DEFAULT_NAME.into(),
-            state: Default::default(),
+            state: default(),
         }
     }
 }
@@ -429,15 +425,16 @@ pub enum FormationAnchorDirectives {
 
 pub fn formation_anchor_motion(
     mut anchors: Query<(&mut FormationAnchorState, &FormationAnchorDirectives)>,
-    boids: Query<(&GlobalTransform, &RigidBodyVelocityComponent)>,
+    boids: Query<(&GlobalTransform, &Velocity)>,
 ) {
     for (mut state, directive) in anchors.iter_mut() {
         match directive {
             FormationAnchorDirectives::Shadow { boid } => {
                 let (target_xform, vel) = boids.get(*boid).unwrap_or_log();
+                let target_xform = target_xform.compute_transform();
                 state.pos = target_xform.translation;
                 state.rot = target_xform.rotation;
-                state.linvel = vel.linvel.into();
+                state.linvel = vel.linvel;
             }
         }
     }

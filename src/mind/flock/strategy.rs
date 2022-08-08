@@ -24,7 +24,7 @@ where
     pub param: P,
     pub name: Name,
     pub tag: FlockStrategy,
-    pub parent: Parent,
+    // pub parent: Parent,
 }
 
 impl<P> FlockStrategyBundle<P>
@@ -36,7 +36,7 @@ where
         Self {
             param,
             tag: FlockStrategy::new(flock_entt, FlockStrategyKind::of::<P>()),
-            parent: Parent(flock_entt),
+            // parent: Parent(flock_entt),
             name: Self::DEFAULT_NAME.into(),
         }
     }
@@ -53,7 +53,7 @@ where
     pub extra: P2,
     pub name: Name,
     pub tag: FlockStrategy,
-    pub parent: Parent,
+    // pub parent: Parent,
 }
 
 impl<P, P2> FlockStrategyBundleExtra<P, P2>
@@ -67,7 +67,7 @@ where
             param,
             extra,
             tag: FlockStrategy::new(flock_entt, FlockStrategyKind::of::<P>()),
-            parent: Parent(flock_entt),
+            // parent: Parent(flock_entt),
             name: Self::DEFAULT_NAME.into(),
         }
     }
@@ -85,7 +85,7 @@ where
     pub extra: B,
     pub name: Name,
     pub tag: FlockStrategy,
-    pub parent: Parent,
+    // pub parent: Parent,
 }
 
 impl<P, B> FlockStrategyBundleJumbo<P, B>
@@ -99,7 +99,7 @@ where
             param,
             extra,
             tag: FlockStrategy::new(flock_entt, FlockStrategyKind::of::<P>()),
-            parent: Parent(flock_entt),
+            // parent: Parent(flock_entt),
             name: Self::DEFAULT_NAME.into(),
         }
     }

@@ -107,7 +107,8 @@ impl EngineConfig {
     /// Use this everytime the [`EngineConfig`] or [`CraftDimensions`] changes to calculate transiet items.
     pub fn derive_items(&self, dimensions: CraftDimensions) -> DerivedEngineConfig {
         use bevy::math::vec2;
-        let axes_diameter: TVec3 = [
+        // should I be doubling this?
+        let axes_bounds: TVec3 = [
             vec2(dimensions.y, dimensions.z).length(),
             vec2(dimensions.x, dimensions.z).length(),
             vec2(dimensions.x, dimensions.y).length(),
@@ -117,7 +118,7 @@ impl EngineConfig {
         DerivedEngineConfig {
             // TODO: proper angular accel limits
             angular_acceleration_limit: [TReal::INFINITY; 3].into(),
-            thruster_torque: axes_diameter * self.angular_thruster_force,
+            thruster_torque: axes_bounds * self.angular_thruster_force,
         }
     }
 
@@ -169,14 +170,15 @@ pub fn sync_craft_state_velocities(
         &mut AngularEngineState,
         &mut LinearEngineState,
         &GlobalTransform,
-        &RigidBodyVelocityComponent,
+        &Velocity,
     )>,
 ) {
-    for (mut angular_state, mut linear_state, g_xform, rb_velocity) in crafts.iter_mut() {
+    for (mut angular_state, mut linear_state, g_xform, vel) in crafts.iter_mut() {
+        let g_xform = g_xform.compute_transform();
         // convert it to local space first
         let rotator = g_xform.rotation.inverse();
-        linear_state.velocity = rotator * TVec3::from(rb_velocity.linvel);
-        angular_state.velocity = rotator * TVec3::from(rb_velocity.angvel);
+        linear_state.velocity = rotator * vel.linvel;
+        angular_state.velocity = rotator * vel.angvel;
     }
 }
 
@@ -245,7 +247,7 @@ pub fn angular_pid_driver(
         &EngineConfig,
         &DerivedEngineConfig,
         &mut AngularDriverPid,
-        &RigidBodyMassPropsComponent,
+        &ReadMassProperties,
     )>,
     // time: Res<Time>,
 ) {
@@ -253,17 +255,18 @@ pub fn angular_pid_driver(
         {
             let accel_limit = {
                 let max_torque = derived_config.thruster_torque * config.thruster_force_multiplier;
-
                 // TODO: work out if this is actually the inertia tensor
-                let local_moi_inv_sqrt = mass_props.local_mprops.inv_principal_inertia_sqrt;
-
                 // NOTICE: difference here
-                let accel_limit: TVec3 = [
-                    max_torque.x * local_moi_inv_sqrt.x,
-                    max_torque.y * local_moi_inv_sqrt.y,
-                    max_torque.z * local_moi_inv_sqrt.z,
-                ]
-                .into();
+                // torque = Inertial_tensor * rotational acceleration
+                // accel = torque / Inertial_tensor
+
+                let inv_inertial_tensor = mass_props
+                    .0
+                    .into_rapier(1.)
+                    .reconstruct_inverse_inertia_matrix();
+                let accel_limit: TVec3 =
+                    (inv_inertial_tensor * bevy_rapier3d::na::Vector3::from(max_torque)).into();
+                // let accel_limit = max_torque * TVec3::from(mass_props.0.into_rapier(1.).inv_principal_inertia_sqrt);
                 if config.limit_acceleration {
                     let artificial_accel_limit = derived_config.angular_acceleration_limit;
                     pid.0.integrat_max = accel_limit.min(artificial_accel_limit);
@@ -305,25 +308,24 @@ pub fn apply_flames_simple_accel(
         &LinearEngineState,
         &AngularEngineState,
         &EngineConfig,
-        &RigidBodyMassPropsComponent,
-        &mut RigidBodyForcesComponent,
+        &ReadMassProperties,
+        &mut ExternalForce,
     )>,
-    //time: Time,
+    // time: Res<Time>,
 ) {
-    for (g_xform, lin_state, ang_state, config, mass_props, mut forces) in crafts.iter_mut() {
+    for (g_xform, lin_state, ang_state, config, mass_props, mut ext_force) in crafts.iter_mut() {
+        let g_xform = g_xform.compute_transform();
         let force = lin_state.flame * config.mass;
         let force = g_xform.rotation * force;
-        forces.force += Vector::from(force);
+        ext_force.force = force;
 
-        let local_moi_inv_sqrt = mass_props.local_mprops.inv_principal_inertia_sqrt;
-        let torque: TVec3 = [
-            ang_state.flame.x / local_moi_inv_sqrt.x,
-            ang_state.flame.y / local_moi_inv_sqrt.y,
-            ang_state.flame.z / local_moi_inv_sqrt.z,
-        ]
-        .into();
+        // sqrt this?
+        let inertial_tensor = mass_props.0.into_rapier(1.).reconstruct_inertia_matrix();
+        let torque: TVec3 =
+            (inertial_tensor * bevy_rapier3d::na::Vector3::from(ang_state.flame)).into();
+        // let torque = ang_state.flame / TVec3::from(mass_props.0.into_rapier(1.).inv_principal_inertia_sqrt);
         let torque = g_xform.rotation * torque;
 
-        forces.torque += AngVector::from(torque);
+        ext_force.torque = torque;
     }
 }

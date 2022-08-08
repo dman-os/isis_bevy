@@ -8,9 +8,13 @@ pub mod flock;
 pub mod guy;
 pub mod player;
 pub mod sensors;
+
+/* pub mod tribe {
+    use deps::*;
+}  */
 /*
 pub mod master {}
-pub mod tribe {} */
+*/
 
 pub struct MindPlugin;
 

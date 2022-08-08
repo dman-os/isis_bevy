@@ -129,14 +129,14 @@ impl From<TVec3> for AngularRoutineOutput {
 
 pub fn steering_output_to_engine(
     mut crafts: Query<(
-        &GlobalTransform,
+        &Transform,
         &CurrentSteeringRoutine,
         &boid::BoidMindConfig,
         &mut engine::LinearEngineState,
         &mut engine::AngularEngineState,
         &engine::EngineConfig,
         &CraftControllerConsts,
-        &RigidBodyVelocityComponent,
+        &Velocity,
     )>,
     routines: Query<(&LinearRoutineOutput, &AngularRoutineOutput), With<SteeringRoutine>>,
     // routines: Query<&LinearRoutineResult, With<steering_systems::Intercept>>,
@@ -159,7 +159,7 @@ pub fn steering_output_to_engine(
             .expect_or_log("CurrentSteeringRoutine's routine not located in world. \
             Use a routine with both Linear and Angular outputs or wrap whatever you're using now with a Compose routine");
             (
-                lin_out.to_accel(vel.linvel.into(), engine_config, consts),
+                lin_out.to_accel(vel.linvel, engine_config, consts),
                 ang_out.0,
             )
         } else {
@@ -184,7 +184,7 @@ where
     pub output: LinearRoutineOutput,
     pub tag: SteeringRoutine,
     pub name: Name,
-    pub parent: Parent,
+    // pub parent: Parent,
 }
 
 impl<P> LinOnlyRoutineBundle<P>
@@ -195,11 +195,11 @@ where
     pub fn new(param: P, boid_entt: Entity) -> Self {
         Self {
             param,
-            output: Default::default(),
+            output: default(),
             tag: SteeringRoutine::new(boid_entt, RoutineKind::of::<P>()),
             name: Self::DEFAULT_NAME.into(),
             // FIXME: parent to strategies instead
-            parent: Parent(boid_entt),
+            // parent: Parent(boid_entt),
         }
     }
 }
@@ -214,7 +214,7 @@ where
     pub output: AngularRoutineOutput,
     pub tag: SteeringRoutine,
     pub name: Name,
-    pub parent: Parent,
+    // pub parent: Parent,
 }
 
 impl<P> AngOnlyRoutineBundle<P>
@@ -225,10 +225,10 @@ where
     pub fn new(param: P, boid_entt: Entity) -> Self {
         Self {
             param,
-            output: Default::default(),
+            output: default(),
             tag: SteeringRoutine::new(boid_entt, RoutineKind::of::<P>()),
             name: Self::DEFAULT_NAME.into(),
-            parent: Parent(boid_entt),
+            // parent: Parent(boid_entt),
         }
     }
 }
@@ -244,7 +244,7 @@ where
     pub output: LinearRoutineOutput,
     pub tag: SteeringRoutine,
     pub name: Name,
-    pub parent: Parent,
+    // pub parent: Parent,
 }
 
 impl<P, E> LinOnlyRoutineBundleExtra<P, E>
@@ -257,10 +257,10 @@ where
         Self {
             param,
             extra,
-            output: Default::default(),
+            output: default(),
             tag: SteeringRoutine::new(boid_entt, RoutineKind::of::<P>()),
             name: Self::DEFAULT_NAME.into(),
-            parent: Parent(boid_entt),
+            // parent: Parent(boid_entt),
         }
     }
 }
@@ -276,7 +276,7 @@ where
     pub ang_res: AngularRoutineOutput,
     pub tag: SteeringRoutine,
     pub name: Name,
-    pub parent: Parent,
+    // pub parent: Parent,
 }
 
 impl<P> LinAngRoutineBundle<P>
@@ -291,7 +291,7 @@ where
             ang_res: AngularRoutineOutput::default(),
             tag: SteeringRoutine::new(boid_entt, RoutineKind::of::<P>()),
             name: Self::DEFAULT_NAME.into(),
-            parent: Parent(boid_entt),
+            // parent: Parent(boid_entt),
         }
     }
 }
@@ -309,7 +309,7 @@ where
     pub ang_res: AngularRoutineOutput,
     pub tag: SteeringRoutine,
     pub name: Name,
-    pub parent: Parent,
+    // pub parent: Parent,
 }
 
 impl<P, E> LinAngRoutineBundleExtra<P, E>
@@ -326,7 +326,7 @@ where
             ang_res: AngularRoutineOutput::default(),
             tag: SteeringRoutine::new(boid_entt, RoutineKind::of::<P>()),
             name: Self::DEFAULT_NAME.into(),
-            parent: Parent(boid_entt),
+            // parent: Parent(boid_entt),
         }
     }
 }

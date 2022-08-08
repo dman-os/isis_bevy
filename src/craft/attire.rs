@@ -1,11 +1,9 @@
-use std::sync::Arc;
-
 use deps::*;
 
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
+use bevy_rapier3d::rapier::prelude::SharedShape;
 use bitflags::bitflags;
-use deps::bevy::utils::HashMap;
 use once_cell::sync::Lazy;
 
 use crate::math::*;
@@ -13,11 +11,9 @@ use crate::math::*;
 pub struct AttirePlugin;
 impl Plugin for AttirePlugin {
     fn build(&self, app: &mut App) {
-        app.add_system(generate_better_contact_events)
-            .add_system(handle_collision_damage_events)
-            .add_system(handle_projectile_xin_evenns)
+        app.add_system(handle_collision_damage_events)
+            .add_system(handle_projectile_ixn_events)
             .add_system(log_damage_events)
-            .add_event::<BetterContactEvent>()
             .add_event::<CollisionDamageEvent>()
             .add_event::<ProjectileDamageEvent>();
     }
@@ -31,6 +27,7 @@ pub enum DamageType {
     Kinetic,
     Plasma,
 }
+
 impl Default for DamageType {
     fn default() -> Self {
         Self::Kinetic
@@ -63,7 +60,7 @@ pub struct Attire {
     //pub recovery_rate: Real,
     pub attire_type: AttireType,
     pub factory_integrity: f32,
-    pub damage_multiplier: smallvec::SmallVec<[f32; 6]>,
+    pub damage_multiplier: SVec<[f32; 6]>,
 }
 
 impl Attire {
@@ -110,7 +107,7 @@ impl Default for AttireCoverage {
 #[derive(Debug, Clone, Component)]
 pub struct AttireProfile {
     pub coverage: AttireCoverage,
-    pub members: smallvec::SmallVec<[Attire; 1]>,
+    pub members: SVec<[Attire; 1]>,
 }
 
 impl AttireProfile {
@@ -150,8 +147,8 @@ bitflags! {
     }
 }
 
-pub static CRAFT_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
-    InteractionGroups::new(
+pub static CRAFT_COLLIDER_IGROUP: Lazy<CollisionGroups> = Lazy::new(|| {
+    CollisionGroups::new(
         (ColliderGroups::CRAFT_SOLID).bits(),
         (ColliderGroups::SOLID
             | ColliderGroups::PROJECTILE
@@ -160,26 +157,26 @@ pub static CRAFT_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
             .bits(),
     )
 });
-pub static ATTIRE_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
-    InteractionGroups::new(
+pub static ATTIRE_COLLIDER_IGROUP: Lazy<CollisionGroups> = Lazy::new(|| {
+    CollisionGroups::new(
         ColliderGroups::ATTIRE.bits(),
         (ColliderGroups::PROJECTILE).bits(),
     )
 });
-pub static OBSTACLE_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
-    InteractionGroups::new(
+pub static OBSTACLE_COLLIDER_IGROUP: Lazy<CollisionGroups> = Lazy::new(|| {
+    CollisionGroups::new(
         ColliderGroups::SOLID.bits(),
         (ColliderGroups::SOLID | ColliderGroups::PROJECTILE | ColliderGroups::CRAFT_SOLID).bits(),
     )
 });
-pub static PROJECTILE_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
-    InteractionGroups::new(
+pub static PROJECTILE_COLLIDER_IGROUP: Lazy<CollisionGroups> = Lazy::new(|| {
+    CollisionGroups::new(
         (ColliderGroups::PROJECTILE).bits(),
         (ColliderGroups::ATTIRE | ColliderGroups::SOLID).bits(),
     )
 });
-pub static SENSOR_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
-    InteractionGroups::new(
+pub static SENSOR_COLLIDER_IGROUP: Lazy<CollisionGroups> = Lazy::new(|| {
+    CollisionGroups::new(
         (ColliderGroups::SENSOR).bits(),
         (ColliderGroups::PROJECTILE | ColliderGroups::SOLID | ColliderGroups::CRAFT_SOLID).bits(),
     )
@@ -189,32 +186,25 @@ pub static SENSOR_COLLIDER_IGROUP: Lazy<InteractionGroups> = Lazy::new(|| {
 pub struct AttireBundle {
     pub name: Name,
     pub profile: AttireProfile,
-    #[bundle]
-    pub collider: ColliderBundle,
+    pub collider: Collider,
+    pub sensor: Sensor,
+    pub collision_group: CollisionGroups,
+    pub active_events: ActiveEvents,
 }
 
 impl AttireBundle {
     pub const DEFAULT_NAME: &'static str = "attire";
-    pub fn default_collider_bundle() -> ColliderBundle {
-        ColliderBundle {
-            collider_type: ColliderType::Sensor.into(),
-            flags: ColliderFlags {
-                active_events: ActiveEvents::INTERSECTION_EVENTS,
-                collision_groups: *ATTIRE_COLLIDER_IGROUP,
-                ..Default::default()
-            }
-            .into(),
-            ..Default::default()
-        }
-    }
 }
 
 impl Default for AttireBundle {
     fn default() -> Self {
         Self {
             profile: AttireProfile::default(),
-            collider: Self::default_collider_bundle(),
+            collider: default(),
             name: Self::DEFAULT_NAME.into(),
+            sensor: Sensor,
+            collision_group: *ATTIRE_COLLIDER_IGROUP,
+            active_events: ActiveEvents::COLLISION_EVENTS, // TODO: intersection event
         }
     }
 }
@@ -224,58 +214,37 @@ impl Default for AttireBundle {
 #[derive(Component)]
 pub struct CollisionDamageEnabledRb;
 
-///// Tags a collider that's able to detect collision damage. Note, this's
-///// separate from the sensor collider attached to AttireProfiles.
-//pub struct CollisionDamageEnabledCollider;
+/// Tags a collider that's able to detect collision damage. Note, this's
+/// separate from the sensor collider attached to AttireProfiles.
+#[derive(Component)]
+pub struct CollisionDamageEnabledCollider;
 
 #[derive(Bundle)]
 pub struct CollisionDamageEnabledColliderBundle {
-    #[bundle]
-    pub collider: ColliderBundle,
-    pub better_listener: BetterContactListener,
-    //pub tag: CollisionDamageEnabledCollider,
+    pub collider: Collider,
+    pub mass_props: ColliderMassProperties,
+    pub collidsion_group: CollisionGroups,
+    pub active_events: ActiveEvents,
+    // pub threshold: ContactForceEventThreshold,
+    // pub better_listener: BetterContactListener,
+    pub tag: CollisionDamageEnabledCollider,
 }
 
 impl CollisionDamageEnabledColliderBundle {
-    pub fn default_collider_bundle() -> ColliderBundle {
-        ColliderBundle {
-            flags: ColliderFlags {
-                active_events: ActiveEvents::CONTACT_EVENTS,
-                collision_groups: *CRAFT_COLLIDER_IGROUP,
-                ..Default::default()
-            }
-            .into(),
-            ..Default::default()
-        }
-    }
+    // pub const DEFAULT_FORCE_EVENT_THRESHOLD: f32 = 0.1;
 }
+
 impl Default for CollisionDamageEnabledColliderBundle {
     fn default() -> Self {
         Self {
-            better_listener: BetterContactListener,
-            //tag: CollisionDamageEnabledCollider,
-            collider: Self::default_collider_bundle(),
+            // better_listener: BetterContactListener,
+            tag: CollisionDamageEnabledCollider,
+            collider: default(),
+            mass_props: default(),
+            collidsion_group: *CRAFT_COLLIDER_IGROUP,
+            active_events: ActiveEvents::COLLISION_EVENTS,
+            // threshold: ContactForceEventThreshold(Self::DEFAULT_FORCE_EVENT_THRESHOLD),
         }
-    }
-}
-
-/// Tags a collider so that more detailed contact events are
-/// generated for it.
-#[derive(Component)]
-pub struct BetterContactListener;
-
-/// A more detailed contact event that has data from the [`NarrowPhase`] graph.
-#[derive(Clone)]
-pub struct BetterContactEvent {
-    id: (Entity, Entity),
-    contact_pair: Arc<ContactPair>,
-}
-
-impl std::fmt::Debug for BetterContactEvent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("BetterContactEvent")
-            .field("id", &self.id)
-            .finish_non_exhaustive()
     }
 }
 
@@ -286,244 +255,173 @@ pub struct CollisionDamageEvent {
     rb_entt: Entity,
     attire_entt: Entity,
     damage: Damage,
-    contact_event: BetterContactEvent,
+    // contact_event: BetterContactEvent,
     is_entt_1: bool,
     /// The shape of the attire that included the deepest contact point
     /// so that had this attire ended up being selected for taking damage.
     #[allow(dead_code)]
-    selection_shape: ColliderShape,
+    selection_shape: SharedShape,
     /// The position of the `selection_shape` during selection.
-    selection_position: ColliderPosition,
+    selection_position: (Vec3, Quat),
 }
+
 impl std::fmt::Debug for CollisionDamageEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CollisionDamageEvent")
             .field("damage", &self.damage)
             .field("rb_entt", &self.rb_entt)
             .field("attire_entt", &self.attire_entt)
-            .field("contact_Event", &self.contact_event)
+            // .field("contact_Event", &self.contact_event)
             .field("is_entt_1", &self.is_entt_1)
             .field("selection_position", &self.selection_position)
             .finish_non_exhaustive()
     }
 }
 
-//#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, SystemLabel)]
-//pub enum AttireSystems {
-//GenerateBetterContactEvents,
-//}
-
-/// Generates [`BetterContactEvent`]s for registered listeners using the [`NarrowPhase`] graph..
-pub(super) fn generate_better_contact_events(
-    listeners: Query<Entity, With<BetterContactListener>>,
-    mut bc_events: EventWriter<BetterContactEvent>,
-    narrow_phase: Res<NarrowPhase>,
-    mut contact_pair_store: Local<HashMap<(Entity, Entity), Arc<ContactPair>>>,
-) {
-    for entity in listeners.iter() {
-        for contact_pair in narrow_phase
-            .contacts_with(entity.handle())
-            .filter(|c| c.has_any_active_contact)
-        {
-            let key = (
-                contact_pair.collider1.entity(),
-                contact_pair.collider2.entity(),
-            );
-            contact_pair_store
-                .entry(key)
-                .or_insert_with(|| Arc::new(contact_pair.clone()));
-        }
-    }
-    bc_events.send_batch(
-        contact_pair_store
-            .drain()
-            .map(|(id, contact_pair)| BetterContactEvent { id, contact_pair }),
-    );
-}
-
 /// Consumes [`BetterContactEvent`]s and damages [`AttireProfile`]s when
 /// the object colliding has one attached.
 pub(super) fn handle_collision_damage_events(
+    listeners: Query<Entity, With<CollisionDamageEnabledCollider>>,
     time: Res<Time>,
-    crafts: Query<
-        (Entity, &RigidBodyCollidersComponent, &GlobalTransform),
-        With<CollisionDamageEnabledRb>,
-    >,
-    mut attires: Query<(
-        &mut AttireProfile,
-        &ColliderShapeComponent,
-        &ColliderPositionComponent,
-    )>,
-    mut contact_events: EventReader<BetterContactEvent>,
+    crafts: Query<(&crate::Colliders, &GlobalTransform), With<CollisionDamageEnabledRb>>,
+    mut attires: Query<(&mut AttireProfile, &Collider, &GlobalTransform)>,
     mut cd_events: EventWriter<CollisionDamageEvent>,
     mut generated_events: Local<Vec<CollisionDamageEvent>>,
+    rapier: Res<RapierContext>,
 ) {
-    for event in contact_events.iter() {
-        let (manifold, contact) = event.contact_pair.find_deepest_contact().unwrap_or_log();
-        let damage = {
-            // calculate the force from the impulse
-            // J = F Δt
-            // F = J / Δt
-            let value = contact.data.impulse.abs();
+    for entity in listeners.iter() {
+        for contact_pair in rapier
+            .contacts_with(entity)
+            .filter(|c| c.has_any_active_contacts())
+        {
+            /* let other = if contact_pair.collider1() == entity {
+                contact_pair.collider2()
+            } else {
+                contact_pair.collider1()
+            }; */
+            // find the deepest contact
+            let (manifold, contact) = contact_pair.find_deepest_contact().unwrap_or_log();
+            let damage = {
+                // calculate the force from the impulse
+                // J = F Δt
+                // F = J / Δt
+                let value = contact.impulse().abs();
 
-            // ignore zero damage values
-            if value <= TReal::EPSILON {
-                continue;
-            }
-            let value = value / time.delta_seconds();
-            Damage {
-                value,
-                damage_type: DamageType::Collision,
-            }
-        };
+                // ignore zero damage values
+                if value <= TReal::EPSILON {
+                    continue;
+                }
+                let value = value / time.delta_seconds();
+                Damage {
+                    value,
+                    damage_type: DamageType::Collision,
+                }
+            };
 
-        /*
-            match (manifold.data.rigid_body1, manifold.data.rigid_body2) {
-                // if there was a rigidbody involved in the contact
-                (Some(rb_handle), None) | (None, Some(rb_handle)) | (Some(rb_handle), Some(_)) => {
-                    // if it's __better collision__ enabled
-                    if let Ok(set) = crafts.get(rb_handle.entity()) {
-                        inner(
-                            true,
-                            event,
-                            set,
-                            &mut attires,
-                            &mut generated_events,
-                            contact,
-                            damage,
-                        );
+            let mut rigd_body_involved = false;
+            for val in [
+                manifold
+                    .rigid_body1()
+                    .map(|rb| crafts.get(rb).map(|(colls, gx)| (rb, true, colls, gx))),
+                manifold
+                    .rigid_body2()
+                    .map(|rb| crafts.get(rb).map(|(colls, gx)| (rb, false, colls, gx))),
+            ] {
+                let (rb_entt, is_entt_1, colls, g_xform) = match val {
+                    Some(Ok(val)) => val,
+                    _ => continue,
+                };
+                rigd_body_involved = true;
+                let point = {
+                    let point = if is_entt_1 {
+                        contact.local_p1()
+                    } else {
+                        contact.local_p2()
+                    };
+
+                    g_xform.mul_vec3(point)
+                };
+
+                let mut closest_attire = None;
+                // let body = rapier.entity2body().get(&rb_entt).and_then(|h| rapier.bodies.get(*h)).unwrap_or_log();
+                // for all the rigid body's colliders
+                for coll_entt in colls.set.iter().cloned() {
+                    // let coll_entt = rapier.collider_entity(*coll_entt).unwrap_or_log();
+                    // FIXME: this seems expensive
+                    //
+                    // if the collider belongs to an attire
+                    if let Ok((mut attire, coll, attire_g_xform)) = attires.get_mut(coll_entt) {
+                        let xform = attire_g_xform.compute_transform();
+                        let dist =
+                            coll.distance_to_point(xform.translation, xform.rotation, point, true);
+                        // if the collider contains the point
+                        if dist < 0.1 {
+                            attire.damage(damage);
+
+                            // generate the event to let others know it was damaged
+                            generated_events.push(CollisionDamageEvent {
+                                damage,
+                                rb_entt,
+                                attire_entt: coll_entt,
+                                // contact_event: event.clone(),
+                                selection_shape: coll.raw.clone(),
+                                selection_position: (xform.translation, xform.rotation),
+                                is_entt_1,
+                            });
+
+                            // consider the event hadnled once we've damaged an attire
+                            return;
+                        } else {
+                            closest_attire = if let Some((other, other_dist)) = closest_attire {
+                                if dist < other_dist {
+                                    Some((coll_entt, dist))
+                                } else {
+                                    Some((other, other_dist))
+                                }
+                            } else {
+                                Some((coll_entt, dist))
+                            }
+                        }
                     }
                 }
-                (None, None) => tracing::warn!("no rigidbody involved in better contact event"),
+                if let Some((attire_entt, dist)) = closest_attire {
+                    // FIXME: this is being emitted to frequently at eye raising distances
+                    tracing::debug!(
+                        "CollisonDamageEnabledRb collided but no attires covered deepest contact point, damaging closest attire with at diastance {dist:?}",
+                    );
+                    let (mut attire, coll, attire_g_xform) =
+                        attires.get_mut(attire_entt).unwrap_or_log();
+                    let xform = attire_g_xform.compute_transform();
+                    attire.damage(damage);
+                    // generate the event to let others know it was damaged
+                    generated_events.push(CollisionDamageEvent {
+                        damage,
+                        rb_entt,
+                        attire_entt,
+                        // contact_event: event.clone(),
+                        selection_shape: coll.raw.clone(),
+                        selection_position: (xform.translation, xform.rotation),
+                        is_entt_1,
+                    });
+                } else {
+                    tracing::warn!("CollisonDamageEnabledRb registered but no attire found");
+                }
             }
-        }
-            */
+            // if there was a rigidbody involved in the contact
 
-        let mut rigd_body_involved = false;
-        // if there was a rigidbody involved in the contact
-        if let Some(rb_handle) = manifold.data.rigid_body1 {
-            rigd_body_involved = true;
-            // if it's __better collision__ enabled
-            if let Ok(set) = crafts.get(rb_handle.entity()) {
-                inner(
-                    true,
-                    event,
-                    set,
-                    &mut attires,
-                    &mut generated_events,
-                    contact,
-                    damage,
+            if !rigd_body_involved {
+                tracing::warn!(
+                    coll1 = ?contact_pair.collider1(),
+                    coll2 = ?contact_pair.collider2(),
+                    "contact event without rigidbody"
                 );
             }
-        }
-
-        if let Some(rb_handle) = manifold.data.rigid_body2 {
-            rigd_body_involved = true;
-            if let Ok(set) = crafts.get(rb_handle.entity()) {
-                inner(
-                    false,
-                    event,
-                    set,
-                    &mut attires,
-                    &mut generated_events,
-                    contact,
-                    damage,
-                );
-            }
-        }
-
-        if !rigd_body_involved {
-            tracing::warn!(?event, "contact event without rigidbody");
         }
     }
 
     // FIXME: premature optimization
     // FIXME: is this even an optimization?
     cd_events.send_batch(generated_events.drain(..));
-
-    #[inline]
-    fn inner(
-        is_entt_1: bool,
-        event: &BetterContactEvent,
-        components: (Entity, &RigidBodyCollidersComponent, &GlobalTransform),
-        attires: &mut Query<(
-            &mut AttireProfile,
-            &ColliderShapeComponent,
-            &ColliderPositionComponent,
-        )>,
-        generated_events: &mut Vec<CollisionDamageEvent>,
-        contact: &TrackedContact<ContactData>,
-        damage: Damage,
-    ) {
-        let point = {
-            let point = if is_entt_1 {
-                contact.local_p1
-            } else {
-                contact.local_p2
-            };
-            let point = components.2.mul_vec3(point.into());
-            point.into()
-        };
-
-        let mut closest_attire = None;
-        // for all the rigid body's colliders
-        for collider in components.1 .0 .0.iter() {
-            // FIXME: this seems expensive
-            //
-            // if the collider belongs to an attire
-            if let Ok((mut attire, coll_shape, coll_pos)) = attires.get_mut(collider.entity()) {
-                // if the collider contains the point
-                let dist = coll_shape.distance_to_point(coll_pos, &point, true);
-                if dist < 0.1 {
-                    attire.damage(damage);
-
-                    // generate the event to let others know it was damaged
-                    generated_events.push(CollisionDamageEvent {
-                        damage,
-                        rb_entt: components.0,
-                        attire_entt: collider.entity(),
-                        contact_event: event.clone(),
-                        selection_shape: coll_shape.0.clone(),
-                        selection_position: coll_pos.0,
-                        is_entt_1,
-                    });
-
-                    // consider the event hadnled once we've damaged an attire
-                    return;
-                } else {
-                    closest_attire = if let Some((other, other_dist)) = closest_attire {
-                        if dist < other_dist {
-                            Some((collider.entity(), dist))
-                        } else {
-                            Some((other, other_dist))
-                        }
-                    } else {
-                        Some((collider.entity(), dist))
-                    }
-                }
-            }
-        }
-        if let Some((attire_entt, dist)) = closest_attire {
-            // FIXME: this is being emitted to frequently at eye raising distances
-            tracing::debug!(
-                "CollisonDamageEnabledRb collided but no attires covered deepest contact point, damaging closest attire with at diastance {dist:?}",
-            );
-            let (mut attire, coll_shape, coll_pos) = attires.get_mut(attire_entt).unwrap_or_log();
-            attire.damage(damage);
-            // generate the event to let others know it was damaged
-            generated_events.push(CollisionDamageEvent {
-                damage,
-                rb_entt: components.0,
-                attire_entt,
-                contact_event: event.clone(),
-                selection_shape: coll_shape.0.clone(),
-                selection_position: coll_pos.0,
-                is_entt_1,
-            });
-        } else {
-            tracing::warn!("CollisonDamageEnabledRb registered but no attire found");
-        }
-    }
 }
 
 use crate::craft::arms::ProjectileIxnEvent;
@@ -534,23 +432,22 @@ pub struct ProjectileDamageEvent {
 }
 /// Consumes [`ProjectileIxnEvent`]s and damages [`AttireProfile`]s when
 /// the object intersecting has one attached.
-fn handle_projectile_xin_evenns(
+fn handle_projectile_ixn_events(
     // mut commands: Commands,
-    mut attires: Query<(Entity, &mut AttireProfile, &ColliderParentComponent)>,
+    rapier: Res<RapierContext>,
+    mut attires: Query<(Entity, &mut AttireProfile)>,
     mut proj_ixn_events: EventReader<ProjectileIxnEvent>,
     mut pd_events: EventWriter<ProjectileDamageEvent>,
     names: Query<Option<&Name>>,
 ) {
     for event in proj_ixn_events.iter() {
-        if let Ok((attire_entt, mut attire, parent)) = attires.get_mut(event.collider.entity()) {
+        if let Ok((attire_entt, mut attire)) = attires.get_mut(event.collider) {
+            let parent = rapier.collider_parent(attire_entt).unwrap_or_log();
             if attire.damage(event.projectile.damage).is_some() {
-                if let Some(name) = names.get(parent.handle.entity()).unwrap_or_log() {
+                if let Some(name) = names.get(parent).unwrap_or_log() {
                     tracing::info!("Craft {} destroyed by Projectile damage", name.as_str());
                 } else {
-                    tracing::info!(
-                        "Craft {:?} destroyed by Projectile damage",
-                        parent.handle.entity()
-                    );
+                    tracing::info!("Craft {parent:?} destroyed by Projectile damage",);
                 }
                 // reset health
                 for member in attire.members.iter_mut() {

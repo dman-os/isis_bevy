@@ -48,26 +48,7 @@ pub fn butler(
     )>,
 ) {
     for (entt, param, strategy, mut state, mut out) in added_strategies.iter_mut() {
-        let (routines, engine_config, dim) = crafts.get(strategy.boid_entt()).unwrap_or_log();
-
-        let raycast_toi_modifier = dim.max_element();
-        let cast_shape_radius = raycast_toi_modifier * 0.5;
-        let avoid_collision = routines
-            .kind::<avoid_collision::AvoidCollision>()
-            .map(|v| v[0])
-            .unwrap_or_else(|| {
-                commands
-                    .spawn()
-                    .insert_bundle(avoid_collision::Bundle::new(
-                        avoid_collision::AvoidCollision::new(
-                            cast_shape_radius,
-                            raycast_toi_modifier,
-                        ),
-                        strategy.boid_entt(),
-                        Default::default(),
-                    ))
-                    .id()
-            });
+        let (routine_idx, engine_config, dim) = crafts.get(strategy.boid_entt()).unwrap_or_log();
 
         let (mut formation_state, fomation_output) =
             formations.get_mut(param.formation).unwrap_or_log();
@@ -78,49 +59,72 @@ pub fn butler(
             .index
             .get(&strategy.boid_entt())
             .unwrap_or_log();
-        let arrive = commands
-            .spawn()
-            .insert_bundle(arrive::Bundle::new(
-                arrive::Arrive {
-                    target: arrive::Target::Vector {
-                        at_pos: form_out.pos,
-                        // with_linvel: form_out.linvel,
-                        pos_linvel: form_out.pos_linvel,
-                        with_speed: form_out.linvel.length(),
+
+        let raycast_toi_modifier = dim.max_element();
+        let cast_shape_radius = raycast_toi_modifier * 0.5;
+
+        let (avoid_collision, arrive, face) =
+            commands.entity(strategy.boid_entt()).add_children(|par| {
+                (
+                    routine_idx
+                        .kind::<avoid_collision::AvoidCollision>()
+                        .map(|v| v[0])
+                        .unwrap_or_else(|| {
+                            par.spawn()
+                                .insert_bundle(avoid_collision::Bundle::new(
+                                    avoid_collision::AvoidCollision::new(
+                                        cast_shape_radius,
+                                        raycast_toi_modifier,
+                                    ),
+                                    strategy.boid_entt(),
+                                    default(),
+                                ))
+                                .id()
+                        }),
+                    par.spawn()
+                        .insert_bundle(arrive::Bundle::new(
+                            arrive::Arrive {
+                                target: arrive::Target::Vector {
+                                    at_pos: form_out.pos,
+                                    // with_linvel: form_out.linvel,
+                                    pos_linvel: form_out.pos_linvel,
+                                    with_speed: form_out.linvel.length(),
+                                },
+                                arrival_tolerance: 5.,
+                                deceleration_radius: None,
+                                avail_accel: engine_config.actual_accel_limit(),
+                            },
+                            strategy.boid_entt(),
+                        ))
+                        .id(),
+                    par.spawn()
+                        .insert_bundle(face::Bundle::new(
+                            face::Face {
+                                target: face::Target::Direction {
+                                    dir: form_out.facing,
+                                },
+                            },
+                            strategy.boid_entt(),
+                        ))
+                        .id(),
+                )
+            });
+        let compose = commands.entity(strategy.boid_entt()).add_children(|par| {
+            par.spawn()
+                .insert_bundle(compose::Bundle::new(
+                    compose::Compose {
+                        composer: compose::SteeringRoutineComposer::AvoidCollisionHelper {
+                            avoid_collision,
+                            routines: smallvec::smallvec![
+                                ((1., 0.).into(), arrive),
+                                ((0., 1.).into(), face),
+                            ],
+                        },
                     },
-                    arrival_tolerance: 5.,
-                    deceleration_radius: None,
-                    avail_accel: engine_config.actual_accel_limit(),
-                },
-                strategy.boid_entt(),
-            ))
-            .id();
-        let face = commands
-            .spawn()
-            .insert_bundle(face::Bundle::new(
-                face::Face {
-                    target: face::Target::Direction {
-                        dir: form_out.facing,
-                    },
-                },
-                strategy.boid_entt(),
-            ))
-            .id();
-        let compose = commands
-            .spawn()
-            .insert_bundle(compose::Bundle::new(
-                compose::Compose {
-                    composer: compose::SteeringRoutineComposer::AvoidCollisionHelper {
-                        avoid_collision,
-                        routines: smallvec::smallvec![
-                            ((1., 0.).into(), arrive),
-                            ((0., 1.).into(), face),
-                        ],
-                    },
-                },
-                strategy.boid_entt(),
-            ))
-            .id();
+                    strategy.boid_entt(),
+                ))
+                .id()
+        });
 
         state.composer_routine = Some(compose);
         state.avoid_collision_routine = Some(avoid_collision);

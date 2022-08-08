@@ -49,7 +49,7 @@ pub fn butler(
     )>,
 ) {
     for (entt, param, strategy, mut state, mut out) in added_strategies.iter_mut() {
-        let (routines, engine_config, dim) = crafts
+        let (routine_idx, engine_config, dim) = crafts
             .get(strategy.boid_entt())
             .expect_or_log("craft not found for BoidStrategy");
         let (_, waypoint1_xform) = waypoints.get(param.initial_point).unwrap_or_log();
@@ -57,57 +57,60 @@ pub fn butler(
 
         let raycast_toi_modifier = dim.max_element();
         let cast_shape_radius = raycast_toi_modifier * 0.5;
-        let avoid_collision = routines
-            .kind::<avoid_collision::AvoidCollision>()
-            .map(|v| v[0])
-            .unwrap_or_else(|| {
-                commands
-                    .spawn()
-                    .insert_bundle(avoid_collision::Bundle::new(
-                        avoid_collision::AvoidCollision::new(
-                            cast_shape_radius,
-                            raycast_toi_modifier,
-                        ),
+        let (avoid_collision, arrive) = commands.entity(strategy.boid_entt()).add_children(|p| {
+            (
+                routine_idx
+                    .kind::<avoid_collision::AvoidCollision>()
+                    .map(|v| v[0])
+                    .unwrap_or_else(|| {
+                        p.spawn()
+                            .insert_bundle(avoid_collision::Bundle::new(
+                                avoid_collision::AvoidCollision::new(
+                                    cast_shape_radius,
+                                    raycast_toi_modifier,
+                                ),
+                                strategy.boid_entt(),
+                                default(),
+                            ))
+                            .id()
+                    }),
+                p.spawn()
+                    .insert_bundle(arrive::Bundle::new(
+                        arrive::Arrive {
+                            target: arrive::Target::Vector {
+                                at_pos: waypoint1_xform.translation(),
+                                pos_linvel: default(),
+                                // with_linvel: default(),
+                                /* with_linvel: (waypoint2_xform.translation - waypoint1_xform.translation)
+                                .normalize()
+                                * engine_config.linvel_limit, */
+                                with_speed: 80.,
+                            },
+                            arrival_tolerance: 5.,
+                            deceleration_radius: None,
+                            // linvel_limit: engine_config.linvel_limit,
+                            avail_accel: engine_config.avail_lin_accel().clamp(
+                                -engine_config.actual_accel_limit(),
+                                engine_config.actual_accel_limit(),
+                            ),
+                        },
                         strategy.boid_entt(),
-                        Default::default(),
                     ))
-                    .id()
-            });
-        let arrive = commands
-            .spawn()
-            .insert_bundle(arrive::Bundle::new(
-                arrive::Arrive {
-                    target: arrive::Target::Vector {
-                        at_pos: waypoint1_xform.translation,
-                        pos_linvel: Default::default(),
-                        // with_linvel: Default::default(),
-                        /* with_linvel: (waypoint2_xform.translation - waypoint1_xform.translation)
-                        .normalize()
-                        * engine_config.linvel_limit, */
-                        with_speed: 80.,
+                    .id(),
+            )
+        });
+        let compose = commands.entity(strategy.boid_entt()).add_children(|p| {
+            p.spawn()
+                .insert_bundle(compose::Bundle::new(
+                    compose::Compose {
+                        composer: compose::SteeringRoutineComposer::PriorityOverride {
+                            routines: smallvec::smallvec![avoid_collision, arrive],
+                        },
                     },
-                    arrival_tolerance: 5.,
-                    deceleration_radius: None,
-                    // linvel_limit: engine_config.linvel_limit,
-                    avail_accel: engine_config.avail_lin_accel().clamp(
-                        -engine_config.actual_accel_limit(),
-                        engine_config.actual_accel_limit(),
-                    ),
-                },
-                strategy.boid_entt(),
-            ))
-            .id();
-        let compose = commands
-            .spawn()
-            .insert_bundle(compose::Bundle::new(
-                compose::Compose {
-                    composer: compose::SteeringRoutineComposer::PriorityOverride {
-                        routines: smallvec::smallvec![avoid_collision, arrive],
-                    },
-                },
-                strategy.boid_entt(),
-            ))
-            .id();
+                    strategy.boid_entt(),
+                ))
+                .id()
+        });
 
         state.arrive_routine = Some(arrive);
         state.avoid_collision_routine = Some(avoid_collision);
@@ -125,33 +128,32 @@ pub fn update(
     // mut commands: Commands,
     strategies: Query<&RunCircuitState, With<ActiveBoidStrategy>>,
     waypoints: Query<(Entity, &CircuitWaypoint, &GlobalTransform)>,
-    narrow_phase: Res<NarrowPhase>,
-    parents: Query<&ColliderParentComponent>,
+    rapier: Res<RapierContext>,
     mut arrive_routines: Query<&mut arrive::Arrive>,
     crafts: Query<(
         // &engine::EngineConfig,
         &sensors::BoidStrategyIndex,
         &CraftDimensions,
-        &RigidBodyVelocityComponent,
+        &Velocity,
     )>,
 ) {
     for (checkpt_entt, waypoint, checkopoint_xform) in waypoints.iter() {
         // if something triggered the waypoint
-        for (collider1, collider2) in narrow_phase
-            .intersections_with(checkpt_entt.handle())
+        for (collider1, collider2) in rapier
+            .intersections_with(checkpt_entt)
             .filter(|(_, _, ixing)| *ixing)
             .map(|(c1, c2, _)| (c1, c2))
         {
-            let other_collider = if collider1.entity() == checkpt_entt {
-                collider2.entity()
+            let other_collider = if collider1 == checkpt_entt {
+                collider2
             } else {
-                collider1.entity()
+                collider1
             };
-            if let Ok(Ok((index, dim, vel))) = parents
+            if let Some(Ok((index, dim, vel))) = rapier
                 // if other_collider has a rigd body
-                .get(other_collider)
+                .collider_parent(other_collider)
                 // and that rigd body belongs to a craft
-                .map(|parent| crafts.get(parent.handle.entity()))
+                .map(|parent| crafts.get(parent))
             {
                 // for any acttive RunCircuit strategies on the craft
                 if let Some(entts) = index.kind::<RunCircuit>() {
@@ -167,12 +169,12 @@ pub fn update(
                                 with_speed,
                                 ..
                             } => {
-                                if prev_pos.distance_squared(checkopoint_xform.translation)
+                                if prev_pos.distance_squared(checkopoint_xform.translation())
                                     - (dim.max_element().powi(2))
                                     < 1.
                                 {
                                     let cur_vel = vel.linvel;
-                                    let cur_spd = cur_vel.magnitude();
+                                    let cur_spd = cur_vel.length();
                                     // commands.entity(other_collider).despawn_recursive();
                                     tracing::info!(
                                         ?cur_vel,
@@ -186,7 +188,7 @@ pub fn update(
                                     .get(next_waypoint.next_point)
                                     unwrap_or_log(); */
                                     arrive_param.target = arrive::Target::Vector {
-                                        at_pos: next_waypoint_xform.translation,
+                                        at_pos: next_waypoint_xform.translation(),
                                         pos_linvel: TVec3::ZERO,
                                         // with_linvel: TVec3::ZERO,
                                         /* with_linvel: (next_next_waypoint_xform.translation

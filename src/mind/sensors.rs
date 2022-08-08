@@ -1,9 +1,6 @@
 use deps::*;
 
-use bevy::{
-    prelude::*,
-    utils::{AHashExt, HashMap},
-};
+use bevy::{prelude::*, utils::HashMap};
 
 use crate::{
     craft::{arms::*, attire::DamageType},
@@ -40,11 +37,11 @@ impl<P> CrossReferenceIndex<P> {
 #[derive(Debug, Clone, Component, Default)]
 pub struct SteeringRoutinesIndex {
     pub entt_to_kind: HashMap<Entity, RoutineKind>,
-    pub kind_to_entt: HashMap<RoutineKind, smallvec::SmallVec<[Entity; 3]>>,
+    pub kind_to_entt: HashMap<RoutineKind, SVec<[Entity; 3]>>,
 }
 
 impl SteeringRoutinesIndex {
-    pub fn kind<P: Component>(&self) -> Option<&smallvec::SmallVec<[Entity; 3]>> {
+    pub fn kind<P: Component>(&self) -> Option<&SVec<[Entity; 3]>> {
         self.kind_to_entt.get(&RoutineKind::of::<P>())
     }
     pub fn insert(&mut self, entt: Entity, kind: RoutineKind) {
@@ -76,11 +73,11 @@ pub struct PreviouslyActiveRoutine;
 
 pub(super) fn craft_routine_index_butler(
     mut commands: Commands,
-    mut routines: QuerySet<(
+    mut routines: ParamSet<(
         // activated
-        QueryState<(Entity, &SteeringRoutine), Added<ActiveSteeringRoutine>>,
+        Query<(Entity, &SteeringRoutine), Added<ActiveSteeringRoutine>>,
         // deactivated
-        QueryState<
+        Query<
             (Entity, &SteeringRoutine),
             (
                 Without<ActiveSteeringRoutine>,
@@ -92,7 +89,7 @@ pub(super) fn craft_routine_index_butler(
     removed_components: RemovedComponents<SteeringRoutine>,
     mut cross_ref_index: ResMut<SteeringRoutineCrossRefIndex>,
 ) {
-    for (entt, routine) in routines.q0().iter() {
+    for (entt, routine) in routines.p0().iter() {
         commands.entity(entt).insert(PreviouslyActiveRoutine);
 
         // add them to the index
@@ -101,7 +98,7 @@ pub(super) fn craft_routine_index_butler(
             .expect_or_log("craft not foud SteeringRoutine");
         index.insert(entt, routine.kind());
     }
-    for (entt, routine) in routines.q1().iter() {
+    for (entt, routine) in routines.p1().iter() {
         let mut index = indices
             .get_mut(routine.boid_entt())
             .expect_or_log("boid_entt not found for ActiveRoutine");
@@ -131,12 +128,12 @@ pub struct CraftWeaponsIndex {
     pub avg_projectile_speed: TReal,
     mean_value_size: usize,
     pub entt_to_desc: HashMap<Entity, WeaponDesc>,
-    pub class_to_entt: HashMap<WeaponClass, smallvec::SmallVec<[Entity; 3]>>,
-    pub kind_to_entt: HashMap<WeaponKind, smallvec::SmallVec<[Entity; 3]>>,
+    pub class_to_entt: HashMap<WeaponClass, SVec<[Entity; 3]>>,
+    pub kind_to_entt: HashMap<WeaponKind, SVec<[Entity; 3]>>,
 }
 
 impl CraftWeaponsIndex {
-    pub fn kind<P: Component>(&self) -> Option<&smallvec::SmallVec<[Entity; 3]>> {
+    pub fn kind<P: Component>(&self) -> Option<&SVec<[Entity; 3]>> {
         self.kind_to_entt.get(&WeaponKind::of::<P>())
     }
     pub fn insert(&mut self, entt: Entity, desc: WeaponDesc) {
@@ -225,11 +222,11 @@ pub(super) fn craft_wpn_index_butler(
 #[derive(Debug, Clone, Component, Default)]
 pub struct BoidStrategyIndex {
     pub entt_to_class: HashMap<Entity, BoidStrategyKind>,
-    pub kind_to_entt: HashMap<BoidStrategyKind, smallvec::SmallVec<[Entity; 3]>>,
+    pub kind_to_entt: HashMap<BoidStrategyKind, SVec<[Entity; 3]>>,
 }
 
 impl BoidStrategyIndex {
-    pub fn kind<P: Component>(&self) -> Option<&smallvec::SmallVec<[Entity; 3]>> {
+    pub fn kind<P: Component>(&self) -> Option<&SVec<[Entity; 3]>> {
         self.kind_to_entt.get(&BoidStrategyKind::of::<P>())
     }
     pub fn insert(&mut self, entt: Entity, kind: BoidStrategyKind) {

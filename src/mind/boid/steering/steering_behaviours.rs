@@ -218,14 +218,13 @@ pub fn arrive_at_position(
     max_speed: TReal,
     arrival_tolerance: TReal,
     deceleration_radius: TReal,
-    max_accel: TVec3,
 ) -> LinearRoutineOutput {
     let target_offset = target_pos - current_pos;
     let dst = target_offset.length_squared();
     // if we've arrived according to the tolerance
     if dst < arrival_tolerance * arrival_tolerance {
         // stop
-        Default::default()
+        return default();
     }
     let dst = dst.sqrt();
     // let deceleration_radius = dst_to_change(speed_to_target, 0., max_accel);
@@ -235,8 +234,8 @@ pub fn arrive_at_position(
     // let speed_to_target = current_vel.dot(target_offset) / dst;
     let weight = (dst - arrival_tolerance) / deceleration_radius;
     let target_vel =
-        target_offset.normalize() * (target_speed + (max_speed - target_speed) * weight);
-    LinearRoutineOutput::Accel((target_vel - current_vel) / max_accel)
+        target_offset.normalize_or_zero() * (target_speed + (max_speed - target_speed) * weight);
+    LinearRoutineOutput::Accel(target_vel - current_vel)
 }
 
 // FIXME: consider factoring in the interceptor's velocity?
@@ -285,7 +284,7 @@ pub fn cohesion(
 
         seek_position(current_pos, flock_average_center)
     } else {
-        Default::default()
+        default()
     }
 }
 
@@ -306,7 +305,7 @@ pub fn allignment(
 
         LinearRoutineOutput::Dir(flock_average_vel)
     } else {
-        Default::default()
+        default()
     }
 }
 
@@ -341,7 +340,7 @@ pub fn avoid_obstacle_seblague(
     // A function that casts _something_ from the craft's position into the given
     // direction and checks for obstruction.
     is_dir_obstructed: &mut dyn FnMut(TVec3) -> bool,
-    xform: &GlobalTransform,
+    xform: &Transform,
 ) -> LinearRoutineOutput {
     const RAY_COUNT: usize = 30;
     use once_cell::sync::Lazy;
@@ -386,17 +385,17 @@ pub fn avoid_obstacle_seblague(
 }
 
 #[inline]
-pub fn time_to_change(cur_spd: TReal, target_spd: TReal, accel: TReal) -> TReal {
+pub fn time_to_change(cur: TReal, target: TReal, accel: TReal) -> TReal {
     // a = (vf - vi) / t
     // t = (vf - vi) / a
     debug_assert!(accel > TReal::EPSILON, "acceleration is zero");
-    let delta = target_spd - cur_spd;
+    let delta = target - cur;
     let time = delta / accel;
     time.abs()
 }
 
 #[inline]
-pub fn dst_to_change(cur_spd: TReal, target_spd: TReal, accel: TReal) -> TReal {
+pub fn dst_to_change(cur: TReal, target: TReal, accel: TReal) -> TReal {
     // d = vt
     // v = (vf + vi) / 2 = 0.5 (vf + vi)
     // d = 0.5 (vf + vi) t
@@ -404,7 +403,7 @@ pub fn dst_to_change(cur_spd: TReal, target_spd: TReal, accel: TReal) -> TReal {
     // d = 0.5 ((vi + at) + vi) t
     // d = vit + 0.5att
 
-    let dist = 0.5 * (cur_spd + target_spd) * time_to_change(cur_spd, target_spd, accel);
+    let dist = 0.5 * (cur + target) * time_to_change(cur, target, accel);
     // let dist = cur_sped * time + 0.5 * accel * time * time;
     // let dist = cur_spd * time + 0.5 * delta * (delta / accel);
     dist.abs()
@@ -413,11 +412,13 @@ pub fn dst_to_change(cur_spd: TReal, target_spd: TReal, accel: TReal) -> TReal {
 #[test]
 fn zmblo() {
     let to_target: Vec3 = [10., 10., 0.].into();
-    let vel: Vec3 = [5., 5., 0.].into();
+    let vel: Vec3 = [-5., -5., 0.].into();
     let out = to_target.dot(vel);
     let out = (out / (to_target.length())) * to_target.normalize();
     let out2 = vel.project_onto(to_target);
-    println!("{out:?},{out2:?}");
+    let out3 = vel.length() * to_target.angle_between(vel).cos();
+    let out4 = to_target.dot(vel) / to_target.length();
+    println!("{out:?},{out2:?},{out3:?},{out4:?}");
 
     let vi = 5.;
     let vf = 15.;

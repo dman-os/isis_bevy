@@ -58,17 +58,16 @@ pub fn update(
             &SteeringRoutine,
             &Arrive,
             // &mut ArriveState,
-            &RigidBodyVelocityComponent,
             &mut LinearRoutineOutput,
         ),
         With<ActiveSteeringRoutine>,
     >,
-    boids: Query<(&GlobalTransform,)>, // boids
-                                       // objects: Query<&GlobalTransform>,
-                                       // mut lines: ResMut<DebugLines>,
+    boids: Query<(&Transform, &Velocity)>, // boids
+                                           // objects: Query<&GlobalTransform>,
+                                           // mut lines: ResMut<DebugLines>,
 ) {
-    for (routine, param, vel, mut output) in routines.iter_mut() {
-        let (xform,) = boids
+    for (routine, param, mut output) in routines.iter_mut() {
+        let (xform, vel) = boids
             .get(routine.boid_entt)
             .expect_or_log("craft entt not found for routine");
 
@@ -86,27 +85,30 @@ pub fn update(
                 pos_linvel,
                 with_speed,
             } => {
+                /* super::steering_behaviours::seek_position(
+                    xform.translation,
+                    at_pos,
+                ) */
                 let max_accel = xform.rotation * param.avail_accel;
-                let vel: TVec3 = vel.linvel.into();
+                let vel = vel.linvel;
                 let target_offset = (at_pos + pos_linvel) - xform.translation;
-                let accel = max_accel.project_onto(target_offset).length();
-                let speed_to_target = vel.project_onto(target_offset).length();
+                let target_spd = pos_linvel.length() + with_speed;
+
+                let accel = max_accel.project_onto_scalar(target_offset).abs();
+                let vel_to_target = vel.project_onto(target_offset);
+                let spd_to_target = vel_to_target.project_onto_scalar(target_offset);
 
                 super::steering_behaviours::arrive_at_position(
                     xform.translation,
                     at_pos + pos_linvel,
                     vel,
-                    with_speed,
-                    speed_to_target,
+                    target_spd,
+                    target_spd,
                     param.arrival_tolerance,
                     {
-                        super::steering_behaviours::dst_to_change(
-                            speed_to_target,
-                            with_speed,
-                            accel,
-                        )
+                        super::steering_behaviours::dst_to_change(spd_to_target, target_spd, accel)
+                        // .max_element()
                     },
-                    max_accel,
                 )
                 /*  super::steering_behaviours::be_ray(
                     at_pos,

@@ -14,7 +14,7 @@ dylink = { path = "crates/dylink", optional = true }
 deps = { path = "crates/deps" }
 
 [profile.dev]
-debug = false
+# debug = false
 #opt-level = 1
 
 [profile.dev.package."*"]
@@ -59,3 +59,4 @@ opt-level = 3
 # rapier2d = { path = "../rapier/build/rapier2d" }
 # rapier3d = { path = "../rapier/build/rapier3d" }
 
+# bevy_polyline = { git = "https://github.com/ForesightMiningSoftwareCorporation/bevy_polyline", branch = "main" }

@@ -48,40 +48,47 @@ pub fn smallest_positve_equivalent_angle_rad(mut angle: TReal) -> TReal {
 #[test]
 fn smallest_positve_equivalent_angle_rad_test() {
     let d90 = PI * 0.5;
-    assert!(smallest_positve_equivalent_angle_rad(0.) - 0. < TReal::EPSILON);
-    assert!(smallest_positve_equivalent_angle_rad(TAU) - 0. < TReal::EPSILON);
-    assert!(smallest_positve_equivalent_angle_rad(PI) - PI < TReal::EPSILON);
-    assert!(smallest_positve_equivalent_angle_rad(PI) - PI < TReal::EPSILON);
-    assert!(smallest_positve_equivalent_angle_rad(TAU - d90) - (PI + d90) < TReal::EPSILON);
-    assert!(smallest_positve_equivalent_angle_rad(TAU + d90) - d90 <= TReal::EPSILON);
-    assert!(smallest_positve_equivalent_angle_rad(-0.2) - (TAU - 0.2) <= TReal::EPSILON);
+    assert!((smallest_positve_equivalent_angle_rad(0.) - 0.).abs() < TReal::EPSILON);
+    assert!((smallest_positve_equivalent_angle_rad(TAU) - 0.).abs() < TReal::EPSILON);
+    assert!((smallest_positve_equivalent_angle_rad(PI) - PI).abs() < TReal::EPSILON);
+    assert!((smallest_positve_equivalent_angle_rad(PI) - PI).abs() < TReal::EPSILON);
+    assert!((smallest_positve_equivalent_angle_rad(TAU - d90) - (PI + d90)).abs() < TReal::EPSILON);
+    assert!((smallest_positve_equivalent_angle_rad(TAU + d90) - d90).abs() <= TReal::EPSILON);
+    assert!((smallest_positve_equivalent_angle_rad(-0.2) - (TAU - 0.2)).abs() <= TReal::EPSILON);
 }
 #[test]
 fn delta_angle_radians_test() {
     let d90 = PI * 0.5;
     let d45 = d90 * 0.5;
     let d30 = PI / 3.;
-    assert!(delta_angle_radians(PI, TAU) - PI < TReal::EPSILON);
-    assert!(delta_angle_radians(-d90, 0.) - d90 <= TReal::EPSILON);
-    assert!(delta_angle_radians(-TAU - d90, d90) - PI <= TReal::EPSILON);
-    assert!(delta_angle_radians(0., 2. * TAU) < TReal::EPSILON);
-    assert!(delta_angle_radians(PI, d90) - d90 < TReal::EPSILON);
-    assert!(delta_angle_radians(TAU - d45, d45) - d90 < TReal::EPSILON);
-    assert!(delta_angle_radians(TAU - d45, 0.) - d45 < TReal::EPSILON);
-    assert!(delta_angle_radians(TAU + PI, 0.) - PI < TReal::EPSILON);
-    assert!(delta_angle_radians(TAU + d45, 0.) - d45 <= TReal::EPSILON);
-    assert!(delta_angle_radians(-d45, 0.) - d45 <= TReal::EPSILON);
-    assert!(delta_angle_radians(-d30, 0.) - d30 <= 2. * TReal::EPSILON);
-    assert!(delta_angle_radians(-0.2, 0.) - 0.2 <= TReal::EPSILON);
+    assert!((delta_angle_radians(PI, TAU) - PI).abs() < TReal::EPSILON);
+    assert!((delta_angle_radians(-d90, 0.) - d90).abs() <= TReal::EPSILON);
+    assert!((delta_angle_radians(-TAU - d90, d90) - PI).abs() <= TReal::EPSILON);
+    assert!((delta_angle_radians(0., 2. * TAU)).abs() < TReal::EPSILON);
+    assert!((delta_angle_radians(PI, d90) - d90).abs() < TReal::EPSILON);
+    assert!((delta_angle_radians(TAU - d45, d45) - d90).abs() < TReal::EPSILON);
+    assert!((delta_angle_radians(TAU - d45, 0.) - d45).abs() < TReal::EPSILON);
+    assert!((delta_angle_radians(TAU + PI, 0.) - PI).abs() < TReal::EPSILON);
+    assert!((delta_angle_radians(TAU + d45, 0.) - d45).abs() <= TReal::EPSILON);
+    assert!((delta_angle_radians(-d45, 0.) - d45).abs() <= TReal::EPSILON);
+    assert!((delta_angle_radians(-d30, 0.) - d30).abs() <= 2. * TReal::EPSILON);
+    assert!((delta_angle_radians(-0.2, 0.) - 0.2).abs() <= TReal::EPSILON);
 }
 
 pub trait Vec3Ext {
     fn move_towards(self, other: Self, max: TReal) -> Self;
+    /// [other] must be non-zero.
+    fn project_onto_scalar(self, other: Self) -> TReal;
 }
 impl Vec3Ext for TVec3 {
     #[inline]
     fn move_towards(self, other: Self, max: TReal) -> Self {
         self + (other - self).clamp_length(-max, max)
+    }
+
+    #[inline]
+    fn project_onto_scalar(self, other: Self) -> TReal {
+        self.dot(other) / other.length()
     }
 }
 
@@ -108,18 +115,18 @@ pub trait TransformExt {
     /// assert!((parent_xform.rotation - calc_parent_xform.rotation).length_squared() < f32::EPSILON);
     /// assert!((parent_xform.scale - calc_parent_xform.scale).length_squared() < f32::EPSILON);
     /// ```
-    fn calc_parent_xform(&self, glob_xform: &GlobalTransform) -> GlobalTransform;
+    fn calc_parent_xform(&self, glob_xform: &Transform) -> Transform;
     fn is_nan(&self) -> bool;
     fn inverse(self) -> Transform;
 }
 
 impl TransformExt for Transform {
     #[inline]
-    fn calc_parent_xform(&self, glob_xform: &GlobalTransform) -> GlobalTransform {
+    fn calc_parent_xform(&self, glob_xform: &Transform) -> Transform {
         // glob_xform.inverse().mul_transform(*self).into()
         let scale = glob_xform.scale / self.scale;
         let rotation = self.rotation.inverse() * glob_xform.rotation;
-        GlobalTransform {
+        Transform {
             translation: rotation.inverse() * ((glob_xform.translation - self.translation) / scale),
             // translation: glob_xform.translation - ((rotation.inverse() * self.translation) / scale),
             rotation,
@@ -135,28 +142,6 @@ impl TransformExt for Transform {
     #[inline]
     fn inverse(self) -> Transform {
         Self::from_matrix(self.compute_matrix().inverse())
-    }
-}
-
-impl TransformExt for GlobalTransform {
-    #[inline]
-    fn calc_parent_xform(&self, glob_xform: &GlobalTransform) -> GlobalTransform {
-        let scale = glob_xform.scale / self.scale;
-        let rotation = (self.rotation.inverse() * glob_xform.rotation).normalize();
-        GlobalTransform {
-            translation: rotation.inverse() * ((glob_xform.translation - self.translation) / scale),
-            rotation,
-            scale,
-        }
-    }
-
-    #[inline]
-    fn is_nan(&self) -> bool {
-        self.translation.is_nan() || self.rotation.is_nan() || self.scale.is_nan()
-    }
-    #[inline]
-    fn inverse(self) -> Transform {
-        Transform::from_matrix(self.compute_matrix().inverse())
     }
 }
 
@@ -185,7 +170,7 @@ fn parent_xform_calc() {
 
     let glob_xform = parent_xform.mul_transform(xform);
 
-    let calc_parent_xform = xform.calc_parent_xform(&glob_xform.into());
+    let calc_parent_xform = xform.calc_parent_xform(&glob_xform);
 
     assert!(
         (parent_xform.translation - calc_parent_xform.translation).length_squared() < f32::EPSILON,

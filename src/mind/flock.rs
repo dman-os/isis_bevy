@@ -24,12 +24,12 @@ impl FlockMindBundle {
     pub fn new(members: FlockMembers, formation_entt: Entity) -> Self {
         Self {
             members,
-            active_strategy: Default::default(),
+            active_strategy: default(),
             active_formation: CurrentFlockFormation {
                 formation: formation_entt,
             },
-            directive: Default::default(),
-            change_events: Default::default(),
+            directive: default(),
+            change_events: default(),
         }
     }
 }
@@ -38,9 +38,9 @@ impl FlockMindBundle {
 #[educe(Deref)]
 pub struct FlockMembers {
     #[educe(Deref)]
-    members: smallvec::SmallVec<[Entity; 8]>,
-    added: smallvec::SmallVec<[Entity; 4]>,
-    removed: smallvec::SmallVec<[Entity; 4]>,
+    members: SVec<[Entity; 8]>,
+    added: SVec<[Entity; 4]>,
+    removed: SVec<[Entity; 4]>,
 }
 
 impl FlockMembers {
@@ -105,28 +105,28 @@ pub fn flock_mind(
         }
         cur_stg.strategy = match directive {
             FlockMindDirective::None => None,
-            FlockMindDirective::FormUp { leader_directive } => Some(
-                commands
-                    .spawn()
-                    .insert_bundle(strategy::form_up::Bundle::new(
-                        strategy::form_up::FormUp {
-                            leader_directive: leader_directive.clone(),
-                        },
-                        flock_entt,
-                        Default::default(),
-                    ))
-                    .id(),
-            ),
-            FlockMindDirective::CAS => Some(
-                commands
-                    .spawn()
+            FlockMindDirective::FormUp { leader_directive } => {
+                Some(commands.entity(flock_entt).add_children(|p| {
+                    p.spawn()
+                        .insert_bundle(strategy::form_up::Bundle::new(
+                            strategy::form_up::FormUp {
+                                leader_directive: leader_directive.clone(),
+                            },
+                            flock_entt,
+                            default(),
+                        ))
+                        .id()
+                }))
+            }
+            FlockMindDirective::CAS => Some(commands.entity(flock_entt).add_children(|p| {
+                p.spawn()
                     .insert_bundle(strategy::cas::Bundle::new(
                         strategy::cas::CAS {},
                         flock_entt,
-                        Default::default(),
+                        default(),
                     ))
-                    .id(),
-            ),
+                    .id()
+            })),
             FlockMindDirective::JoinFomation { .. } => {
                 todo!()
             }
@@ -139,7 +139,7 @@ pub struct CraftFlock(pub Entity); */
 /*
 #[derive(Debug, Default, Component)]
 pub struct FlockChangeEvents {
-    pub events: smallvec::SmallVec<[FlockChange; 2]>,
+    pub events: SVec<[FlockChange; 2]>,
 }
 
 pub fn flock_change_event_emitter(
@@ -164,11 +164,11 @@ pub struct FlockChangeEventsReader(bevy::ecs::event::ManualEventReader<FlockChan
 
 pub fn flock_members_change_listener(
     // new: Query<(Entity, &FlockMembers), Added<FlockMembers>>,
-    mut queries: QuerySet<(
+    mut queries: ParamSet<(
         // all
-        QueryState<(&mut FlockChangeEvents,)>,
+        Query<(&mut FlockChangeEvents,)>,
         // changed
-        QueryState<(&mut FlockMembers, &mut FlockChangeEvents), Changed<FlockMembers>>,
+        Query<(&mut FlockMembers, &mut FlockChangeEvents), Changed<FlockMembers>>,
     )>,
     // mut crafts: Query<(&mut boid::BoidMindDirective,)>,
     // mut cross_ref_index: ResMut<FlockCrossRefIndex>,
@@ -178,7 +178,7 @@ pub fn flock_members_change_listener(
         // add them to the global index
         cross_ref_index.insert(entt, members.clone());
     } */
-    for (mut members, mut events) in queries.q1().iter_mut() {
+    for (mut members, mut events) in queries.p1().iter_mut() {
         for removed in members.removed() {
             events.send(FlockChangeEvent::MemberRemoved { entt: removed });
         }
@@ -186,7 +186,7 @@ pub fn flock_members_change_listener(
             events.send(FlockChangeEvent::MemberAdded { entt: added });
         }
     }
-    for (mut events,) in queries.q0().iter_mut() {
+    for (mut events,) in queries.p0().iter_mut() {
         events.update()
     }
     /* for entt in removed.iter() {

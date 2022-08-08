@@ -8,7 +8,7 @@ use crate::math::*;
 
 #[derive(Debug, Clone, Component)]
 pub struct Intercept {
-    pub quarry_rb: RigidBodyHandle,
+    pub quarry_rb: Entity,
     /// Will use the craft engine's config if None.
     pub speed: Option<TReal>,
     pub linvel_limit: TVec3,
@@ -21,21 +21,21 @@ pub fn update(
         (&Intercept, &SteeringRoutine, &mut LinearRoutineOutput),
         With<ActiveSteeringRoutine>,
     >,
-    boids: Query<(&GlobalTransform, &RigidBodyVelocityComponent)>,
+    boids: Query<(&Transform, &Velocity)>,
 ) {
     for (param, routine, mut output) in routines.iter_mut() {
         let (xform, _) = boids
             .get(routine.boid_entt)
             .expect_or_log("craft entt not found for routine");
         let (quarry_xform, quarry_vel) = boids
-            .get(param.quarry_rb.entity())
+            .get(param.quarry_rb)
             .expect_or_log("quarry rigid body not found for on Intercept routine");
         let travel_speed = param.speed.unwrap_or(param.linvel_limit.z);
         *output = super::steering_behaviours::intercept_target(
             xform.translation,
             travel_speed,
             quarry_xform.translation,
-            quarry_vel.linvel.into(),
+            quarry_vel.linvel,
         );
         // *output = (dir - TVec3::from(vel.linvel)).normalize_or_zero().into();
     }

@@ -34,8 +34,8 @@ impl PIDControllerVec3 {
         differntial_gain: Vec3,
     ) -> Self {
         Self {
-            last_state: Default::default(),
-            integrat_err: Default::default(),
+            last_state: default(),
+            integrat_err: default(),
             proportional_gain,
             integrat_gain,
             integrat_max,

@@ -27,9 +27,9 @@ pub type Bundle = FlockStrategyBundleJumbo<FormUp, (FormUpState, FlockChangeEven
 // FIXME: this assumes the center pivot is shadowing a leader craft
 pub fn butler(
     mut commands: Commands,
-    mut strategies: QuerySet<(
+    mut strategies: ParamSet<(
         // new
-        QueryState<
+        Query<
             (
                 Entity,
                 &FlockStrategy,
@@ -39,7 +39,7 @@ pub fn butler(
             ),
             (Added<FormUp>, With<FormUp>),
         >,
-        QueryState<
+        Query<
             (
                 &FlockStrategy,
                 &mut FlockChangeEventsReader,
@@ -54,7 +54,7 @@ pub fn butler(
     mut crafts: Query<(&mut boid::BoidMindDirective,)>,
     // member_changes: Query<(Entity, &FlockMembers), Changed<FlockMembers>>
 ) {
-    for (strategy_entt, strategy, param, mut reader, mut state) in strategies.q0().iter_mut() {
+    for (strategy_entt, strategy, param, mut reader, mut state) in strategies.p0().iter_mut() {
         let (members, events, cur_formation) = flocks.get(strategy.flock_entt()).unwrap_or_log();
         // we're not interested in any events before activation
         let _ = reader.iter(events).skip_while(|_| true);
@@ -75,7 +75,7 @@ pub fn butler(
         commands.entity(strategy_entt).insert(ActiveFlockStrategy);
     }
 
-    for (strategy, mut reader, param, mut state) in strategies.q1().iter_mut() {
+    for (strategy, mut reader, param, mut state) in strategies.p1().iter_mut() {
         let (_, events, cur_formation) = flocks.get(strategy.flock_entt()).unwrap_or_log();
         let (center_pivot,) = formations.get(cur_formation.formation).unwrap_or_log();
         for event in reader.iter(events) {

@@ -53,15 +53,15 @@ pub fn guy_mind(
                     .expect_or_log("GuyTroop::Flock entt not found in world");
                 *directive = match guy_directive {
                     GuyMindDirective::None => flock::FlockMindDirective::None,
-                    GuyMindDirective::Hold { pos } => flock::FlockMindDirective::FormUp { pos: *pos },
+                    // GuyMindDirective::Hold { pos } => flock::FlockMindDirective::FormUp { pos: *pos },
                     GuyMindDirective::JoinFomation { formation } => {
                         flock::FlockMindDirective::JoinFomation {
                             formation: *formation,
                         }
                     }
+                    GuyMindDirective::Hold { pos } => todo!(),
                 };
             }
         }
     }
-}
- */
+} */
