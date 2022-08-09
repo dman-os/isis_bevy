@@ -74,10 +74,17 @@ pub fn update(
 ) {
     for (param, routine, mut lin_out, mut ang_out) in composer_routines.iter_mut() {
         let (xform, vel, engine_config, consts) = boids.get(routine.boid_entt()).unwrap_or_log();
+        /* *lin_out = super::steering_behaviours::seek_position(
+            xform.translation,
+            [0., 0., 1000.].into()
+        );
+        *ang_out = super::look_to([0., 0., -1.].into()).into();
+        continue; */
+        use SteeringRoutineComposer::*;
         // FIXME: i hate this code
         let active_res = match &param.composer {
-            SteeringRoutineComposer::None => default(),
-            SteeringRoutineComposer::Single { entt: routine_entt } => {
+            Empty => default(),
+            Single { entt: routine_entt } => {
                 match other_routines.get(*routine_entt).map(|(lin, ang)| {
                     BoidSteeringSystemOutput::get_active_res(
                         lin,
@@ -99,13 +106,13 @@ pub fn update(
                         tracing::error!(
                             ?err,
                             ?routine_entt,
-                            "routine not found for ActiveRoutines::Single"
+                            concat!("routine not found for ", stringify!(Single))
                         );
                         default()
                     }
                 }
             }
-            SteeringRoutineComposer::WeightSummed { routines: summed } => {
+            WeightSummed { routines: summed } => {
                 // zero it out first
                 let mut sum = default();
                 for (weight, routine_entt) in summed {
@@ -132,7 +139,7 @@ pub fn update(
                         Err(_) => {
                             tracing::error!(
                                 ?routine_entt,
-                                "routine not found for ActiveRoutines::WeightSummed"
+                                concat!("routine not found for ", stringify!(WeightSummed))
                             );
                             sum = default();
                             break;
@@ -142,7 +149,7 @@ pub fn update(
                 sum
             }
             // FIXME: CLEAN ME UP
-            SteeringRoutineComposer::PriorityOverride { routines: priority } => {
+            PriorityOverride { routines: priority } => {
                 // zero it out first
                 let mut pick = default();
                 'priority_loop: for routine_entt in priority {
@@ -172,10 +179,11 @@ pub fn update(
                             pick = default();
                             break 'priority_loop;
                         }
-                        Err(_) => {
+                        Err(err) => {
                             tracing::error!(
                                 ?routine_entt,
-                                "routine not found for ActiveRoutines::PriorityOverride"
+                                ?err,
+                                concat!("routine not found for ", stringify!(PriorityOverride))
                             );
                             pick = default();
                             break 'priority_loop;
@@ -185,7 +193,7 @@ pub fn update(
                 pick
             }
             // FIXME: DRY this up
-            SteeringRoutineComposer::AvoidCollisionHelper {
+            AvoidCollisionHelper {
                 avoid_collision,
                 routines: summed,
             } => {
@@ -210,12 +218,14 @@ pub fn update(
                         tracing::error!(
                             ?err,
                             ?avoid_collision,
-                            "routine not found for ActiveRoutines::AvoidCollisionHelper"
+                            concat!("routine not found for ", stringify!(AvoidCollisionHelper))
                         );
                         default()
                     }
                 };
-                if avoid_coll_out.is_zero() {
+                if !avoid_coll_out.is_zero() {
+                    avoid_coll_out
+                } else {
                     let mut sum = default();
                     for (weight, routine_entt) in summed {
                         match other_routines.get(*routine_entt).map(|(lin, ang)| {
@@ -238,10 +248,14 @@ pub fn update(
                                 sum = default();
                                 break;
                             }
-                            Err(_) => {
+                            Err(err) => {
                                 tracing::error!(
+                                    ?err,
                                     ?routine_entt,
-                                    "routine not found for ActiveRoutines::AvoidCollisionHelper"
+                                    concat!(
+                                        "routine not found for ",
+                                        stringify!(AvoidCollisionHelper)
+                                    )
                                 );
                                 sum = default();
                                 break;
@@ -249,8 +263,6 @@ pub fn update(
                         }
                     }
                     sum
-                } else {
-                    avoid_coll_out
                 }
             }
         };
@@ -315,7 +327,7 @@ impl From<(TReal, TReal)> for SteeringRoutineWeight {
 // Boid mind Component
 #[derive(Debug, Clone, Component)]
 pub enum SteeringRoutineComposer {
-    None,
+    Empty,
     Single {
         entt: Entity,
     },
@@ -337,7 +349,7 @@ pub enum SteeringRoutineComposer {
 
 impl Default for SteeringRoutineComposer {
     fn default() -> Self {
-        Self::None
+        Self::Empty
     }
 }
 
@@ -345,7 +357,7 @@ impl SteeringRoutineComposer {
     /// This returns a vector of all the routines currently being composed.
     pub fn all_routines(&self) -> SVec<[Entity; 4]> {
         match self {
-            SteeringRoutineComposer::None => default(),
+            SteeringRoutineComposer::Empty => default(),
             SteeringRoutineComposer::Single { entt } => smallvec::smallvec![*entt],
             SteeringRoutineComposer::WeightSummed { routines } => {
                 routines.iter().map(|(_, entt)| *entt).collect()
@@ -385,8 +397,8 @@ enum BoidSteeringSystemOutput {
     },
 }
 
-impl BoidSteeringSystemOutput {
-    #[inline]
+/* impl BoidSteeringSystemOutput {
+    #[inline(always)]
     fn lin(&self) -> TVec3 {
         match self {
             Self::Both { lin, .. } => *lin,
@@ -394,7 +406,7 @@ impl BoidSteeringSystemOutput {
             Self::AngOnly { .. } => TVec3::ZERO,
         }
     }
-    #[inline]
+    #[inline(always)]
     fn ang(&self) -> TVec3 {
         match self {
             Self::Both { ang, .. } => *ang,
@@ -402,12 +414,12 @@ impl BoidSteeringSystemOutput {
             Self::AngOnly { ang } => *ang,
         }
     }
-}
+} */
 
 impl std::ops::Add for BoidSteeringSystemOutput {
     type Output = Self;
 
-    #[inline]
+    #[inline(always)]
     fn add(self, rhs: Self) -> Self::Output {
         match self {
             Self::Both { lin, ang } => match rhs {
@@ -454,11 +466,17 @@ impl std::ops::Add for BoidSteeringSystemOutput {
 }
 
 impl BoidSteeringSystemOutput {
-    #[inline]
+    #[inline(always)]
     fn is_zero(&self) -> bool {
-        self.lin().length_squared() < TReal::EPSILON && self.ang().length_squared() < TReal::EPSILON
+        match self {
+            Self::Both { lin, ang } => {
+                lin.length_squared() < TReal::EPSILON && ang.length_squared() < TReal::EPSILON
+            }
+            Self::LinOnly { lin } => lin.length_squared() < TReal::EPSILON,
+            Self::AngOnly { ang } => ang.length_squared() < TReal::EPSILON,
+        }
     }
-    #[inline]
+    #[inline(always)]
     fn get_active_res(
         lin_res: Option<&LinearRoutineOutput>,
         ang_res: Option<&AngularRoutineOutput>,
@@ -471,10 +489,9 @@ impl BoidSteeringSystemOutput {
                 lin: lin_res.to_accel(linvel, config, consts),
                 ang: ang_res.0,
             }),
-            (Some(lin_res), None) => {
-                let lin = lin_res.to_accel(linvel, config, consts);
-                Some(Self::LinOnly { lin })
-            }
+            (Some(lin_res), None) => Some(Self::LinOnly {
+                lin: lin_res.to_accel(linvel, config, consts),
+            }),
             (None, Some(ang_res)) => Some(Self::AngOnly { ang: ang_res.0 }),
             (None, None) => None,
         }

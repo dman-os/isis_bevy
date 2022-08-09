@@ -95,24 +95,22 @@ impl LinearRoutineOutput {
             LinearRoutineOutput::Accel(v) => v.normalize_or_zero(),
         }
     }
-    #[inline]
+    #[inline(always)]
     pub fn to_accel(
         self,
         linvel: TVec3,
         config: &EngineConfig,
         consts: &CraftControllerConsts,
     ) -> TVec3 {
+        use LinearRoutineOutput::*;
         match self {
-            LinearRoutineOutput::FracVel(v) | LinearRoutineOutput::Dir(v) => {
-                Self::Vel(v * config.linvel_limit).to_accel(linvel, config, consts)
+            FracVel(vel) | Dir(vel) => {
+                let vel = vel * config.linvel_limit;
+                crate::utils::p_controller_vec3(vel - linvel, consts.kp_vel_to_accel_lin)
             }
-            LinearRoutineOutput::Vel(v) => Self::Accel(crate::utils::p_controller_vec3(
-                v - linvel,
-                consts.kp_vel_to_accel_lin,
-            ))
-            .to_accel(linvel, config, consts),
-            LinearRoutineOutput::FracAccel(v) => v * config.actual_accel_limit(),
-            LinearRoutineOutput::Accel(v) => v,
+            Vel(vel) => crate::utils::p_controller_vec3(vel - linvel, consts.kp_vel_to_accel_lin),
+            FracAccel(v) => v * config.actual_accel_limit(),
+            Accel(v) => v,
         }
     }
 }

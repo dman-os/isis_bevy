@@ -4,12 +4,12 @@ use bevy::prelude::*;
 
 use crate::math::*;
 
-#[inline]
+#[inline(always)]
 pub fn p_controller_vec3xf32(error: Vec3, p_gain: f32) -> Vec3 {
     p_gain * error
 }
 
-#[inline]
+#[inline(always)]
 pub fn p_controller_vec3(error: Vec3, p_gain: Vec3) -> Vec3 {
     p_gain * error
 }

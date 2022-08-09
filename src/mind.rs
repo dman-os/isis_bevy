@@ -107,12 +107,6 @@ impl Plugin for MindPlugin {
                     .label(ComposeButler)
                     .before(SteeringRoutineButler),
             )
-            .add_system_set_to_stage(
-                CoreStage::PreUpdate,
-                SystemSet::new()
-                    .label(SteeringRoutineButler)
-                    .with_system(boid::steering::avoid_collision::butler),
-            )
             .add_system_set(
                 SystemSet::new()
                     .label(SteeringRoutine)

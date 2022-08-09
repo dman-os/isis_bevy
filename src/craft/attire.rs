@@ -13,7 +13,11 @@ impl Plugin for AttirePlugin {
     fn build(&self, app: &mut App) {
         app.add_system(handle_collision_damage_events)
             .add_system(handle_projectile_ixn_events)
-            .add_system(log_damage_events)
+            .add_system(
+                log_damage_events
+                    .after(handle_collision_damage_events)
+                    .after(handle_projectile_ixn_events),
+            )
             .add_event::<CollisionDamageEvent>()
             .add_event::<ProjectileDamageEvent>();
     }
@@ -185,6 +189,8 @@ pub static SENSOR_COLLIDER_IGROUP: Lazy<CollisionGroups> = Lazy::new(|| {
 #[derive(Bundle)]
 pub struct AttireBundle {
     pub name: Name,
+    #[bundle]
+    pub spatial: SpatialBundle,
     pub profile: AttireProfile,
     pub collider: Collider,
     pub sensor: Sensor,
@@ -205,6 +211,7 @@ impl Default for AttireBundle {
             sensor: Sensor,
             collision_group: *ATTIRE_COLLIDER_IGROUP,
             active_events: ActiveEvents::COLLISION_EVENTS, // TODO: intersection event
+            spatial: default(),
         }
     }
 }

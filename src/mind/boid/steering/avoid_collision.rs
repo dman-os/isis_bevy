@@ -35,52 +35,12 @@ impl AvoidCollision {
 
 #[derive(Debug, Clone, Component, Default)]
 pub struct AvoidCollisionState {
-    /// in world space
-    pub flame_dir: TVec3,
-    pub linvel: TVec3,
     pub last_dodge_out: LinearRoutineOutput,
     pub last_dodge_timestamp: f64,
-    pub craft_colliders: HashSet<Entity>,
+    // pub craft_colliders: HashSet<Entity>,
 }
 
 pub type Bundle = LinOnlyRoutineBundleExtra<AvoidCollision, AvoidCollisionState>;
-
-pub fn butler(
-    mut routines: Query<
-        (
-            &mut AvoidCollisionState,
-            &SteeringRoutine,
-            ChangeTrackers<SteeringRoutine>,
-        ),
-        // FIXME: find a way to filter out non-active routines without missing out on changes to Colliders
-        // With<ActiveSteeringRoutine>,
-    >,
-    crafts: Query<(
-        &Transform,
-        &crate::craft::engine::LinearEngineState,
-        &Velocity,
-        &crate::Colliders,
-        ChangeTrackers<crate::Colliders>,
-    )>,
-) {
-    for (mut state, routine, routine_change) in routines.iter_mut() {
-        let (xform, lin_state, vel, colliders, colliders_change) = crafts
-            .get(routine.boid_entt())
-            .expect_or_log("craft entt not found for routine");
-
-        state.linvel = vel.linvel;
-        // state.cast_dir = (state.cast_dir + state.linvel.normalize_or_zero()) * 0.5;
-
-        // use last frame's desired accel dir to cast for obstruction
-        state.flame_dir = (xform.rotation * lin_state.input).normalize_or_zero();
-        // state.cast_dir = (xform.rotation * lin_state.flame + state.linvel).normalize_or_zero();
-
-        if routine_change.is_added() || colliders_change.is_changed() {
-            state.craft_colliders.clear();
-            state.craft_colliders.extend(colliders.set.iter());
-        }
-    }
-}
 
 pub fn update(
     // NOTE: this steering system is stateful.
@@ -93,7 +53,12 @@ pub fn update(
         ),
         With<ActiveSteeringRoutine>,
     >,
-    boids: Query<(&Transform,)>,
+    boids: Query<(
+        &Transform,
+        &crate::craft::engine::LinearEngineState,
+        &Velocity,
+        &crate::Colliders,
+    )>,
     rapier: Res<RapierContext>,
     time: Res<Time>,
     mut lines: ResMut<DebugLines>,
@@ -101,16 +66,17 @@ pub fn update(
     let mut avoid_collision_raycast_ctr = 0usize;
     for (param, mut state, routine, mut lin_out) in routines.iter_mut() {
         *lin_out = default();
-        let (xform,) = boids
+        let (xform, lin_state, vel, colliders) = boids
             .get(routine.boid_entt())
             .expect_or_log("craft entt not found for routine");
 
-        // let dir = TVec3::from(vel.linvel).normalize();
-        let speed = state.linvel.length();
-        let toi = param.fwd_prediction_secs * speed;
-        let toi = toi + param.raycast_toi_modifier;
+        // use last frame's desired accel dir to cast for obstruction
+        let flame_dir = (xform.rotation * lin_state.input).normalize_or_zero();
 
-        avoid_collision_raycast_ctr += 1;
+        // let dir = TVec3::from(vel.linvel).normalize();
+        let speed = vel.linvel.length();
+        let vel_dir = vel.linvel / speed;
+        let toi = (param.fwd_prediction_secs * speed) + param.raycast_toi_modifier;
 
         let cast_shape = Collider::ball(param.cast_shape_radius);
         // shape rotation matters not for balls
@@ -119,18 +85,18 @@ pub fn update(
 
         lines.line_colored(
             cast_pos,
-            cast_pos + state.flame_dir * speed,
+            cast_pos + flame_dir * speed,
             0.,
             Color::ANTIQUE_WHITE,
         );
 
-        lines.line_colored(cast_pos, cast_pos + state.linvel, 0., Color::SEA_GREEN);
+        lines.line_colored(cast_pos, cast_pos + vel.linvel, 0., Color::SEA_GREEN);
 
-        let pred = |handle| {
+        let pred = |entt| {
             // not a craft collider
-            !state.craft_colliders.contains(&handle)
+            !colliders.set.contains(&entt)
                         // not in the exclusion list
-                        && !param.raycast_exclusion.contains(&handle)
+                        && !param.raycast_exclusion.contains(&entt)
         };
         let query_filter = QueryFilter {
             groups: Some(InteractionGroups::new(
@@ -140,44 +106,51 @@ pub fn update(
             predicate: Some(&pred),
             ..default()
         };
+
         let mut hit_dir = None;
+
         // if collision predicted
+        avoid_collision_raycast_ctr += 1;
         if let Some((handle, hit)) = rapier
             .cast_shape(
                 cast_pos,
                 cast_rot,
                 // world space
-                state.flame_dir,
+                flame_dir,
                 &cast_shape,
                 toi,
                 query_filter,
             )
             .map(|val| {
-                hit_dir = Some(state.flame_dir);
+                hit_dir = Some(flame_dir);
                 val
             })
+            // test the velocity dir as well
+            // FIXME: alternate these every frame?
             .or_else(|| {
+                avoid_collision_raycast_ctr += 1;
                 rapier.cast_shape(
                     cast_pos,
                     cast_rot,
                     // world space
-                    state.linvel.normalize_or_zero(),
+                    vel_dir,
                     &cast_shape,
                     toi,
                     query_filter,
                 )
             })
         {
-            let hit_dir = hit_dir.unwrap_or_else(|| state.linvel.normalize_or_zero());
+            let hit_dir = hit_dir.unwrap_or_else(|| vel_dir);
             lines.line_colored(
                 xform.translation,
                 xform.translation + hit_dir * hit.toi,
                 0.,
                 Color::RED,
             );
-            // use behavior to avoid it
+            // use behavior to avoid obstacle
             *lin_out = steering_behaviours::avoid_obstacle_seblague(
                 hit_dir,
+                // behavior uses raycasting to find espace route
                 &mut |cast_dir| {
                     lines.line_colored(
                         xform.translation,
@@ -200,9 +173,8 @@ pub fn update(
                 },
                 xform,
             );
-            let dodge_dir = lin_out.get_dir();
-            // *lin_out = (dodge_dir - state.linvel.normalize_or_zero()).normalize_or_zero().into();
 
+            let dodge_dir = lin_out.get_dir();
             lines.line_colored(
                 xform.translation,
                 xform.translation + dodge_dir * toi,
@@ -228,19 +200,12 @@ pub fn update(
             && time.seconds_since_startup()
                 < (state.last_dodge_timestamp + param.upheld_dodge_seconds)
         {
+            // stick to it until upheld time expires
+            *lin_out = state.last_dodge_out;
             let dodge_dir = state.last_dodge_out.get_dir();
             lines.line_colored(
                 xform.translation,
-                xform.translation + dodge_dir * state.linvel.length(),
-                0.,
-                Color::GREEN,
-            );
-            // stick to it until upheld time expires
-            *lin_out = state.last_dodge_out;
-            // *lin_out = (state.last_dodge_dir - state.linvel.normalize_or_zero()).try_normalize().unwrap_or(state.last_dodge_dir).into();
-            lines.line_colored(
-                xform.translation,
-                xform.translation + dodge_dir * state.linvel.length(),
+                xform.translation + dodge_dir * speed,
                 0.,
                 Color::ORANGE,
             );

@@ -52,9 +52,9 @@ pub fn setup_tracing() -> eyre::Result<()> {
 }
 
 fn main() {
-    setup_tracing().unwrap();
-    #[cfg(feature = "dylink")]
-    tracing::warn!("dylink enabled");
+    // setup_tracing().unwrap();
+    // #[cfg(feature = "dylink")]
+    // tracing::warn!("dylink enabled");
 
     trait InspectableRegistryExt {
         fn register_debug<T: std::fmt::Debug + Component>(&mut self) -> &mut Self;
@@ -81,10 +81,12 @@ fn main() {
     let mut app = App::new();
 
     app.add_plugins_with(DefaultPlugins, |group| {
-        group.disable::<bevy::log::LogPlugin>()
+        // group.disable::<bevy::log::LogPlugin>()
+        group
     })
     .insert_resource(WindowDescriptor {
         title: "ISIS".to_string(),
+        cursor_locked: true,
         ..default()
     })
     .add_plugin(EguiPlugin)
@@ -95,7 +97,7 @@ fn main() {
         gravity: [0.0, 0.0, 0.0].into(),
         ..default()
     })
-    .add_plugin(RapierDebugRenderPlugin::default())
+    // .add_plugin(RapierDebugRenderPlugin::default())
     .add_plugin(DiagnosticsPlugin)
     // .add_plugin(LogDiagnosticsPlugin::default())
     .add_plugin(EntityCountDiagnosticsPlugin)
@@ -639,7 +641,7 @@ fn setup_world(
         let mut members = flock::FlockMembers::default();
         let flock_z = -300.0;
         // spawn the ai craft
-        for ii in -7..=7 {
+        for ii in -4..=4 {
             // for ii in 0..1
             members.push(
                 commands
