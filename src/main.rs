@@ -52,9 +52,9 @@ pub fn setup_tracing() -> eyre::Result<()> {
 }
 
 fn main() {
-    // setup_tracing().unwrap();
-    // #[cfg(feature = "dylink")]
-    // tracing::warn!("dylink enabled");
+    setup_tracing().unwrap();
+    #[cfg(feature = "dylink")]
+    println!("WARNING: dylink enabled");
 
     trait InspectableRegistryExt {
         fn register_debug<T: std::fmt::Debug + Component>(&mut self) -> &mut Self;
@@ -81,8 +81,8 @@ fn main() {
     let mut app = App::new();
 
     app.add_plugins_with(DefaultPlugins, |group| {
-        // group.disable::<bevy::log::LogPlugin>()
-        group
+        group.disable::<bevy::log::LogPlugin>()
+        // group
     })
     .insert_resource(WindowDescriptor {
         title: "ISIS".to_string(),
@@ -273,7 +273,7 @@ fn setup_world(
 ) {
     let mut rng = rand::thread_rng();
     // setup the random floating spheres
-    /* {
+    if false {
         const SIZE_RANGE: TReal = 100.;
         const MASS_RANGE: TReal = 1000.;
         //const LOCATION_RANGE: [TReal; 3]= [500.; 3];
@@ -283,23 +283,6 @@ fn setup_world(
             let size = rng.gen::<TReal>() * SIZE_RANGE;
             let radius = size * 0.5;
             let mass = rng.gen::<TReal>() * MASS_RANGE;
-            let pos = {
-                let pos: TVec3 = rng.gen::<[TReal; 3]>().into();
-                let pos = pos * TVec3::from(LOCATION_RANGE);
-                [
-                    pos.x * if rng.gen_bool(0.5) { 1. } else { -1. },
-                    pos.y * if rng.gen_bool(0.5) { 1. } else { -1. },
-                    pos.z * if rng.gen_bool(0.5) { 1. } else { -1. },
-                ]
-                .into()
-            };
-            let mut xform = Transform::from_translation(pos);
-            xform.rotate(TQuat::from_euler(
-                EulerRot::YXZ,
-                rng.gen::<TReal>() * 360.0,
-                rng.gen::<TReal>() * 360.0,
-                rng.gen::<TReal>() * 360.0,
-            ));
 
             commands
                 .spawn()
@@ -309,7 +292,22 @@ fn setup_world(
                         radius,
                         ..default()
                     })),
-                    transform: xform,
+                    transform: Transform::from_translation({
+                        let pos: TVec3 = rng.gen::<[TReal; 3]>().into();
+                        let pos = pos * TVec3::from(LOCATION_RANGE);
+                        [
+                            pos.x * if rng.gen_bool(0.5) { 1. } else { -1. },
+                            pos.y * if rng.gen_bool(0.5) { 1. } else { -1. },
+                            pos.z * if rng.gen_bool(0.5) { 1. } else { -1. },
+                        ]
+                        .into()
+                    })
+                    .with_rotation(TQuat::from_euler(
+                        EulerRot::YXZ,
+                        rng.gen::<TReal>() * 360.0,
+                        rng.gen::<TReal>() * 360.0,
+                        rng.gen::<TReal>() * 360.0,
+                    )),
                     material: materials.add(
                         Color::rgba(
                             rng.gen::<TReal>(),
@@ -331,30 +329,16 @@ fn setup_world(
                 })
                 .insert(RigidBodyPositionSync::Discrete)
                 // */
-                .insert(ColliderPositionSync::Discrete)
-                .insert_bundle(ColliderBundle {
-                    material: ColliderMaterial {
-                        ..default()
-                    }
-                    .into(),
-                    position: ColliderPositionComponent(pos.into()),
-                    flags: ColliderFlags {
-                        collision_groups: *craft::attire::OBSTACLE_COLLIDER_IGROUP,
-                        ..default()
-                    }
-                    .into(),
-                    shape: ColliderShape::ball(radius).into(),
-                    mass_properties: ColliderMassProps::Density(
-                        mass / (4. * math::real::consts::PI * radius * radius),
-                    )
-                    .into(),
-                    ..default()
-                });
+                .insert(*craft::attire::OBSTACLE_COLLIDER_IGROUP)
+                .insert(ColliderMassProperties::Density(
+                    mass / (4. * math::real::consts::PI * radius * radius),
+                ))
+                .insert(Collider::ball(radius));
         }
-    } */
+    }
 
     // spawn the single floating obstacle
-    {
+    if true {
         let (pos, bevy_shape, collider, density) = {
             let pos = TVec3::new(000., 0., 400.);
             let mass = 10_000.;
@@ -411,8 +395,8 @@ fn setup_world(
     }
 
     // spawn the box cage
-    /* {
-        for (xform, _bevy_shape, rapier_shape, density) in [
+    if false {
+        for (transform, _bevy_shape, collider, density) in [
             (TVec3::X, -TVec3::X, TVec3::Y),
             (-TVec3::X, TVec3::X, TVec3::Y),
             (TVec3::Y, -TVec3::Y, -TVec3::Z),
@@ -432,15 +416,15 @@ fn setup_world(
                     size: SIZE,
                     // ..default()
                 },
-                ColliderShape::cuboid(SIZE * 0.5, SIZE * 0.5, 0.5),
+                Collider::cuboid(SIZE * 0.5, SIZE * 0.5, 0.5),
                 mass / (SIZE * SIZE * 0.5),
             )
         }) {
             commands
                 .spawn()
-                .insert(Name::new(format!("plane {}", xform.translation)))
+                .insert(Name::new(format!("plane {}", transform.translation)))
                 /* .insert_bundle(PbrBundle {
-                    /* mesh: meshes.add(Mesh::from()), */
+                    transform,
                     mesh: meshes.add(Mesh::from(bevy_shape)),
                     material: materials.add(
                         Color::rgba(
@@ -453,26 +437,16 @@ fn setup_world(
                     ),
                     ..default()
                 }) */
-                .insert(ColliderPositionSync::Discrete)
-                .insert_bundle(ColliderBundle {
-                    material: ColliderMaterial {
-                        ..default()
-                    }
-                    .into(),
-                    position: (xform.translation, xform.rotation).into(),
-                    flags: ColliderFlags {
-                        collision_groups: *craft::attire::OBSTACLE_COLLIDER_IGROUP,
-                        ..default()
-                    }
-                    .into(),
-                    shape: rapier_shape.into(),
-                    mass_properties: ColliderMassProps::Density(density).into(),
+                .insert_bundle(SpatialBundle {
+                    transform,
                     ..default()
                 })
-                // .insert(ColliderDebugRender::default())
+                .insert(collider)
+                .insert(*craft::attire::OBSTACLE_COLLIDER_IGROUP)
+                .insert(ColliderMassProperties::Density(density))
                 .insert_bundle(bevy_mod_picking::PickableBundle::default());
         }
-    } */
+    }
 
     // setup the test circuit
     let initial_point = {
@@ -577,7 +551,13 @@ fn setup_world(
                     (TVec3::ONE * 8.).into(),
                 )
             })
-            .insert_bundle(boid::BoidMindBundle { ..default() })
+            .insert_bundle(boid::BoidMindBundle {
+                /* directive: boid::BoidMindDirective::RunCircuit {
+                    param: boid::strategy::run_circuit::RunCircuit { initial_point },
+                }, */
+                directive: boid::BoidMindDirective::SlaveToPlayerControl,
+                ..default()
+            })
             .with_children(|parent| {
                 let parent_entt = parent.parent_entity();
                 // the model
@@ -620,11 +600,6 @@ fn setup_world(
                 .into(),
                 ..default()
             })
-            /* .insert_bundle({
-                let mut cam = bevy::prelude::::default();
-                cam.perspective_projection.far = 20_000.;
-                cam
-            }) */
             .insert_bundle(bevy_mod_picking::PickingCameraBundle::default())
             .insert(mind::player::CraftCamera {
                 // target: Some(player_craft_id),
@@ -632,16 +607,23 @@ fn setup_world(
             })
             .id();
         commands.insert_resource(MainCamera { entt: cam_id });
+        commands.insert_resource(mind::player::PlayerMindConfig {
+            auto_steer: false,
+            auto_steer_directive: Some(boid::BoidMindDirective::RunCircuit {
+                param: boid::strategy::run_circuit::RunCircuit { initial_point },
+            }),
+            // auto_steer_directive: None,
+        });
         cur_craft.entt = Some(player_craft_id);
         player_craft_id
     };
 
     // Flock 1
-    {
+    if true {
         let mut members = flock::FlockMembers::default();
         let flock_z = -300.0;
         // spawn the ai craft
-        for ii in -4..=4 {
+        for ii in -2..=2 {
             // for ii in 0..1
             members.push(
                 commands
@@ -714,131 +696,32 @@ fn setup_world(
             );
         }
 
-        /* let flock_entt = commands.spawn().insert(Name::new("flock")).id();
-        let formation = commands
-            .spawn()
-            .insert_bundle(flock::formation::FlockFormationBundle::new(
-                flock::formation::FormationPattern::Sphere { radius: 150. },
-                members[0],
-                // player_craft_id,
-                flock::formation::SlottingStrategy::Simple,
-                flock_entt,
-            ))
-            .id();
-        commands
-            .entity(flock_entt)
-            .insert_bundle(flock::FlockMindBundle {
-                directive: flock::FlockMindDirective::CAS,
-                /* directive: flock::FlockMindDirective::FormUp {
-                    leader_directive: Some(boid::BoidMindDirective::RunCircuit {
-                        param: boid::strategy::run_circuit::RunCircuit { initial_point },
-                    }),
-                    // leader_directive: None,
-                }, */
-                ..flock::FlockMindBundle::new(members, formation)
-            }); */
-    }
-    /* {
-        let mut members = flock::FlockMembers::default();
-        let flock_z = 300.0;
-        // spawn the ai craft
-        for ii in -7..=7 {
-            // for ii in 0..1
-            members.push(
-                commands
-                    .spawn()
-                    .insert_bundle(craft::CraftBundle {
-                        name: Name::new(format!("ai {ii}")),
-                        spatial: SpatialBundle {
-                            transform: Transform::from_xyz(25. * ii as TReal, 0., flock_z),
-                            ..default()
-                        },
-                        collider: craft::attire::CollisionDamageEnabledColliderBundle {
-                            collider: Collider::ball(4.),
-                            mass_props: ColliderMassProperties::Density(
-                                15_000. / (4. * math::real::consts::PI * 4. * 4.),
-                            ),
-                            ..default()
-                        },
-                        ..craft::CraftBundle::new(
-                            craft::engine::EngineConfig { ..default() },
-                            (TVec3::ONE * 8.).into(),
-                        )
-                    })
-                    .insert_bundle(boid::BoidMindBundle {
-                        /* directive: boid::BoidMindDirective::RunCircuit {
-                            param: boid::strategy::run_circuit::RunCircuit { initial_point }
-                        }, */
-                        directive: boid::BoidMindDirective::KeepGoingForward,
-                        /*directive: boid::BoidMindDirective::AttackPresue {
-                            param: boid::strategy::attack_persue::AttackPersue {
-                                attacking_range: 300.,
-                                quarry_rb: _player_craft_id.handle()
-                            }
-                        },*/
-                        ..default()
-                    })
-                    .with_children(|parent| {
-                        let parent_entt = parent.parent_entity();
-                        parent
-                            .spawn()
-                            .insert(Name::new("model"))
-                            .insert_bundle(SceneBundle {
-                                transform: Transform::from_rotation(Quat::from_rotation_y(
-                                    math::real::consts::PI,
-                                )),
-                                scene: ball_fighter_model.clone(),
-                                ..default()
-                            });
-
-                        parent.spawn().insert_bundle(craft::attire::AttireBundle {
-                            profile: craft::attire::AttireProfile { ..default() },
-                            collider: Collider::ball(4.),
-                            ..default()
-                        });
-
-                        parent
-                            .spawn()
-                            .insert_bundle(new_kinetic_cannon(parent_entt))
-                            .insert_bundle(PbrBundle {
-                                mesh: meshes.add(shape::Cube { size: 1. }.into()),
-                                transform: {
-                                    let mut t = Transform::from_translation(TVec3::Y * 0.);
-                                    t.scale = [1., 1., 4.].into();
-                                    t
-                                },
-                                material: materials.add(Color::WHITE.into()),
-                                ..default()
-                            });
-                    })
-                    .id(),
-            );
+        if false {
+            let flock_entt = commands.spawn().insert(Name::new("flock")).id();
+            let formation = commands
+                .spawn()
+                .insert_bundle(flock::formation::FlockFormationBundle::new(
+                    flock::formation::FormationPattern::Sphere { radius: 150. },
+                    members[0],
+                    // player_craft_id,
+                    flock::formation::SlottingStrategy::Simple,
+                    flock_entt,
+                ))
+                .id();
+            commands
+                .entity(flock_entt)
+                .insert_bundle(flock::FlockMindBundle {
+                    directive: flock::FlockMindDirective::CAS,
+                    /* directive: flock::FlockMindDirective::FormUp {
+                        leader_directive: Some(boid::BoidMindDirective::RunCircuit {
+                            param: boid::strategy::run_circuit::RunCircuit { initial_point },
+                        }),
+                        // leader_directive: None,
+                    }, */
+                    ..flock::FlockMindBundle::new(members, formation)
+                });
         }
-
-        /* let flock_entt = commands.spawn().insert(Name::new("flock")).id();
-        let formation = commands
-            .spawn()
-            .insert_bundle(flock::formation::FlockFormationBundle::new(
-                flock::formation::FormationPattern::Sphere { radius: 150. },
-                members[0],
-                // player_craft_id,
-                flock::formation::SlottingStrategy::Simple,
-                flock_entt,
-            ))
-            .id();
-        commands
-            .entity(flock_entt)
-            .insert_bundle(flock::FlockMindBundle {
-                directive: flock::FlockMindDirective::CAS,
-                /* directive: flock::FlockMindDirective::FormUp {
-                    leader_directive: Some(boid::BoidMindDirective::RunCircuit {
-                        param: boid::strategy::run_circuit::RunCircuit { initial_point },
-                    }),
-                    // leader_directive: None,
-                }, */
-                ..flock::FlockMindBundle::new(members, formation)
-            }); */
-    } */
+    }
 }
 
 #[allow(unreachable_code)]

@@ -71,7 +71,7 @@ pub fn update(
             .expect_or_log("craft entt not found for routine");
 
         // use last frame's desired accel dir to cast for obstruction
-        let flame_dir = (xform.rotation * lin_state.input).normalize_or_zero();
+        let flame_dir = (xform.rotation * lin_state.flame).normalize_or_zero();
 
         // let dir = TVec3::from(vel.linvel).normalize();
         let speed = vel.linvel.length();
@@ -85,7 +85,7 @@ pub fn update(
 
         lines.line_colored(
             cast_pos,
-            cast_pos + flame_dir * speed,
+            cast_pos + (xform.rotation * lin_state.flame),
             0.,
             Color::ANTIQUE_WHITE,
         );

@@ -48,8 +48,8 @@ pub fn butler(
     )>,
     mut routines: Query<&mut intercept::Intercept>,
 ) {
-    for (entt, param, strategy, mut state, mut out) in added_strategies.iter_mut() {
-        let p0 = crafts.p0();
+    let p0 = crafts.p0();
+    for (strategy_entt, param, strategy, mut state, mut out) in added_strategies.iter_mut() {
         let (engine_config, dim, routines_idx, wpns, ..) = p0
             .get(strategy.boid_entt())
             .expect_or_log("craft not found for BoidStrategy");
@@ -57,23 +57,23 @@ pub fn butler(
         let raycast_toi_modifier = dim.max_element();
         let cast_shape_radius = raycast_toi_modifier * 0.5;
         let (avoid_collision, intercept_routine, intercept_wpn_speed) =
-            commands.entity(strategy.boid_entt()).add_children(|par| {
+            commands.entity(strategy_entt).add_children(|par| {
                 (
-                    routines_idx
-                        .kind::<avoid_collision::AvoidCollision>()
-                        .map(|v| v[0])
-                        .unwrap_or_else(|| {
-                            par.spawn()
-                                .insert_bundle(avoid_collision::Bundle::new(
-                                    avoid_collision::AvoidCollision::new(
-                                        cast_shape_radius,
-                                        raycast_toi_modifier,
-                                    ),
-                                    strategy.boid_entt(),
-                                    default(),
-                                ))
-                                .id()
-                        }),
+                    // routines_idx
+                    //     .kind::<avoid_collision::AvoidCollision>()
+                    //     .map(|v| v[0])
+                    //     .unwrap_or_else(|| {
+                    //     }),
+                    par.spawn()
+                        .insert_bundle(avoid_collision::Bundle::new(
+                            avoid_collision::AvoidCollision::new(
+                                cast_shape_radius,
+                                raycast_toi_modifier,
+                            ),
+                            strategy.boid_entt(),
+                            default(),
+                        ))
+                        .id(),
                     par.spawn()
                         .insert_bundle(intercept::Bundle::new(
                             intercept::Intercept {
@@ -100,7 +100,7 @@ pub fn butler(
                         .id(),
                 )
             });
-        let compose = commands.entity(strategy.boid_entt()).add_children(|p| {
+        let compose = commands.entity(strategy_entt).add_children(|p| {
             p.spawn()
                 .insert_bundle(compose::Bundle::new(
                     compose::Compose {
@@ -122,7 +122,7 @@ pub fn butler(
             steering_routine: Some(compose),
             fire_weapons: false,
         };
-        commands.entity(entt).insert(ActiveBoidStrategy);
+        commands.entity(strategy_entt).insert(ActiveBoidStrategy);
     }
     for (weapons, strategy_index) in crafts.p1().iter() {
         if let Some(entts) = strategy_index.kind::<AttackPersue>() {

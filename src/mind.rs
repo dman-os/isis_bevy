@@ -23,7 +23,6 @@ pub enum CraftMindSystems {
     CraftBoidStrategyOutputMgr,
     SteeringRoutineButler,
     SteeringRoutine,
-    ComposeRoutineUpdate,
     BoidStrategyButler,
     BoidStrategy,
     FlockStrategyButler,
@@ -103,9 +102,7 @@ impl Plugin for MindPlugin {
             // boid steering systems
             .add_system_to_stage(
                 CoreStage::PreUpdate,
-                boid::steering::compose::butler
-                    .label(ComposeButler)
-                    .before(SteeringRoutineButler),
+                boid::steering::compose::butler.label(ComposeButler), // .before(SteeringRoutineButler),
             )
             .add_system_set(
                 SystemSet::new()
@@ -119,12 +116,11 @@ impl Plugin for MindPlugin {
                     .with_system(boid::steering::closure::update)
                     .with_system(boid::steering::seek::update),
             )
-            .add_system(
-                boid::steering::compose::update
-                    .label(ComposeRoutineUpdate)
-                    .after(SteeringRoutine),
+            .add_system(boid::steering::compose::update.after(SteeringRoutine))
+            .add_system_to_stage(
+                CoreStage::PostUpdate,
+                boid::steering::steering_output_to_engine.before(boid::boid_mind),
             )
-            .add_system(boid::steering::steering_output_to_engine.after(ComposeRoutineUpdate))
             // player systems
             .add_system_to_stage(CoreStage::PostUpdate, player::wpn_raycaster_butler)
             .add_system(player::cam_input)
@@ -132,16 +128,21 @@ impl Plugin for MindPlugin {
             .add_system(player::wpn_input)
             .add_startup_system(player::setup_markers)
             .add_system(player::update_ui_markers)
-            .insert_resource(player::PlayerMindConfig::default())
             .insert_resource(player::PlayerBoidInput::default())
             .insert_resource(player::CurrentCraft::default())
             .add_plugin(bevy_inspector_egui::InspectorPlugin::<
                 player::PlayerEngineConfig,
             >::new())
             // minds
-            .add_system_to_stage(CoreStage::PreUpdate, boid::boid_mind)
-            .add_system_to_stage(CoreStage::PreUpdate, flock::flock_mind)
-            .add_system_to_stage(CoreStage::PreUpdate, player::player_mind)
+            .add_system_to_stage(
+                CoreStage::PostUpdate,
+                flock::flock_mind.before(boid::boid_mind),
+            )
+            .add_system_to_stage(
+                CoreStage::PostUpdate,
+                player::player_mind.before(boid::boid_mind),
+            )
+            .add_system_to_stage(CoreStage::PostUpdate, boid::boid_mind)
             // types
             .register_inspectable::<boid::strategy::CurrentBoidStrategy>()
             .register_inspectable::<flock::strategy::CurrentFlockStrategy>()

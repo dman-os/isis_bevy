@@ -215,9 +215,9 @@ pub fn linear_pid_driver(
         };
 
         let desired_accel = desired_accel.clamp(-accel_limit, accel_limit);
-        state.flame = desired_accel;
+        // state.flame = desired_accel;
 
-        /* let desired_vel = state.velocity + desired_accel;
+        let desired_vel = state.velocity + desired_accel;
 
         // if dampeners are on
         let desired_vel = if config.limit_strafe_v {
@@ -234,9 +234,10 @@ pub fn linear_pid_driver(
             desired_vel
         };
 
-        let linear_flame = pid.update(state.velocity, desired_vel - state.velocity, 1.);
+        let linear_flame =
+            crate::utils::p_controller_vec3(desired_vel - state.velocity, TVec3::ONE * 1.);
 
-        state.flame = linear_flame.clamp(-accel_limit, accel_limit); */
+        state.flame = linear_flame.clamp(-accel_limit, accel_limit);
     }
 }
 

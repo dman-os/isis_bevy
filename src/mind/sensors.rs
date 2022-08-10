@@ -57,6 +57,9 @@ impl SteeringRoutinesIndex {
                         break;
                     }
                 }
+                if routines.is_empty() {
+                    self.kind_to_entt.remove(&kind);
+                }
             }
         }
     }

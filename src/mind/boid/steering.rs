@@ -67,10 +67,33 @@ impl Default for CraftControllerConsts {
     }
 }
 
+/// All the values here are in world space i.e. aligned to the craft's basis
+pub struct ToAccelParams {
+    pub linvel: TVec3,
+    pub linvel_limit: TVec3,
+    pub kp_vel_to_accel_lin: TVec3,
+    pub actual_accel_limit: TVec3,
+}
+
+impl ToAccelParams {
+    pub fn new(
+        linvel: TVec3,
+        g_xform: &Transform,
+        config: &EngineConfig,
+        consts: &CraftControllerConsts,
+    ) -> Self {
+        Self {
+            linvel,
+            linvel_limit: /* g_xform.rotation * */ config.linvel_limit,
+            actual_accel_limit: /* g_xform.rotation * */ config.actual_accel_limit(),
+            kp_vel_to_accel_lin: consts.kp_vel_to_accel_lin,
+        }
+    }
+}
+
 /// Output of linear steering routines which is currently linear accel desired next frame in
 #[derive(Debug, Clone, Copy, Inspectable, Component, educe::Educe)]
 #[educe(Default)]
-// pub struct LinearRoutineOutput(pub TVec3);
 pub enum LinearRoutineOutput {
     /// I.e. equivalent to FracVelocity since dir, being an unit dir, is length of 1
     Dir(TVec3),
@@ -96,20 +119,17 @@ impl LinearRoutineOutput {
         }
     }
     #[inline(always)]
-    pub fn to_accel(
-        self,
-        linvel: TVec3,
-        config: &EngineConfig,
-        consts: &CraftControllerConsts,
-    ) -> TVec3 {
+    pub fn to_accel(self, param: &ToAccelParams) -> TVec3 {
         use LinearRoutineOutput::*;
         match self {
-            FracVel(vel) | Dir(vel) => {
-                let vel = vel * config.linvel_limit;
-                crate::utils::p_controller_vec3(vel - linvel, consts.kp_vel_to_accel_lin)
+            FracVel(vec) | Dir(vec) => {
+                let vel = vec * param.linvel_limit;
+                crate::utils::p_controller_vec3(vel - param.linvel, param.kp_vel_to_accel_lin)
             }
-            Vel(vel) => crate::utils::p_controller_vec3(vel - linvel, consts.kp_vel_to_accel_lin),
-            FracAccel(v) => v * config.actual_accel_limit(),
+            Vel(vel) => {
+                crate::utils::p_controller_vec3(vel - param.linvel, param.kp_vel_to_accel_lin)
+            }
+            FracAccel(v) => v * param.actual_accel_limit,
             Accel(v) => v,
         }
     }
@@ -157,17 +177,22 @@ pub fn steering_output_to_engine(
             .expect_or_log("CurrentSteeringRoutine's routine not located in world. \
             Use a routine with both Linear and Angular outputs or wrap whatever you're using now with a Compose routine");
             (
-                lin_out.to_accel(vel.linvel, engine_config, consts),
+                lin_out.to_accel(&ToAccelParams::new(
+                    vel.linvel,
+                    xform,
+                    engine_config,
+                    consts,
+                )),
                 ang_out.0,
             )
         } else {
             (TVec3::ZERO, TVec3::ZERO)
         };
         lin_state.input = xform.rotation.inverse() * lin_out;
-        // if ang_out is coming from a look_at call, it'll be the error betweein the set direction
-        // and current direction.
+        // if ang_out is coming from a `look_at` call as is usual,
+        // it'll be the error betweein the set direction and current direction.
         // We'll apply the multiplier to that error as oppposed to the velocity error which would have been
-        // the case if we'd used the multiplier fter the sub operation.
+        // the case if we'd used the multiplier after the sub operation.
         ang_state.input = (ang_out * mind_config.angular_input_multiplier) - ang_state.velocity;
     }
 }

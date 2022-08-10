@@ -180,3 +180,31 @@ pub fn craft_boid_strategy_output_mgr(
         }
     }
 }
+/*
+pub fn craft_boid_strategy_output_mgr(
+    mut crafts: Query<(
+        &mut boid::steering::CurrentSteeringRoutine,
+        &sensors::CraftWeaponsIndex,
+    )>,
+    strategies: Query<(&BoidStrategyOutput, &BoidStrategy), Changed<BoidStrategyOutput>>,
+    mut activate_wpn_events: EventWriter<arms::ActivateWeaponEvent>,
+    weapons: Query<&arms::WeaponActivationState>,
+    time: Res<Time>,
+) {
+    for (output, strategy) in &strategies {
+        let (mut cur_routine, wpn_index) = crafts.get_mut(strategy.boid_entt()).unwrap_or_log();
+        cur_routine.routine = output.steering_routine;
+        if output.fire_weapons {
+            for wpn in wpn_index.entt_to_desc.keys() {
+                if weapons
+                    .get(*wpn)
+                    .expect_or_log("Indexed weapon has no WeaponActivationState")
+                    .can_activate(&time)
+                {
+                    activate_wpn_events.send(arms::ActivateWeaponEvent { weapon_id: *wpn });
+                }
+            }
+        }
+    }
+}
+*/

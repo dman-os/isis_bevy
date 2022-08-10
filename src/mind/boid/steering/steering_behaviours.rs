@@ -214,12 +214,13 @@ pub fn arrive_at_position(
     current_pos: TVec3,
     target_pos: TVec3,
     current_vel: TVec3,
-    target_speed: TReal,
-    max_speed: TReal,
+    pos_vel: TVec3,
+    arrival_speed: TReal,
     arrival_tolerance: TReal,
     deceleration_radius: TReal,
 ) -> LinearRoutineOutput {
     let target_offset = target_pos - current_pos;
+    // return LinearRoutineOutput::Dir((target_offset).normalize_or_zero());
     let dst = target_offset.length_squared();
     // if we've arrived according to the tolerance
     if dst < arrival_tolerance * arrival_tolerance {
@@ -229,13 +230,20 @@ pub fn arrive_at_position(
     let dst = dst.sqrt();
     // let deceleration_radius = dst_to_change(speed_to_target, 0., max_accel);
 
-    const BREATHING_SPACE_MULTIPLIER: TReal = 1.4;
-    let deceleration_radius = deceleration_radius * BREATHING_SPACE_MULTIPLIER;
+    // const BREATHING_SPACE_MULTIPLIER: TReal = 2.4;
+    // let deceleration_radius = deceleration_radius * BREATHING_SPACE_MULTIPLIER;
     // let speed_to_target = current_vel.dot(target_offset) / dst;
-    let weight = (dst - arrival_tolerance) / deceleration_radius;
-    let target_vel =
-        target_offset.normalize_or_zero() * (target_speed + (max_speed - target_speed) * weight);
-    LinearRoutineOutput::Accel(target_vel - current_vel)
+    // let weight = (dst - arrival_tolerance) / deceleration_radius;
+    let dst = dst - deceleration_radius;
+    let arrival_speed = pos_vel.length() + arrival_speed;
+    let vel_mag = arrival_speed + dst - arrival_tolerance;
+    // let vel_dir = pos_vel
+    //     .normalize_or_zero()
+    //     .lerp(target_offset.normalize_or_zero(), dst - arrival_tolerance);
+    let vel_dir = target_offset.normalize_or_zero();
+    let target_vel = vel_dir * vel_mag;
+    let accel = target_vel - current_vel;
+    LinearRoutineOutput::Accel(accel)
 }
 
 // FIXME: consider factoring in the interceptor's velocity?

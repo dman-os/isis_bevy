@@ -9,7 +9,7 @@ use crate::mind::*;
 
 use super::{
     ActiveSteeringRoutine, AngularRoutineOutput, CraftControllerConsts, LinAngRoutineBundle,
-    LinearRoutineOutput, SteeringRoutine,
+    LinearRoutineOutput, SteeringRoutine, ToAccelParams,
 };
 
 #[derive(Debug, Clone, Component)]
@@ -25,6 +25,7 @@ pub fn butler(
     changed: Query<(&Compose, &SteeringRoutine), Changed<Compose>>,
     crafts: Query<(&sensors::SteeringRoutinesIndex,)>,
     mut cache: Local<bevy::utils::HashSet<Entity>>,
+    all: Query<(Entity,)>,
 ) {
     for (param, routine) in changed.iter() {
         let (index,) = crafts.get(routine.boid_entt()).unwrap_or_log();
@@ -38,8 +39,10 @@ pub fn butler(
                 // necessary
                 // remove from the update set
                 cache.remove(routine);
-            } else {
-                // deactivate routine
+            }
+            // if it's stil around
+            else if all.contains(*routine) {
+                // deactivate it at least
                 commands.entity(*routine).remove::<ActiveSteeringRoutine>();
             }
         }
@@ -74,6 +77,7 @@ pub fn update(
 ) {
     for (param, routine, mut lin_out, mut ang_out) in composer_routines.iter_mut() {
         let (xform, vel, engine_config, consts) = boids.get(routine.boid_entt()).unwrap_or_log();
+        let to_accel = ToAccelParams::new(vel.linvel, xform, engine_config, consts);
         /* *lin_out = super::steering_behaviours::seek_position(
             xform.translation,
             [0., 0., 1000.].into()
@@ -85,15 +89,10 @@ pub fn update(
         let active_res = match &param.composer {
             Empty => default(),
             Single { entt: routine_entt } => {
-                match other_routines.get(*routine_entt).map(|(lin, ang)| {
-                    BoidSteeringSystemOutput::get_active_res(
-                        lin,
-                        ang,
-                        vel.linvel,
-                        engine_config,
-                        consts,
-                    )
-                }) {
+                match other_routines
+                    .get(*routine_entt)
+                    .map(|(lin, ang)| BoidSteeringSystemOutput::get_active_res(lin, ang, &to_accel))
+                {
                     Ok(Some(res)) => res,
                     Ok(None) => {
                         tracing::error!(
@@ -117,13 +116,7 @@ pub fn update(
                 let mut sum = default();
                 for (weight, routine_entt) in summed {
                     match other_routines.get(*routine_entt).map(|(lin, ang)| {
-                        BoidSteeringSystemOutput::get_active_res(
-                            lin,
-                            ang,
-                            vel.linvel,
-                            engine_config,
-                            consts,
-                        )
+                        BoidSteeringSystemOutput::get_active_res(lin, ang, &to_accel)
                     }) {
                         Ok(Some(res)) => {
                             sum = sum + (*weight * res);
@@ -154,13 +147,7 @@ pub fn update(
                 let mut pick = default();
                 'priority_loop: for routine_entt in priority {
                     match other_routines.get(*routine_entt).map(|(lin, ang)| {
-                        BoidSteeringSystemOutput::get_active_res(
-                            lin,
-                            ang,
-                            vel.linvel,
-                            engine_config,
-                            consts,
-                        )
+                        BoidSteeringSystemOutput::get_active_res(lin, ang, &to_accel)
                     }) {
                         Ok(Some(res)) => {
                             // FIXME: this bugs out when we get with some zero values due to
@@ -197,15 +184,10 @@ pub fn update(
                 avoid_collision,
                 routines: summed,
             } => {
-                let avoid_coll_out = match other_routines.get(*avoid_collision).map(|(lin, ang)| {
-                    BoidSteeringSystemOutput::get_active_res(
-                        lin,
-                        ang,
-                        vel.linvel,
-                        engine_config,
-                        consts,
-                    )
-                }) {
+                let avoid_coll_out = match other_routines
+                    .get(*avoid_collision)
+                    .map(|(lin, ang)| BoidSteeringSystemOutput::get_active_res(lin, ang, &to_accel))
+                {
                     Ok(Some(res)) => res,
                     Ok(None) => {
                         tracing::error!(
@@ -229,13 +211,7 @@ pub fn update(
                     let mut sum = default();
                     for (weight, routine_entt) in summed {
                         match other_routines.get(*routine_entt).map(|(lin, ang)| {
-                            BoidSteeringSystemOutput::get_active_res(
-                                lin,
-                                ang,
-                                vel.linvel,
-                                engine_config,
-                                consts,
-                            )
+                            BoidSteeringSystemOutput::get_active_res(lin, ang, &to_accel)
                         }) {
                             Ok(Some(res)) => {
                                 sum = sum + (*weight * res);
@@ -480,17 +456,15 @@ impl BoidSteeringSystemOutput {
     fn get_active_res(
         lin_res: Option<&LinearRoutineOutput>,
         ang_res: Option<&AngularRoutineOutput>,
-        linvel: TVec3,
-        config: &engine::EngineConfig,
-        consts: &CraftControllerConsts,
+        to_accel: &ToAccelParams,
     ) -> Option<Self> {
         match (lin_res, ang_res) {
             (Some(lin_res), Some(ang_res)) => Some(Self::Both {
-                lin: lin_res.to_accel(linvel, config, consts),
+                lin: lin_res.to_accel(to_accel),
                 ang: ang_res.0,
             }),
             (Some(lin_res), None) => Some(Self::LinOnly {
-                lin: lin_res.to_accel(linvel, config, consts),
+                lin: lin_res.to_accel(to_accel),
             }),
             (None, Some(ang_res)) => Some(Self::AngOnly { ang: ang_res.0 }),
             (None, None) => None,

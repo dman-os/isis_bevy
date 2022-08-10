@@ -48,7 +48,7 @@ pub fn butler(
         &CraftDimensions,
     )>,
 ) {
-    for (entt, param, strategy, mut state, mut out) in added_strategies.iter_mut() {
+    for (strategy_entt, param, strategy, mut state, mut out) in added_strategies.iter_mut() {
         let (routine_idx, engine_config, dim) = crafts
             .get(strategy.boid_entt())
             .expect_or_log("craft not found for BoidStrategy");
@@ -57,23 +57,23 @@ pub fn butler(
 
         let raycast_toi_modifier = dim.max_element();
         let cast_shape_radius = raycast_toi_modifier * 0.5;
-        let (avoid_collision, arrive) = commands.entity(strategy.boid_entt()).add_children(|p| {
+        let (avoid_collision, arrive) = commands.entity(strategy_entt).add_children(|p| {
             (
-                routine_idx
-                    .kind::<avoid_collision::AvoidCollision>()
-                    .map(|v| v[0])
-                    .unwrap_or_else(|| {
-                        p.spawn()
-                            .insert_bundle(avoid_collision::Bundle::new(
-                                avoid_collision::AvoidCollision::new(
-                                    cast_shape_radius,
-                                    raycast_toi_modifier,
-                                ),
-                                strategy.boid_entt(),
-                                default(),
-                            ))
-                            .id()
-                    }),
+                // routine_idx
+                //     .kind::<avoid_collision::AvoidCollision>()
+                //     .map(|v| v[0])
+                //     .unwrap_or_else(|| {
+                //     }),
+                p.spawn()
+                    .insert_bundle(avoid_collision::Bundle::new(
+                        avoid_collision::AvoidCollision::new(
+                            cast_shape_radius,
+                            raycast_toi_modifier,
+                        ),
+                        strategy.boid_entt(),
+                        default(),
+                    ))
+                    .id(),
                 p.spawn()
                     .insert_bundle(arrive::Bundle::new(
                         arrive::Arrive {
@@ -84,7 +84,7 @@ pub fn butler(
                                 /* with_linvel: (waypoint2_xform.translation - waypoint1_xform.translation)
                                 .normalize()
                                 * engine_config.linvel_limit, */
-                                with_speed: 80.,
+                                with_speed: 100.,
                             },
                             arrival_tolerance: 5.,
                             deceleration_radius: None,
@@ -99,7 +99,7 @@ pub fn butler(
                     .id(),
             )
         });
-        let compose = commands.entity(strategy.boid_entt()).add_children(|p| {
+        let compose = commands.entity(strategy_entt).add_children(|p| {
             p.spawn()
                 .insert_bundle(compose::Bundle::new(
                     compose::Compose {
@@ -120,7 +120,7 @@ pub fn butler(
             fire_weapons: false,
         };
 
-        commands.entity(entt).insert(ActiveBoidStrategy);
+        commands.entity(strategy_entt).insert(ActiveBoidStrategy);
     }
 }
 

@@ -62,14 +62,12 @@ pub fn update(
         ),
         With<ActiveSteeringRoutine>,
     >,
-    boids: Query<(&Transform, &Velocity)>, // boids
-                                           // objects: Query<&GlobalTransform>,
-                                           // mut lines: ResMut<DebugLines>,
+    boids: Query<(&Transform, &Velocity, &crate::craft::engine::EngineConfig)>, // boids
+                                                                                // objects: Query<&GlobalTransform>,
+                                                                                // mut lines: ResMut<DebugLines>,
 ) {
     for (routine, param, mut output) in routines.iter_mut() {
-        let (xform, vel) = boids
-            .get(routine.boid_entt)
-            .expect_or_log("craft entt not found for routine");
+        let (xform, vel, engine_conf) = boids.get(routine.boid_entt()).unwrap_or_log();
 
         *output = match param.target {
             /* Target::Object { entt, offset } => match objects.get(entt) {
@@ -85,31 +83,29 @@ pub fn update(
                 pos_linvel,
                 with_speed,
             } => {
-                /* super::steering_behaviours::seek_position(
-                    xform.translation,
-                    at_pos,
-                ) */
-                let max_accel = xform.rotation * param.avail_accel;
-                let vel = vel.linvel;
+                super::steering_behaviours::seek_position(xform.translation, at_pos)
+
+                /* let vel = vel.linvel;
                 let target_offset = (at_pos + pos_linvel) - xform.translation;
                 let target_spd = pos_linvel.length() + with_speed;
 
-                let accel = max_accel.project_onto_scalar(target_offset).abs();
-                let vel_to_target = vel.project_onto(target_offset);
-                let spd_to_target = vel_to_target.project_onto_scalar(target_offset);
+                let spd_to_target = vel.project_onto_scalar(target_offset);
 
                 super::steering_behaviours::arrive_at_position(
                     xform.translation,
-                    at_pos + pos_linvel,
+                    at_pos,
                     vel,
-                    target_spd,
-                    target_spd,
+                    default(),
+                    with_speed,
                     param.arrival_tolerance,
                     {
+                        let max_accel = xform.rotation * param.avail_accel;
+                        // let max_vel = xform.rotation * engine_conf.linvel_limit;
+                        let accel = max_accel.project_onto_scalar(target_offset).abs();
                         super::steering_behaviours::dst_to_change(spd_to_target, target_spd, accel)
                         // .max_element()
                     },
-                )
+                ) */
                 /*  super::steering_behaviours::be_ray(
                     at_pos,
                     // with_linvel,

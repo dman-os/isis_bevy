@@ -10,26 +10,41 @@ use bevy_rapier3d::prelude::*;
 
 use bevy_inspector_egui::Inspectable;
 
-#[derive(Debug, Default, Reflect, Inspectable)]
+#[derive(Debug, Default)]
 pub struct PlayerMindConfig {
-    auto_steer: bool,
+    pub auto_steer: bool,
+    pub auto_steer_directive: Option<boid::BoidMindDirective>,
 }
 
 pub fn player_mind(
     cur_craft: Res<CurrentCraft>,
-    config: ResMut<PlayerMindConfig>,
+    mut config: ResMut<PlayerMindConfig>,
     mut crafts: Query<(&mut boid::BoidMindDirective,)>,
+    k_input: Res<Input<KeyCode>>,
 ) {
     let cur_craft = if let Some(entt) = &cur_craft.entt {
         *entt
     } else {
         return;
     };
-    if config.is_changed() {
+    if (config.is_changed() && !config.is_added()) || {
+        if k_input.just_released(KeyCode::P) {
+            config.auto_steer = !config.auto_steer;
+            true
+        } else {
+            false
+        }
+    } {
         if config.auto_steer {
-            todo!()
+            if let Some(old_dir) = &config.auto_steer_directive {
+                let (mut directive,) = crafts.get_mut(cur_craft).unwrap_or_log();
+                *directive = old_dir.clone();
+            } else {
+                config.auto_steer = false;
+            }
         } else {
             let (mut directive,) = crafts.get_mut(cur_craft).unwrap_or_log();
+            config.auto_steer_directive = Some(directive.clone());
             *directive = boid::BoidMindDirective::SlaveToPlayerControl;
         }
     }
